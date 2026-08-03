@@ -73,3 +73,8 @@ scripts/official-theme-art/out/
 scripts/official-theme-art/__pycache__/
 agent-complexity-report.txt
 site/.generated/
+
+# Local experiments / scratch (not part of the repo)
+__pycache__/
+minecraft-clone/
+star.py

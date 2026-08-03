@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,9 @@ var indexHTML []byte
 
 //go:embed logo-wordmark.svg
 var logoWordmarkSVG []byte
+
+//go:embed assets/vendor.min.js
+var vendorJS []byte
 
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
@@ -379,10 +383,14 @@ func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
+	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
 	mux.HandleFunc("POST /submit", s.submit)
+	mux.HandleFunc("POST /edit", s.edit)
+	mux.HandleFunc("GET /file", s.file)
+	mux.HandleFunc("POST /attach", s.attach)
 	mux.HandleFunc("POST /cancel", s.cancel)
 	mux.HandleFunc("POST /approve", s.approve)
 	mux.HandleFunc("POST /plan", s.plan)
@@ -505,6 +513,16 @@ func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(logoWordmarkSVG)
 }
 
+// vendorJS serves the embedded rendering libraries (marked + DOMPurify +
+// highlight.js, bundled by scripts/build-serve-vendor.mjs). Long cache: the
+// bundle is versioned by the build, so a stale copy only persists for one
+// browser session at most.
+func (s *Server) vendorJSHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(vendorJS)
+}
+
 // sseKeepaliveInterval is how often the /events handler emits a `: ping`
 // SSE comment. Most reverse proxies (nginx, ALB, Cloudflare) close idle
 // upstream connections after 30–60 s; a long quiet turn (the agent
@@ -600,6 +618,166 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	s.ctl().SubmitHTTP(body.Input)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// edit re-submits an edited user message. display is what the transcript
+// shows, input is what the agent receives, original is the pre-edit text the
+// controller uses to mark the edit. Output arrives on the event stream.
+func (s *Server) edit(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Display  string `json:"display"`
+		Input    string `json:"input"`
+		Original string `json:"original"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" {
+		http.Error(w, "missing input", http.StatusBadRequest)
+		return
+	}
+	if strings.HasPrefix(strings.TrimSpace(body.Input), "!") {
+		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
+		return
+	}
+	s.ctl().SubmitEditedDisplay(body.Display, body.Input, body.Original)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// file serves workspace images referenced from markdown (agent output or
+// pasted attachments). Access is confined to the workspace root: absolute
+// paths must resolve inside it, and symlinks that escape it are refused.
+// Only raster image types are served; SVG is excluded (script-in-SVG risk).
+func (s *Server) file(w http.ResponseWriter, r *http.Request) {
+	root := s.ctl().WorkspaceRoot()
+	if root == "" {
+		http.Error(w, "no workspace", http.StatusNotFound)
+		return
+	}
+	raw := r.URL.Query().Get("path")
+	if raw == "" {
+		http.Error(w, "missing path", http.StatusBadRequest)
+		return
+	}
+	clean, err := securePathJoin(root, raw)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	fi, err := os.Stat(clean)
+	if err != nil || fi.IsDir() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if fi.Size() > 10<<20 {
+		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	ct := imageContentType(clean)
+	if ct == "" {
+		http.Error(w, "unsupported type", http.StatusUnsupportedMediaType)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	http.ServeFile(w, r, clean)
+}
+
+// attach saves a pasted/dropped file (base64 in JSON — the CSRF guard
+// requires application/json) under <workspace>/.reasonix/attachments/ and
+// returns the workspace-relative path for use as a markdown image reference.
+func (s *Server) attach(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // base64
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Data == "" {
+		http.Error(w, "missing data", http.StatusBadRequest)
+		return
+	}
+	root := s.ctl().WorkspaceRoot()
+	if root == "" {
+		http.Error(w, "no workspace", http.StatusNotFound)
+		return
+	}
+	raw, err := base64.StdEncoding.DecodeString(body.Data)
+	if err != nil {
+		http.Error(w, "bad base64", http.StatusBadRequest)
+		return
+	}
+	if len(raw) > 10<<20 {
+		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	name := sanitizeFilename(filepath.Base(body.Name))
+	if name == "" {
+		name = "paste.png"
+	}
+	dir := filepath.Join(root, ".reasonix", "attachments")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	final := filepath.Join(dir, time.Now().Format("20060102-150405")+"-"+name)
+	if err := os.WriteFile(final, raw, 0o644); err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	rel, err := filepath.Rel(root, final)
+	if err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"path": filepath.ToSlash(rel)})
+}
+
+// securePathJoin resolves raw (absolute or workspace-relative) against root,
+// rejects anything outside it, and refuses symlink escapes.
+func securePathJoin(root, raw string) (string, error) {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	p := raw
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(rootAbs, filepath.FromSlash(p))
+	}
+	clean := filepath.Clean(p)
+	if clean != rootAbs && !strings.HasPrefix(clean, rootAbs+string(os.PathSeparator)) {
+		return "", errors.New("outside workspace")
+	}
+	eval, err := filepath.EvalSymlinks(clean)
+	if err != nil {
+		return "", err
+	}
+	if eval != rootAbs && !strings.HasPrefix(eval, rootAbs+string(os.PathSeparator)) {
+		return "", errors.New("symlink escape")
+	}
+	return eval, nil
+}
+
+func imageContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	}
+	return ""
+}
+
+func sanitizeFilename(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' || r > 127 {
+			return r
+		}
+		return '-'
+	}, name)
+	return strings.Trim(name, ".-")
 }
 
 func (s *Server) cancel(w http.ResponseWriter, _ *http.Request) {

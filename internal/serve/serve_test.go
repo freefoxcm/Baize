@@ -301,6 +301,71 @@ func TestServeIndexPage(t *testing.T) {
 	}
 }
 
+func TestServeEditResubmitsMessage(t *testing.T) {
+	bc := NewBroadcaster()
+	got := make(chan string, 1)
+	ctrl := control.New(control.Options{Runner: fakeRunner{got: got}, Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	sub, cancel := bc.Subscribe()
+	defer cancel()
+
+	resp, err := http.Post(srv.URL+"/edit", "application/json",
+		strings.NewReader(`{"display":"fixed text","input":"fixed text","original":"original text"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("edit status = %d, want 202", resp.StatusCode)
+	}
+
+	select {
+	case in := <-got:
+		if in != "fixed text" {
+			t.Errorf("runner ran %q, want the edited input", in)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner never ran")
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case data := <-sub:
+			var w eventwire.Event
+			if err := json.Unmarshal(data, &w); err == nil && w.Kind == "turn_done" {
+				return
+			}
+		case <-deadline:
+			t.Fatal("never saw turn_done on the stream")
+		}
+	}
+}
+
+func TestServeEditRejectsEmptyAndShell(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	for name, body := range map[string]string{
+		"empty input": `{"display":"","input":"","original":""}`,
+		"shell input": `{"display":"!ls","input":"!ls","original":"x"}`,
+		"malformed":   `not json`,
+	} {
+		resp, err := http.Post(srv.URL+"/edit", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status = %d, want 400/403", name, resp.StatusCode)
+		}
+	}
+}
+
 func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
