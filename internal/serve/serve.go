@@ -859,12 +859,22 @@ type historyMessage struct {
 func historyMessages(msgs []provider.Message) []historyMessage {
 	out := make([]historyMessage, 0, len(msgs))
 	for _, m := range msgs {
-		// Steer messages are surfaced as a notice, not a user message.
 		if m.Role == provider.RoleUser {
+			// Steer messages are surfaced as a notice, not a user message.
 			if steerText, isSteer := agent.SteerText(m.Content); isSteer {
 				out = append(out, historyMessage{Role: "notice", Content: "↪ " + steerText})
 				continue
 			}
+			// Desktop-consistent display: system-injected compose prefixes
+			// (plan-mode marker, language directives, transient blocks) and
+			// referenced-context preambles are stripped so history shows the
+			// user's actual text; synthetic or empty turns are dropped.
+			text := control.StripReferencedContextPrefix(control.StripComposePrefixes(agent.UserMessageText(m)))
+			if text == "" || control.IsSyntheticUserMessage(text) {
+				continue
+			}
+			out = append(out, historyMessage{Role: string(m.Role), Content: text})
+			continue
 		}
 		hm := historyMessage{Role: string(m.Role), Content: m.Content}
 		if m.Role == provider.RoleAssistant {

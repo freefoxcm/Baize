@@ -25,6 +25,8 @@
   --shadow-md:0 8px 24px -8px oklch(0% 0 0/.5);
   --shadow-lg:0 24px 60px -16px oklch(0% 0 0/.65);
   --radius:8px;--radius-lg:12px;
+  /* chat column width, matches desktop's --maxw (960px) */
+  --chat-maxw:960px;
   --sans:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --heading:'Space Grotesk',var(--sans);
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -76,12 +78,13 @@ input,textarea{font:inherit;color:inherit}
 .status-metrics .sm-val{color:var(--fg-2);font-weight:500;font-size:11.5px}
 .status-metrics .sm-val.acc{color:var(--accent)}
 
-.msg{max-width:760px;margin:0 auto 14px;animation:msg-in .25s ease}
+.msg{max-width:var(--chat-maxw);margin:0 auto 14px;animation:msg-in .25s ease}
 @keyframes msg-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-.msg--user{display:flex;gap:9px;align-items:baseline;position:relative}
+.msg--user{display:flex;flex-direction:column;align-items:flex-end;position:relative}
+.msg--user .msg__text{max-width:82%;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));border-radius:14px;padding:10px 16px;box-shadow:var(--shadow-sm)}
+.msg--user .msg-edit{max-width:82%}
 .msg--assistant{position:relative}
-.msg__edited{font-size:11px;color:var(--muted-2);margin-left:6px;font-style:italic}
-.msg-actions{position:absolute;top:0;right:0;display:flex;gap:2px;opacity:0;transition:opacity .15s;z-index:3}
+.msg__edited{font-size:11px;color:var(--muted-2);margin-left:6px;font-style:italic}.msg-actions{position:absolute;top:0;right:0;display:flex;gap:2px;opacity:0;transition:opacity .15s;z-index:3}
 .msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1}
 .msg-action{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--muted);background:var(--panel);border:1px solid var(--border);font-size:12px;cursor:pointer;transition:color .15s,border-color .15s}
 .msg-action:hover{color:var(--fg-2);border-color:var(--border-strong)}
@@ -94,7 +97,6 @@ input,textarea{font:inherit;color:inherit}
 .msg-edit__btn:hover{border-color:var(--border-strong)}
 .msg-edit__btn--save{background:var(--accent);border-color:var(--accent);color:oklch(18% .02 30);font-weight:600}
 .msg-edit__btn--save:hover{filter:brightness(1.1)}
-.msg__caret{color:var(--accent);font-family:var(--mono);font-weight:600;flex-shrink:0;font-size:15px}
 .msg__text{white-space:pre-wrap;word-break:break-word;font-weight:500;line-height:1.65}
 .msg--assistant{color:var(--fg);line-height:1.7}
 .msg--assistant .msg__text{font-weight:400}
@@ -114,11 +116,11 @@ input,textarea{font:inherit;color:inherit}
 /* ── markdown rendering ── */
 .turn{position:relative;padding:10px 12px 4px;margin:0 -12px 2px;border-top:1px solid var(--border);border-radius:var(--radius-lg)}
 .turn:first-child{border-top:none}
-.turn-summary{display:flex;align-items:center;gap:6px;width:100%;max-width:760px;margin:0 auto 8px;text-align:left;font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:5px 10px;cursor:pointer;transition:color .15s,border-color .15s}
-.turn-summary:hover{color:var(--fg-2);border-color:var(--border-strong)}
-.turn-summary--folded{color:var(--fg-2);border-color:var(--border-strong);background:var(--panel-2)}
-.turn-summary--folded::after{content:'▸';margin-left:auto;color:var(--muted)}
-.turn-summary:not(.turn-summary--folded)::after{content:'▾';margin-left:auto;color:var(--muted)}
+.turn-summary{display:block;width:100%;max-width:var(--chat-maxw);margin:2px auto 4px;text-align:left;min-height:24px;padding:2px 7px;border:none;background:none;font-size:13px;font-weight:500;color:var(--muted);border-radius:6px;cursor:pointer;transition:color .15s,background .15s}
+.turn-summary:hover{color:var(--fg-2);background:color-mix(in srgb,var(--fg) 5%,transparent)}
+.turn-summary--folded{color:var(--fg-2)}
+.turn-summary::after{content:'▾';margin-left:4px;color:var(--muted-2);font-size:10px;transition:transform .2s}
+.turn-summary--folded::after{transform:rotate(-90deg)}
 .msg__text--md{white-space:normal}
 .msg__text--md .md-tail{white-space:pre-wrap;word-break:break-word}
 .md-sections>p{margin:0 0 .55em}
@@ -178,7 +180,7 @@ input,textarea{font:inherit;color:inherit}
 .hljs-meta{color:var(--muted-2)}
 
 /* card (v1 pattern) — max-width matches .msg so cards align with message text */
-.card{background:var(--card);border-radius:var(--radius-lg);overflow:hidden;font-size:14px;box-shadow:var(--shadow-sm);margin:8px auto;max-width:760px;transition:border-color .18s ease}
+.card{background:var(--card);border-radius:var(--radius-lg);overflow:hidden;font-size:14px;box-shadow:var(--shadow-sm);margin:8px auto;max-width:var(--chat-maxw);transition:border-color .18s ease}
 .card-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:7px 12px;font-size:13px;color:var(--fg-2);cursor:pointer;user-select:none;background:var(--card);transition:background .18s ease}
 .card-head:hover{background:var(--card-hover)}
 .card-head .ico{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);color:var(--fg-2);flex-shrink:0;font-size:10px}
@@ -205,10 +207,10 @@ input,textarea{font:inherit;color:inherit}
 .spin{animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.notice{max-width:760px;margin:5px auto;font-size:13px;color:var(--fg-2);padding:5px 12px;border-left:2px solid var(--border);border-radius:0 var(--radius) var(--radius) 0;white-space:pre-wrap}
+.notice{max-width:var(--chat-maxw);margin:5px auto;font-size:13px;color:var(--fg-2);padding:5px 12px;border-left:2px solid var(--border);border-radius:0 var(--radius) var(--radius) 0;white-space:pre-wrap}
 .notice--warn{color:var(--warning);border-left-color:var(--warning);background:var(--warning-soft)}
-.phase{max-width:760px;margin:10px auto;text-align:center;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);font-family:var(--mono)}
-.compaction{max-width:760px;margin:8px auto;border:1px dashed var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px;color:var(--fg-2);background:var(--bg-2)}
+.phase{max-width:var(--chat-maxw);margin:10px auto;text-align:center;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);font-family:var(--mono)}
+.compaction{max-width:var(--chat-maxw);margin:8px auto;border:1px dashed var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px;color:var(--fg-2);background:var(--bg-2)}
 .compaction__head{display:flex;align-items:center;gap:7px;cursor:pointer}
 .compaction__title{font-weight:600;color:var(--fg)}
 .compaction__body{margin-top:6px;padding-top:6px;border-top:1px solid var(--border);white-space:pre-wrap;font-family:var(--mono);font-size:11.5px;line-height:1.5;max-height:180px;overflow-y:auto;color:var(--fg-2);display:none}
@@ -216,9 +218,9 @@ input,textarea{font:inherit;color:inherit}
 
 /* approval */
 /* approval shelf (desktop prompt-shelf style) */
-.approval-slot{width:100%;max-width:760px;margin:0 auto}
+.approval-slot{width:100%;max-width:var(--chat-maxw);margin:0 auto}
 .approval-slot:empty{display:none}
-.approval{max-width:760px;margin:8px auto;background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 24%,var(--border));border-radius:10px;box-shadow:var(--shadow-sm);animation:msg-in .2s ease}
+.approval{max-width:var(--chat-maxw);margin:8px auto;background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 24%,var(--border));border-radius:10px;box-shadow:var(--shadow-sm);animation:msg-in .2s ease}
 .approval:focus{outline:none}
 .approval__card{padding:10px 12px;display:flex;flex-direction:column;gap:8px;max-height:min(80vh,640px)}
 .approval__head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
@@ -315,7 +317,7 @@ input,textarea{font:inherit;color:inherit}
 .goal-chip__close{flex-shrink:0;margin-left:2px;opacity:.6;font-size:14px;line-height:1}
 .goal-chip__close:hover{opacity:1}
 /* todo panel */
-.todos{max-width:760px;margin:0 auto 8px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden;animation:msg-in .2s ease;display:none}
+.todos{max-width:var(--chat-maxw);margin:0 auto 8px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden;animation:msg-in .2s ease;display:none}
 .todos--visible{display:block}
 .todos__head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;font-size:13px;color:var(--fg-2);transition:background .15s ease}
 .todos__head:hover{background:var(--card-hover)}
@@ -753,6 +755,8 @@ const __T = {
     'danger': 'Danger',
     'tool_running': 'Running',
     'tool_done': 'Done',
+    'work_working': 'Working…',
+    'work_done': 'Worked',
     'tool_failed': 'Failed',
     'tool_copy': 'Copy output',
     'tool_copied': 'Copied',
@@ -903,6 +907,8 @@ const __T = {
     'danger': '危险',
     'tool_running': '运行中',
     'tool_done': '完成',
+    'work_working': '工作中…',
+    'work_done': '已完成',
     'tool_failed': '失败',
     'tool_copy': '复制输出',
     'tool_copied': '已复制',
@@ -1283,8 +1289,8 @@ function startEdit(it, d) {
           let note = d.querySelector('.msg__edited');
           if (!note) {
             note = el('span', 'msg__edited', __('edited_note'));
-            const caret = d.querySelector('.msg__caret');
-            if (caret && caret.nextSibling) caret.after(note);
+            const wrap = d.querySelector('.msg__text');
+            if (wrap && wrap.nextSibling) wrap.after(note);
             else d.appendChild(note);
           }
         }
@@ -1317,7 +1323,9 @@ function turnContainer(turn) {
     summary.onclick = () => toggleTurnFold(turn);
     container.appendChild(summary);
     log.appendChild(container);
-    t = { el: container, summary, tools: new Map(), folded: false };
+    // userOverride: once the user manually folds/expands, auto fold/collapse
+    // (turn_done, history rebuild) no longer applies — desktop behavior.
+    t = { el: container, summary, tools: new Map(), folded: false, userOverride: false };
     turnEls.set(turn, t);
   }
   return t;
@@ -1332,26 +1340,32 @@ function updateTurnSummaryForItem(it) {
   const t = turnEls.get(it.turn);
   if (!t) return;
   const tools = [];
+  let thoughts = 0, running = false;
   for (const item of items) {
     if ((item.turn || 0) !== it.turn) continue;
-    if (item.kind === 'tool') tools.push(item);
-    else if (item.kind === 'assistant' && item.tools) tools.push(...item.tools);
+    if (item.kind === 'tool') { tools.push(item); if (item.status === 'running') running = true; }
+    else if (item.kind === 'assistant') {
+      if (item.tools) {
+        tools.push(...item.tools);
+        if (item.tools.some(t => t.status === 'running')) running = true;
+      }
+      if (item.reasoning) thoughts++;
+    }
   }
-  updateTurnSummary(t, tools);
+  updateTurnSummary(t, tools, thoughts, running);
 }
-function updateTurnSummary(t, tools) {
+// workLabel renders the desktop-style count copy: "Worked · 2 tools · 1
+// thought" (or the running "Working…" while tools are still executing).
+function workLabel(tools, thoughts, running) {
+  if (running) return __('work_working');
+  const zh = __LANG === 'zh';
+  const t = tools + (zh ? ' 个工具' : (tools === 1 ? ' tool' : ' tools'));
+  const th = thoughts + (zh ? ' 段思考' : (thoughts === 1 ? ' thought' : ' thoughts'));
+  return __('work_done') + ' · ' + t + ' · ' + th;
+}
+function updateTurnSummary(t, tools, thoughts, running) {
   if (!tools.length) { t.summary.style.display = 'none'; return; }
-  const counts = new Map();
-  let running = 0;
-  tools.forEach(tool => {
-    counts.set(tool.name || 'tool', (counts.get(tool.name) || 0) + 1);
-    if (tool.status === 'running') running++;
-  });
-  const parts = [];
-  counts.forEach((n, name) => parts.push(name + (n > 1 ? '×' + n : '')));
-  let label = '🛠 ' + parts.join(' · ');
-  if (running) label += ' · ' + running + ' ' + __('tool_running').toLowerCase();
-  t.summary.textContent = label;
+  t.summary.textContent = workLabel(tools.length, thoughts, running);
   t.summary.style.display = '';
 }
 function applyTurnFold(t) {
@@ -1363,6 +1377,7 @@ function applyTurnFold(t) {
 function toggleTurnFold(turn) {
   const t = turnEls.get(turn);
   if (!t) return;
+  t.userOverride = true;
   t.folded = !t.folded;
   applyTurnFold(t);
 }
@@ -1371,7 +1386,13 @@ function toggleTurnFold(turn) {
 function appendItem(it, dom) {
   if (!dom) return;
   const t = turnContainer(it.turn || currentTurn);
-  t.el.appendChild(dom);
+  if (it.kind === 'user') {
+    // Desktop order: user message first, then the fold summary, then
+    // reasoning / tools / answer — insert the user message before the bar.
+    t.el.insertBefore(dom, t.summary);
+  } else {
+    t.el.appendChild(dom);
+  }
   if (t.folded && (dom.classList.contains('card') || dom.classList.contains('reasoning') || dom.querySelector('.card, .reasoning'))) {
     applyTurnFold(t);
   }
@@ -1386,7 +1407,6 @@ function appendItem(it, dom) {
 function renderItem(it) {
   if (it.kind === 'user') {
     const d = el('div', 'msg msg--user');
-    d.appendChild(el('span', 'msg__caret', '›'));
     const wrap = el('div', 'msg__text msg__text--md');
     const sections = el('div', 'md-sections');
     const tail = el('span', 'md-tail');
@@ -2240,7 +2260,12 @@ es.onmessage=ev=>{setConnState('connected');
     case 'compaction_started': showCompaction({trigger:e.compaction?.trigger}); break;
     case 'compaction_done': showCompaction(e.compaction||{}); break;
     case 'retrying': setRetrying(e.retryAttempt,e.retryMax); break;
-    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); if(e.outcome==='recovery_paused'){showNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
+    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false);
+      // Desktop behavior: a completed turn folds its tools+reasoning behind
+      // the summary bar unless the user manually toggled it.
+      { const tt = turnEls.get(currentTurn);
+        if (tt && !tt.userOverride && tt.summary.style.display !== 'none') { tt.folded = true; applyTurnFold(tt); } }
+      if(e.outcome==='recovery_paused'){showNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
   }
 };
 es.onerror=()=>{
@@ -2327,6 +2352,11 @@ function renderHistoryMessages(ms){
       items.push(it);
       const d=renderItem(it);if(d)appendItem(it,d);
     }
+  });
+  // Desktop behavior: completed turns render collapsed — tools and reasoning
+  // hide behind the count-style summary bar (unless the user toggled it).
+  turnEls.forEach(t => {
+    if (t.summary.style.display !== 'none' && !t.userOverride) { t.folded = true; applyTurnFold(t); }
   });
   // The next live turn must continue after the rebuilt history, or new
   // messages would collide with turn 1's container (and be hidden when that
