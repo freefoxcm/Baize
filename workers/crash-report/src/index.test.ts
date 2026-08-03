@@ -6,6 +6,8 @@ import {
   isDevelopmentGroup,
   isKnownNonCrashDiagnostic,
   namespaceReportFingerprint,
+  newestReleaseVersion,
+  diagnosticWindowWhere,
   normalizeForFingerprint,
   Ping,
   Metrics,
@@ -124,6 +126,17 @@ describe("metrics compatibility", () => {
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
     expect(parsed.data.counters).toHaveLength(4);
+  });
+});
+
+describe("stats window and release baseline", () => {
+  it("uses an inclusive calendar window for diagnostic groups", () => {
+    expect(diagnosticWindowWhere(7)).toBe("date(last_seen) >= date('now', '-6 day')");
+    expect(diagnosticWindowWhere(30)).toBe("date(last_seen) >= date('now', '-29 day')");
+  });
+
+  it("does not promote prerelease or synthetic non-semver labels", () => {
+    expect(newestReleaseVersion(["v1.19.4", "v1.20.0-beta.1", "dev", "v9.9.9-test"])).toBe("v1.19.4");
   });
 });
 
@@ -592,5 +605,44 @@ describe("diagnostics dashboard lanes", () => {
     };
     const user = { id: 1, email: "viewer@example.com", role: "viewer", created_at: "", approved_at: "" } as const;
     expect(renderStats(data, user, "preferences")).toContain("2026-08-03 07:28Z");
+  });
+
+  it("shows deduplicated affected installs on agent health", () => {
+    type StatsData = Parameters<typeof renderStats>[0];
+    const data: StatsData = {
+      daily: [],
+      versions: [],
+      platforms: [],
+      crashes: [],
+      metrics: [{ signal: "desktop_hang", bucket: "windows_ui_thread", total: 12 }],
+      previousMetrics: [],
+      metricUsers: [{ signal: "desktop_hang", bucket: "windows_ui_thread", total: 3 }],
+      metricUsersUnavailable: false,
+      metricUsersComputedAt: "",
+      sources: [],
+      overview: { latestAdoptionPct: null, openReports: 0, newLatestReports: 0, regressedReports: 0, criticalOpenReports: 0 },
+      latestVersion: "v1.19.4",
+      filters: {
+        surface: "desktop",
+        status: "",
+        source: "",
+        version: "",
+        os: "",
+        platform: "",
+        newLatest: false,
+        regressed: false,
+        windowDays: 7,
+        preferenceMode: "users",
+      },
+    };
+    const html = renderStats(
+      data,
+      { id: 1, email: "viewer@example.com", role: "viewer", created_at: "", approved_at: "" },
+      "health",
+    );
+    const installs = html.slice(html.indexOf("Affected installs"), html.indexOf("Signal distributions"));
+    expect(installs).toContain("Desktop hangs");
+    expect(installs).toContain(">3<");
+    expect(installs).not.toContain(">12<");
   });
 });

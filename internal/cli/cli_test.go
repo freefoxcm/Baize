@@ -781,6 +781,123 @@ func TestConfigReasoningLanguageRejectsAliases(t *testing.T) {
 	}
 }
 
+func TestConfigCompactRatioCommandWritesUserConfigAndReportsSource(t *testing.T) {
+	isolateCLIConfigHome(t)
+	userCfg := config.Default()
+	userCfg.Agent.Temperature = 0.42
+	if err := userCfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("write user config: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		if rc := Run([]string{"config", "compact-ratio", "75.5"}, "test-version"); rc != 0 {
+			t.Fatalf("config compact-ratio rc = %d, want 0", rc)
+		}
+	})
+	if !strings.Contains(out, "compact_ratio = 75.5%") || !strings.Contains(out, "user:") {
+		t.Fatalf("config compact-ratio output = %q", out)
+	}
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if got := cfg.Agent.CompactRatio; got != 0.755 {
+		t.Fatalf("saved compact ratio = %v, want 0.755", got)
+	}
+	if got := cfg.Agent.Temperature; got != 0.42 {
+		t.Fatalf("compact-ratio update changed temperature to %v, want 0.42", got)
+	}
+
+	out = captureStdout(t, func() {
+		if rc := Run([]string{"config", "compact-ratio"}, "test-version"); rc != 0 {
+			t.Fatalf("config compact-ratio query rc = %d, want 0", rc)
+		}
+	})
+	if !strings.Contains(out, "compact_ratio = 75.5%") || !strings.Contains(out, "user:") {
+		t.Fatalf("config compact-ratio query output = %q", out)
+	}
+}
+
+func TestConfigCompactRatioQueryReportsBuiltInDefault(t *testing.T) {
+	isolateCLIConfigHome(t)
+
+	out := captureStdout(t, func() {
+		if rc := Run([]string{"config", "compact-ratio"}, "test-version"); rc != 0 {
+			t.Fatalf("config compact-ratio query rc = %d, want 0", rc)
+		}
+	})
+	if out != "compact_ratio = 80% (built-in default)\n" {
+		t.Fatalf("config compact-ratio query output = %q", out)
+	}
+}
+
+func TestConfigCompactRatioLocalCreatesMinimalProjectOverride(t *testing.T) {
+	isolateCLIConfigHome(t)
+
+	userCfg := config.Default()
+	userCfg.DefaultModel = "mimo-pro"
+	if err := userCfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("write user config: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		if rc := Run([]string{"config", "compact-ratio", "--local", "70"}, "test-version"); rc != 0 {
+			t.Fatalf("config compact-ratio --local rc = %d, want 0", rc)
+		}
+	})
+	if !strings.Contains(out, "compact_ratio = 70%") || !strings.Contains(out, "project:") {
+		t.Fatalf("config compact-ratio --local output = %q", out)
+	}
+
+	body, err := os.ReadFile("reasonix.toml")
+	if err != nil {
+		t.Fatalf("read project config: %v", err)
+	}
+	if strings.Contains(string(body), "default_model") {
+		t.Fatalf("project compact-ratio override should not pin default_model:\n%s", body)
+	}
+	if !strings.Contains(string(body), "[agent]") || !strings.Contains(string(body), "compact_ratio = 0.7") {
+		t.Fatalf("project config missing compact_ratio override:\n%s", body)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("load merged config: %v", err)
+	}
+	if cfg.DefaultModel != "mimo-pro" {
+		t.Fatalf("default_model = %q, want global mimo-pro", cfg.DefaultModel)
+	}
+	if cfg.Agent.CompactRatio != 0.7 {
+		t.Fatalf("compact ratio = %v, want local 0.7", cfg.Agent.CompactRatio)
+	}
+
+	out = captureStdout(t, func() {
+		if rc := Run([]string{"config", "compact-ratio"}, "test-version"); rc != 0 {
+			t.Fatalf("config compact-ratio query rc = %d, want 0", rc)
+		}
+	})
+	if !strings.Contains(out, "compact_ratio = 70%") || !strings.Contains(out, "project:") {
+		t.Fatalf("project compact-ratio query output = %q", out)
+	}
+}
+
+func TestConfigCompactRatioRejectsValuesOutsideEditableRange(t *testing.T) {
+	isolateCLIConfigHome(t)
+
+	for _, value := range []string{"64", "86", "NaN", "+Inf", "not-a-number"} {
+		t.Run(value, func(t *testing.T) {
+			errOut := captureStderr(t, func() {
+				if rc := Run([]string{"config", "compact-ratio", value}, "test-version"); rc != 2 {
+					t.Fatalf("config compact-ratio %s rc = %d, want 2", value, rc)
+				}
+			})
+			if !strings.Contains(errOut, "percentage between 65 and 85") {
+				t.Fatalf("config compact-ratio %s stderr = %q", value, errOut)
+			}
+		})
+	}
+	if _, err := os.Stat(config.UserConfigPath()); !os.IsNotExist(err) {
+		t.Fatalf("invalid compact ratio wrote user config, stat err=%v", err)
+	}
+}
+
 func TestConfigCurrencyCommandWritesUserConfig(t *testing.T) {
 	isolateCLIConfigHome(t)
 

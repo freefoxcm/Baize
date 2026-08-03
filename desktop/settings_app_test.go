@@ -1035,6 +1035,54 @@ func TestSetReasoningLanguagePersistsToUserConfig(t *testing.T) {
 	}
 }
 
+func TestSetCompactRatioPersistsToUserConfig(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	app := NewApp()
+	defaultView := app.Settings()
+	if defaultView.Agent.CompactRatio != 0.8 || defaultView.Agent.EffectiveCompactRatio != 0.8 {
+		t.Fatalf("default compact ratios = %v/%v, want 0.8/0.8", defaultView.Agent.CompactRatio, defaultView.Agent.EffectiveCompactRatio)
+	}
+	if err := app.SetCompactRatio(0.7); err != nil {
+		t.Fatalf("SetCompactRatio: %v", err)
+	}
+
+	view := app.Settings()
+	if view.Agent.CompactRatio != 0.7 {
+		t.Fatalf("Settings().Agent.CompactRatio = %v, want 0.7", view.Agent.CompactRatio)
+	}
+
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if cfg.Agent.CompactRatio != 0.7 {
+		t.Fatalf("saved compact ratio = %v, want 0.7", cfg.Agent.CompactRatio)
+	}
+	if cfg.Agent.ToolResultSnipRatio != 0.6 || cfg.Agent.CompactForceRatio != 0.9 {
+		t.Fatalf("setting compact ratio changed adjacent thresholds: %+v", cfg.Agent)
+	}
+
+	if err := app.SetCompactRatio(0.9); err == nil {
+		t.Fatal("SetCompactRatio should reject values outside the Desktop safety range")
+	}
+	cfg = config.LoadForEdit(config.UserConfigPath())
+	if cfg.Agent.CompactRatio != 0.7 {
+		t.Fatalf("rejected update changed saved compact ratio to %v", cfg.Agent.CompactRatio)
+	}
+}
+
+func TestSetCompactRatioRejectsActiveWorkBeforeSaving(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	app := NewApp()
+	app.setTestCtrl(newBackgroundJobController(t, "compact-ratio-job"), "")
+	err := app.SetCompactRatio(0.7)
+	if err == nil || !strings.Contains(err.Error(), "stop background jobs") {
+		t.Fatalf("SetCompactRatio with background job error = %v, want active-work guard", err)
+	}
+	if got := config.LoadForEdit(config.UserConfigPath()).Agent.CompactRatio; got != 0.8 {
+		t.Fatalf("compact ratio changed after rejected update: %v", got)
+	}
+}
+
 func TestSetDesktopLanguagePersistsResponseLanguageAndUpdatesLiveTabs(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	projectRoot := t.TempDir()

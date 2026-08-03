@@ -96,6 +96,21 @@ reasonix config currency USD
 在交互式会话中，`/currency` 显示已保存值和最终解析结果；
 `/currency auto|CNY|USD` 会修改偏好并刷新当前运行时，同时保留当前对话。
 
+### 配置自动压缩阈值
+
+桌面端与 CLI 共用用户全局的自动压缩阈值。可以查看当前生效值及来源、修改全局默认值，
+或为当前项目添加覆盖：
+
+```sh
+reasonix config compact-ratio              # 查看生效值及来源
+reasonix config compact-ratio 75           # 设置用户全局默认值
+reasonix config compact-ratio --local 75   # 写入 ./reasonix.toml 项目覆盖
+```
+
+可设置范围为 65–85%，内置默认值为 80%。数值越低越早压缩，可能降低 prompt prefix
+缓存复用率；数值越高则会在压缩前保留更多上下文。项目 `reasonix.toml` 的优先级高于
+用户全局配置。修改会应用于新启动的 CLI 会话；已经运行的会话继续使用启动时加载的阈值。
+
 ## 一次性运行与自动化
 
 脚本只需要最终回答时，使用 `-p` / `--print`：

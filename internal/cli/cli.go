@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -2255,6 +2257,8 @@ func configCommand(args []string) int {
 		return configAutoPlanCompatibilityCommand(args[1:])
 	case "reasoning-language":
 		return configReasoningLanguageCommand(args[1:])
+	case "compact-ratio":
+		return configCompactRatioCommand(args[1:])
 	case "currency":
 		return configCurrencyCommand(args[1:])
 	case "telemetry":
@@ -2486,9 +2490,98 @@ func configReasoningLanguageCommand(args []string) int {
 	return 0
 }
 
+func configCompactRatioCommand(args []string) int {
+	fs := flag.NewFlagSet("config compact-ratio", flag.ContinueOnError)
+	local := fs.Bool("local", false, "write ./reasonix.toml instead of the user config")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		configCompactRatioUsage()
+		return 2
+	}
+	if len(rest) == 0 {
+		cfg, err := config.LoadForRootReadOnly(".")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+			return 1
+		}
+		fmt.Printf("compact_ratio = %s (%s)\n", formatCompactRatioPercent(cfg.Agent.CompactRatio), compactRatioSource())
+		return 0
+	}
+	percent, err := strconv.ParseFloat(strings.TrimSpace(rest[0]), 64)
+	if err != nil || math.IsNaN(percent) || math.IsInf(percent, 0) || percent < 65 || percent > 85 {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "compact ratio must be a percentage between 65 and 85")
+		return 2
+	}
+	ratio := percent / 100
+	path := config.UserConfigPath()
+	scope := "user"
+	if *local {
+		path = "reasonix.toml"
+		scope = "project"
+	}
+	if path == "" {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "cannot resolve config path")
+		return 1
+	}
+	unlock, err := config.LockConfigFileEdits(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
+	defer unlock()
+	if *local {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			saved, err := config.SaveMinimalProjectCompactRatio(path, ratio)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+				return 1
+			}
+			fmt.Printf("compact_ratio = %s (%s: %s)\n", formatCompactRatioPercent(saved), scope, displayPath(path))
+			return 0
+		} else if err != nil {
+			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+			return 1
+		}
+	}
+	cfg, err := config.LoadForEditReadOnlyStrict(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
+	if err := cfg.SetCompactRatio(ratio); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 2
+	}
+	if err := cfg.SaveTo(path); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
+	fmt.Printf("compact_ratio = %s (%s: %s)\n", formatCompactRatioPercent(cfg.Agent.CompactRatio), scope, displayPath(path))
+	return 0
+}
+
+func compactRatioSource() string {
+	if config.ConfigFileDefinesCompactRatio("reasonix.toml") {
+		return "project: " + displayPath("reasonix.toml")
+	}
+	if path := config.UserConfigPath(); path != "" && config.ConfigFileDefinesCompactRatio(path) {
+		return "user: " + displayPath(path)
+	}
+	return "built-in default"
+}
+
+func formatCompactRatioPercent(ratio float64) string {
+	value := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", ratio*100), "0"), ".")
+	return value + "%"
+}
+
 func configUsage() {
 	fmt.Print(`Usage:
   reasonix config reasoning-language [--local] [auto|zh|en]
+  reasonix config compact-ratio [--local] [65..85]
   reasonix config currency [auto|CNY|USD]
   reasonix config telemetry [auto|on|off]
 `)
@@ -2497,6 +2590,12 @@ func configUsage() {
 func configTelemetryUsage() {
 	fmt.Print(`Usage:
   reasonix config telemetry [auto|on|off]
+`)
+}
+
+func configCompactRatioUsage() {
+	fmt.Print(`Usage:
+  reasonix config compact-ratio [--local] [65..85]
 `)
 }
 

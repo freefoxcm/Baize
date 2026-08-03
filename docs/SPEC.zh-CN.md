@@ -150,6 +150,9 @@ Reasonix 通过低频 compaction 保持 cache-first：
 - 达到 `agent.compact_force_ratio` 后，可执行强制折叠；
 - `context_window = 0` 会关闭该实例的 compaction。
 
+用户可用 `reasonix config compact-ratio [--local] [VALUE]` 查看或修改 65–85% 的自动
+压缩阈值，内置默认值为 80%。项目级设置优先于桌面端与新 CLI 会话共用的用户全局配置。
+
 tool result 的 snip/prune 不删除消息，确保 assistant `tool_calls` 与 tool result 配对。摘要只折叠 assistant/tool 工作；正常大小的用户回合和既有 digest 原样保留。被移除的原文归档到 `reasonix/archive/<timestamp>.jsonl`。
 
 `history` tool 支持对 session 与归档进行 BM25 搜索；`memory` tool 用于检索自动记忆，

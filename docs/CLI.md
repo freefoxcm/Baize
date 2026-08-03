@@ -106,6 +106,24 @@ In an interactive session, `/currency` shows the saved and resolved values, and
 `/currency auto|CNY|USD` changes the preference and refreshes the current
 runtime without discarding the conversation.
 
+### Configure automatic compaction
+
+The desktop app and CLI share the user-global automatic compaction threshold.
+Inspect the effective percentage and its source, set the global default, or add
+a project override:
+
+```sh
+reasonix config compact-ratio              # show effective value and source
+reasonix config compact-ratio 75           # set the user-global default
+reasonix config compact-ratio --local 75   # override in ./reasonix.toml
+```
+
+The editable range is 65–85%, with 80% as the built-in default. Lower values
+compact earlier and may reduce prompt-prefix cache reuse; higher values retain
+more context before compaction. Project `reasonix.toml` takes precedence over
+the user config. Changes apply to new CLI sessions; an already-running session
+keeps the threshold it loaded at startup.
+
 ## One-shot and automation
 
 Use `-p` / `--print` when a script needs only the final answer:

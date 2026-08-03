@@ -253,6 +253,10 @@ Long tasks eventually fill the model's context window. Reasonix manages this wit
   pruning still leaves the prompt above the threshold does summary compaction
   run. At `agent.compact_force_ratio` (default `0.9`), the existing forced fold
   may proceed even when the fold economics would normally skip it.
+- Users can inspect or change the 65–85% automatic threshold with
+  `reasonix config compact-ratio [--local] [VALUE]`. The default is 80%; the
+  project-local value overrides the shared user config used by desktop and new
+  CLI sessions.
 - A positive `model_overrides.<model>.context_window` replaces the provider-wide
   value after model resolution. Missing or zero model overrides inherit the
   provider value; provider-level `context_window = 0` disables compaction.

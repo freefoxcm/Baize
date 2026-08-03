@@ -721,7 +721,7 @@ function statsFilters(url: URL): StatsFilters {
 }
 
 async function crashGroups(env: Env, filters: StatsFilters, latestVersion: string) {
-  const where: string[] = [];
+  const where: string[] = [diagnosticWindowWhere(filters.windowDays)];
   const binds: unknown[] = [];
   const add = (sql: string, value?: unknown) => {
     where.push(sql.replace("?", `?${binds.length + 1}`));
@@ -846,7 +846,10 @@ type ParsedVersion = {
 };
 
 function parseReleaseVersion(version: string): ParsedVersion | null {
-  const m = version.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  // The dashboard's "latest" lane is for shipped stable builds. Development,
+  // prerelease, and build-metadata values remain visible in version facets but
+  // must not become the release baseline used for regression triage.
+  const m = version.trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/);
   if (!m) return null;
   return {
     version,
@@ -856,7 +859,7 @@ function parseReleaseVersion(version: string): ParsedVersion | null {
   };
 }
 
-function newestReleaseVersion(versions: string[]): string {
+export function newestReleaseVersion(versions: string[]): string {
   const parsed = versions
     .filter((v) => v && v.toLowerCase() !== "dev")
     .map(parseReleaseVersion)
@@ -873,13 +876,12 @@ function newestReleaseVersion(versions: string[]): string {
 
 async function latestObservedVersion(env: Env, surface: ClientSurfaceName): Promise<string> {
   const table = telemetryTableNames(surface).pings;
-  const sql = surface === "desktop"
-    ? `SELECT version FROM (
-         SELECT version FROM ${table} WHERE date >= date('now', '-29 day')
-         UNION
-         SELECT last_version AS version FROM groups
-       ) AS versions WHERE version <> ''`
-    : `SELECT version FROM ${table} WHERE date >= date('now', '-29 day') AND version <> ''`;
+  // Require independent installations and use pings as the sole source of
+  // release truth. A single synthetic diagnostic must never promote v9.9.9 (or
+  // a prerelease) to "latest" for every report group.
+  const sql = `SELECT version FROM ${table}
+    WHERE date >= date('now', '-29 day') AND version <> ''
+    GROUP BY version HAVING COUNT(DISTINCT install_id) >= 2`;
   const rows = await env.DB.prepare(sql).all<{ version: string }>();
   return newestReleaseVersion(rows.results.map((r) => r.version));
 }
@@ -937,7 +939,7 @@ async function diagnosticOverview(env: Env, latestVersion: string, days: 7 | 30,
           SUM(CASE WHEN first_version = ?1 THEN 1 ELSE 0 END) AS new_latest_reports,
           SUM(CASE WHEN regressed_at <> '' THEN 1 ELSE 0 END) AS regressed_reports,
           SUM(CASE WHEN status = 'open' AND ${criticalActionable} THEN 1 ELSE 0 END) AS critical_open_reports
-        FROM groups`,
+        FROM groups WHERE ${diagnosticWindowWhere(days)}`,
       )
         .bind(latestVersion)
         .first<{ open_reports: number; new_latest_reports: number; regressed_reports: number; critical_open_reports: number }>()
@@ -947,7 +949,7 @@ async function diagnosticOverview(env: Env, latestVersion: string, days: 7 | 30,
           0 AS new_latest_reports,
           SUM(CASE WHEN regressed_at <> '' THEN 1 ELSE 0 END) AS regressed_reports,
           SUM(CASE WHEN status = 'open' AND ${criticalActionable} THEN 1 ELSE 0 END) AS critical_open_reports
-        FROM groups`,
+        FROM groups WHERE ${diagnosticWindowWhere(days)}`,
       ).first<{ open_reports: number; new_latest_reports: number; regressed_reports: number; critical_open_reports: number }>();
   const [row, adoptionPct] = await Promise.all([
     diagnosticCounts,
@@ -964,6 +966,10 @@ async function diagnosticOverview(env: Env, latestVersion: string, days: 7 | 30,
 
 function currentWindowSince(days: 7 | 30): string {
   return `-${days - 1} day`;
+}
+
+export function diagnosticWindowWhere(days: 7 | 30): string {
+  return `date(last_seen) >= date('now', '${currentWindowSince(days)}')`;
 }
 
 function previousWindowSince(days: 7 | 30): string {
@@ -1092,7 +1098,7 @@ async function handleStats(request: Request, env: Env, user: User, activeModule:
     latestVersion = await latestObservedVersion(env, "desktop");
     const [crashesR, sourcesR, versionsR, platformsR] = await Promise.all([
       crashGroups(env, filters, latestVersion),
-      bars("SELECT source AS label, COUNT(*) AS users FROM groups GROUP BY source ORDER BY users DESC"),
+      bars(`SELECT source AS label, COUNT(*) AS users FROM groups WHERE ${diagnosticWindowWhere(days)} GROUP BY source ORDER BY users DESC`),
       pingVersions(),
       pingPlatforms(),
     ]);
@@ -1107,7 +1113,16 @@ async function handleStats(request: Request, env: Env, user: User, activeModule:
     metricUsers = usersR?.rows ?? [];
     metricUsersComputedAt = usersR?.computedAt ?? "";
   } else {
-    [metrics, previousMetrics] = await Promise.all([metricRows(env, days, surface), metricRows(env, days, surface, true)]);
+    const [metricsR, previousMetricsR, usersR] = await Promise.all([
+      metricRows(env, days, surface),
+      metricRows(env, days, surface, true),
+      metricUserRows(env, days, surface),
+    ]);
+    metrics = metricsR;
+    previousMetrics = previousMetricsR;
+    metricUsersUnavailable = usersR === null;
+    metricUsers = usersR?.rows ?? [];
+    metricUsersComputedAt = usersR?.computedAt ?? "";
   }
 
   return html(

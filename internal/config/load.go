@@ -308,6 +308,14 @@ func tomlFileDefinesKey(path string, key ...string) bool {
 	return meta.IsDefined(key...)
 }
 
+// ConfigFileDefinesCompactRatio reports whether path explicitly overrides the
+// automatic compaction threshold. It is used by config surfaces that need to
+// explain whether the effective value came from defaults, user config, or the
+// current project.
+func ConfigFileDefinesCompactRatio(path string) bool {
+	return tomlFileDefinesKey(path, "agent", "compact_ratio")
+}
+
 // backfillDeepSeekPro restores deepseek-pro for configs the pre-fix setup wizard
 // wrote with only deepseek-v4-flash: a keyless /models probe used to drop the Pro
 // SKU, leaving users unable to switch to it. In-memory only — the user's file is
