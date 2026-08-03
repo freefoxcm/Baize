@@ -81,10 +81,12 @@ func parseCLIReleaseChannel(value string) (cliReleaseChannel, error) {
 }
 
 type cliUpgradeSyntax struct {
-	checkOnly   bool
-	force       bool
-	positional  *cliReleaseChannel
-	flagChannel *cliReleaseChannel
+	checkOnly     bool
+	force         bool
+	positional    *cliReleaseChannel
+	flagChannel   *cliReleaseChannel
+	helpRequested bool
+	helpText      string
 }
 
 // parseCLIUpgradeSyntax accepts the ergonomic positional channel while keeping
@@ -93,11 +95,15 @@ type cliUpgradeSyntax struct {
 func parseCLIUpgradeSyntax(args []string) (cliUpgradeSyntax, error) {
 	fs := pflag.NewFlagSet("upgrade", pflag.ContinueOnError)
 	fs.SetInterspersed(true)
-	fs.SetOutput(io.Discard)
+	var parseOutput bytes.Buffer
+	fs.SetOutput(&parseOutput)
 	checkOnly := fs.Bool("check", false, "check for updates without installing")
 	force := fs.Bool("force", false, "reinstall even if already on the latest version")
 	channelValue := fs.String("channel", "", "deprecated compatibility option; updates use the official release")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, pflag.ErrHelp) {
+			return cliUpgradeSyntax{helpRequested: true, helpText: parseOutput.String()}, nil
+		}
 		return cliUpgradeSyntax{}, err
 	}
 
@@ -176,6 +182,10 @@ func upgradeCommand(args []string, version string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
+	}
+	if syntax.helpRequested {
+		fmt.Fprint(os.Stdout, syntax.helpText)
+		return 0
 	}
 
 	// 1. Normalize running version.

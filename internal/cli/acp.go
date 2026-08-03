@@ -39,8 +39,8 @@ func acpCommand(args []string, version string) int {
 	networkFlag := fs.String("sandbox-network", "auto", "sandbox network policy: auto | on | off")
 	bashFlag := fs.String("sandbox-bash", "auto", "bash sandbox policy: auto | enforce")
 	workspaceOnly := fs.Bool("workspace-only", false, "ignore configured extra write roots and confine writes to the session cwd")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if code, ok := parseCommandFlags(fs, args); !ok {
+		return code
 	}
 	plannerMode := strings.ToLower(strings.TrimSpace(*plannerFlag))
 	if plannerMode != "auto" && plannerMode != "off" {
