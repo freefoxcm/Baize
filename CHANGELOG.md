@@ -42,7 +42,21 @@ branch.
   ("Thinking…" with a shimmer while streaming, "Thinking done · Ns" after),
   auto-collapse that a manual toggle overrides, a left-border body without an
   inner scrollbar, streaming truncation at 12k chars / 240 lines, and no copy
-  button.
+  button. The chat column width is now a single `--chat-maxw` variable set to
+  960px — matching the desktop app's `--maxw` — and every constrained element
+  (messages, tool cards, turn summaries, notices, approvals, todos) consumes
+  it instead of nine hardcoded 760px rules. Completed turns now auto-fold
+  their tool calls and reasoning behind a desktop-style count summary bar
+  ("Working…" while running, "Worked · 2 tools · 1 thought" after), both for
+  history rebuilds and live turns at `turn_done`; a manual toggle overrides
+  the auto behavior. User messages now render as right-aligned bubbles
+  (desktop style) instead of left caret lines, and `/history` strips the
+  system-injected compose prefixes (plan-mode marker, language directives,
+  transient blocks, referenced-context preambles) plus synthetic/empty user
+  turns — so history shows the user's actual text, matching the desktop app.
+  The turn fold bar now sits after the user message (desktop TurnCollapse
+  position) and is styled as a borderless inline button with a hover tint
+  instead of a bordered card, aligned to the message column width.
 - The serve WebUI now renders assistant messages with GFM markdown, syntax
   highlighting (highlight.js), collapsible reasoning blocks that auto-expand
   while streaming and auto-collapse when done, per-turn grouping with a
