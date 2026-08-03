@@ -20,6 +20,39 @@ branch.
 - Added `reasonix serve --port-file/--token-file/--pid-file` so a supervised
   headless serve can bind an ephemeral port and read its auth token from a file
   (keeping it out of `ps`).
+- The serve WebUI tool-call cards and turn summary bars now cap at the same
+  width as messages (760px), so history-rebuilt cards no longer overhang the
+  transcript. Tool approval requests render as a desktop-style decision shelf
+  (amber tool badge, monospace subject block, single-column action list with
+  `1-4` number keys, select-then-confirm bar) instead of the old horizontal
+  button row, and usage events no longer emit metric rows into the chat —
+  tokens/cost/cache accumulate into the footer ticker, sidebar, and stats
+  modal, matching the desktop app. Approval shelves with long subjects or
+  reasons now cap their body/action regions with scrollable max-heights (the
+  confirm bar stays visible), and continuing an older session from the history
+  rebuild correctly opens a fresh turn container for new messages — the
+  rebuild also gates in-flight SSE events (`historyPending`) so nothing is
+  lost or double-rendered while the transcript reloads. Approval action
+  buttons now use fixed labels with a short description line (the full command
+  stays in the subject block; the matched rule is shown as a tooltip), and the
+  approval shelf is pinned to a fixed slot above the composer instead of
+  scrolling with the transcript — a new request replaces the previous card.
+  The shelf now sits directly below the to-dos panel (desktop footer order),
+  and reasoning blocks match the desktop ReasoningPanel: a single head button
+  ("Thinking…" with a shimmer while streaming, "Thinking done · Ns" after),
+  auto-collapse that a manual toggle overrides, a left-border body without an
+  inner scrollbar, streaming truncation at 12k chars / 240 lines, and no copy
+  button.
+- The serve WebUI now renders assistant messages with GFM markdown, syntax
+  highlighting (highlight.js), collapsible reasoning blocks that auto-expand
+  while streaming and auto-collapse when done, per-turn grouping with a
+  foldable tool-call summary bar, unified-diff previews in tool cards, and
+  collapsible tool errors. Messages get hover actions (copy, inline edit via
+  the new `POST /edit` endpoint), markdown images render through the new
+  workspace-confined `GET /file` endpoint with a click-to-zoom lightbox, and
+  pasted/dropped images upload via `POST /attach`. Rendering libraries
+  (marked + DOMPurify + highlight.js) are embedded in the binary — no network
+  or build step required; rebuild with `scripts/build-serve-vendor.mjs`.
 - Added Claude Code-style searchable CLI pickers for models, providers, and
   sessions, with arrow, Vim, and `Ctrl+P` / `Ctrl+N` navigation.
 - Added `-p` / `--print`, `text`, `json`, and `stream-json` output modes for
