@@ -1036,6 +1036,8 @@ export const zh: Record<DictKey, string> = {
   "decision.confirm": "确认",
   "decision.selectHint": "数字键/↑↓ 选择，Enter 确认",
   "decision.stopTask": "停止任务",
+  "decision.showFullDescription": "查看完整说明",
+  "decision.hideFullDescription": "收起完整说明",
   "approval.allowEditsSession": "本会话允许编辑",
   "approval.allowFilePersistent": "总是允许此文件（保存）",
   "approval.allowSandboxEscapeSession": "本会话使用真实环境",

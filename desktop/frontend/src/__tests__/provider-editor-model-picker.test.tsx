@@ -5,7 +5,8 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { LocaleProvider } from "../lib/i18n";
-import { ProviderEditorModelPicker } from "../components/SettingsPanel";
+import { ProviderEditor, ProviderEditorModelPicker } from "../components/SettingsPanel";
+import type { ProviderView } from "../lib/types";
 
 let passed = 0;
 let failed = 0;
@@ -86,6 +87,59 @@ try {
 
 ok(!threw, "model picker can render after async model fetch returns candidates");
 ok(rootEl.textContent?.includes("zen-v1") === true, "model picker shows fetched custom provider models");
+
+const builtInProvider: ProviderView = {
+  name: "deepseek",
+  builtIn: true,
+  added: true,
+  kind: "openai",
+  baseUrl: "https://api.deepseek.com",
+  models: ["deepseek-chat"],
+  visionModels: [],
+  visionModelsConfigured: false,
+  modelsUrl: "",
+  default: "deepseek-chat",
+  apiKeyEnv: "",
+  keySet: false,
+  balanceUrl: "",
+  contextWindow: 128_000,
+  reasoningProtocol: "deepseek",
+  thinking: "",
+  supportedEfforts: [],
+  defaultEffort: "",
+};
+
+function renderProviderEditor(initial?: ProviderView) {
+  return (
+    <LocaleProvider>
+      <ProviderEditor
+        initial={initial}
+        kinds={["openai"]}
+        busy={false}
+        onCancel={() => undefined}
+        onSave={() => undefined}
+      />
+    </LocaleProvider>
+  );
+}
+
+let editorThrew = false;
+try {
+  await act(async () => {
+    root.render(renderProviderEditor(builtInProvider));
+    await flushPromises();
+  });
+  await act(async () => {
+    root.render(renderProviderEditor());
+    await flushPromises();
+  });
+} catch (error) {
+  editorThrew = true;
+  process.stdout.write(`  ERROR ${String(error)}\n`);
+}
+
+ok(!editorThrew, "provider editor can switch from built-in to custom without changing hook order");
+ok(rootEl.textContent?.includes("OpenAI-compatible") === true, "provider editor renders the custom provider fields after the switch");
 
 await act(async () => {
   root.unmount();

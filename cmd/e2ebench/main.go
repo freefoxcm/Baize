@@ -64,6 +64,8 @@ type result struct {
 	Note    string
 }
 
+const defaultSuiteTokenBudget = 800_000
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "e2ebench — Reasonix end-to-end benchmark.\n\n")
@@ -85,7 +87,7 @@ func main() {
 	profileFlag := flag.String("profile", benchmarkProfileBaseline, "prompt profile: baseline | delivery")
 	outMD := flag.String("out", "", "write the markdown report here (default: stdout)")
 	outJSON := flag.String("json", "", "write the JSON report here (optional)")
-	budget := flag.Int("budget", 400_000, "abort once total tokens cross this (0 = no cap)")
+	budget := flag.Int("budget", defaultSuiteTokenBudget, "abort once total tokens cross this (0 = no cap)")
 	// diff-mode flags
 	repo := flag.String("repo", ".", "repo root (diff mode)")
 	base := flag.String("base", "", "base ref to diff the PR head against (diff mode)")

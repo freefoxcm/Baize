@@ -3,6 +3,7 @@
 // Decision surfaces: ordinary approvals stay select-then-confirm while Plan
 // and Auto boundary cards use immediate buttons; no double submit.
 
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { act } from "react";
@@ -13,6 +14,8 @@ import { ClearContextCard } from "../components/ClearContextCard";
 import { RuntimeDecisionCard } from "../components/RuntimeDecisionCard";
 import { LocaleProvider } from "../lib/i18n";
 import type { WireApproval } from "../lib/types";
+
+const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 let passed = 0;
 let failed = 0;
@@ -48,7 +51,7 @@ function flushTimers(ms = 0): Promise<void> {
 }
 
 function installDom(language = "en-US") {
-  const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
+  const dom = new JSDOM("<!doctype html><html><head></head><body><div id=\"root\"></div></body></html>", {
     pretendToBeVisual: true,
     url: "http://localhost/",
   });
@@ -69,6 +72,27 @@ function installDom(language = "en-US") {
   globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
   Object.defineProperty(dom.window.HTMLElement.prototype, "attachEvent", { configurable: true, value: () => {} });
   Object.defineProperty(dom.window.HTMLElement.prototype, "detachEvent", { configurable: true, value: () => {} });
+  Object.defineProperty(dom.window.HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return this.classList.contains("prompt-action__desc") ? 42 : 0;
+    },
+  });
+  Object.defineProperty(dom.window.HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get() {
+      return this.classList.contains("prompt-action__desc") ? 84 : 0;
+    },
+  });
+  Object.defineProperty(dom.window.HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value() {
+      this.setAttribute("data-scrolled-into-view", "true");
+    },
+  });
+  const style = document.createElement("style");
+  style.textContent = styles;
+  document.head.appendChild(style);
   return dom;
 }
 
@@ -110,6 +134,14 @@ console.log("\ndecision surface");
   ok(!document.querySelector(".decision-confirm-bar__confirm"), "Plan has no redundant confirm button");
   ok(actions[2].textContent?.includes("Exit without executing"), "Plan card exposes a clear non-executing exit");
   ok(!document.body.textContent?.includes("Stop task"), "Plan card relies on the global Stop control");
+  const planDescriptionToggle = document.querySelector(".prompt-action-row .prompt-action__description-toggle") as HTMLButtonElement | null;
+  if (!planDescriptionToggle) throw new Error("Plan description disclosure did not render");
+  await act(async () => {
+    planDescriptionToggle.click();
+    await flushTimers();
+  });
+  eq(answers.length, 0, "expanding a Plan description never starts execution");
+  eq(planDescriptionToggle.getAttribute("aria-expanded"), "true", "Plan disclosure announces its expanded state");
 
   await act(async () => {
     actions[1].click();
@@ -225,6 +257,39 @@ console.log("\ndecision surface");
   const actions = [...document.querySelectorAll(".prompt-shelf__actions .prompt-action")] as HTMLButtonElement[];
   eq(actions.length, 4, "ordinary tool approval has four options");
   ok(actions[0].classList.contains("prompt-action--selected"), "default selection is allow once");
+  ok(Boolean(actions[0].title), "tool approval keeps the complete option description in a desktop tooltip");
+  const toolDescriptionToggle = document.querySelector(".prompt-shelf__footnote .prompt-action__description-toggle") as HTMLButtonElement | null;
+  if (!toolDescriptionToggle) throw new Error("tool approval description disclosure did not render");
+  const toolContent = document.querySelector(".prompt-shelf__content") as HTMLElement | null;
+  const toolFooter = document.querySelector(".prompt-shelf__footer") as HTMLElement | null;
+  if (!toolContent || !toolFooter) throw new Error("tool approval scroll layout did not render");
+  eq(window.getComputedStyle(toolContent).overflow, "auto", "tool approval uses the shared decision scroller");
+  eq(toolContent.contains(toolFooter), false, "tool approval confirm footer stays visible outside the scroller");
+  await act(async () => {
+    toolDescriptionToggle.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }));
+    await flushTimers();
+  });
+  eq(answers.length, 0, "Enter on tool disclosure never approves the default permission");
+  eq(toolDescriptionToggle.getAttribute("aria-expanded"), "true", "Enter expands tool approval copy");
+  await act(async () => {
+    toolDescriptionToggle.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }));
+    await flushTimers();
+  });
+  eq(toolDescriptionToggle.getAttribute("aria-expanded"), "false", "Enter collapses tool approval copy again");
+  await act(async () => {
+    toolDescriptionToggle.click();
+    await flushTimers();
+  });
+  eq(answers.length, 0, "expanding tool approval copy never submits the selected permission");
+  eq(toolDescriptionToggle.getAttribute("aria-expanded"), "true", "tool approval disclosure announces its expanded state");
 
   await act(async () => {
     actions[3].click();
@@ -306,6 +371,22 @@ console.log("\ndecision surface");
   ok(guidanceTrigger.textContent?.includes("Tell Auto"), "guidance link uses plain user-facing copy");
   ok(!document.querySelector(".recovery-guidance__input"), "custom requirements editor stays collapsed by default");
   eq(actions.length, 2, "custom requirements do not become a third decision card");
+  const recoveryDescriptionToggle = document.querySelector(".prompt-action-row .prompt-action__description-toggle") as HTMLButtonElement | null;
+  if (!recoveryDescriptionToggle) throw new Error("recovery description disclosure did not render");
+  const recoveryCard = document.querySelector(".prompt-shelf--recovery-approval .prompt-shelf__card") as HTMLElement | null;
+  const recoveryContent = document.querySelector(".prompt-shelf--recovery-approval .prompt-shelf__content") as HTMLElement | null;
+  const recoveryActions = document.querySelector(".prompt-shelf--recovery-approval .prompt-shelf__actions") as HTMLElement | null;
+  if (!recoveryCard || !recoveryContent || !recoveryActions) throw new Error("recovery height bounds did not render");
+  eq(window.getComputedStyle(recoveryCard).maxHeight, "min(82vh, 720px)", "recovery card stays bounded by the viewport");
+  eq(window.getComputedStyle(recoveryCard).overflow, "hidden", "recovery card clips only at its shared scroll boundary");
+  eq(window.getComputedStyle(recoveryContent).overflow, "auto", "recovery content uses one internal scroller");
+  eq(window.getComputedStyle(recoveryActions).maxHeight, "none", "recovery options avoid a nested height cap");
+  eq(window.getComputedStyle(recoveryActions).overflow, "visible", "recovery option text remains available in the shared scroller");
+  await act(async () => {
+    recoveryDescriptionToggle.click();
+    await flushTimers();
+  });
+  eq(decisions.length, 0, "expanding recovery details never resolves the pending action");
   const taskGrant = document.querySelector(".recovery-task-grant input") as HTMLInputElement;
   ok(taskGrant, "bounded recovery offers a current-task semantic grant");
   ok(!taskGrant.checked, "task grant is opt-in");
@@ -639,7 +720,8 @@ console.log("\ndecision surface");
           actions={["1", "2", "3"].map((key) => ({
             key,
             label: `Action ${key}`,
-            description: `Run action ${key}`,
+            description: `Run action ${key} across a deliberately long runtime boundary that must wrap without overlapping the next decision row.`,
+            danger: key === "3",
             onClick: () => selected.push(key),
           }))}
           onCancel={() => { cancelled += 1; }}
@@ -648,6 +730,48 @@ console.log("\ndecision surface");
     );
     await flushTimers();
   });
+
+  const runtimeActions = document.querySelector(".prompt-shelf__actions") as HTMLElement | null;
+  const runtimeAction = document.querySelector(".prompt-action") as HTMLElement | null;
+  const runtimeActionKey = runtimeAction?.querySelector(".prompt-action__key") as HTMLElement | null;
+  const runtimeActionLabel = runtimeAction?.querySelector(".prompt-action__label") as HTMLElement | null;
+  const runtimeActionDescription = runtimeAction?.querySelector(".prompt-action__desc") as HTMLElement | null;
+  if (!runtimeActions || !runtimeAction || !runtimeActionKey || !runtimeActionLabel || !runtimeActionDescription) {
+    throw new Error("runtime decision layout did not render");
+  }
+
+  const runtimeActionsStyle = window.getComputedStyle(runtimeActions);
+  eq(runtimeActionsStyle.gridAutoRows, "max-content", "all decision rows use their full content height");
+  eq(runtimeActionsStyle.alignContent, "start", "all decision rows stay aligned at the top of the scroll region");
+
+  const runtimeActionStyle = window.getComputedStyle(runtimeAction);
+  eq(runtimeActionStyle.height, "auto", "shared decision rows are not fixed-height");
+  eq(runtimeActionStyle.minHeight, "40px", "shared decision rows retain the compact product minimum");
+  eq(runtimeActionStyle.alignItems, "flex-start", "shared decision copy aligns from the top");
+  eq(window.getComputedStyle(runtimeActionKey).marginTop, "1px", "decision keys align visually with the label cap height");
+  eq(window.getComputedStyle(runtimeActionLabel).fontWeight, "620", "decision labels keep a clear visual hierarchy");
+
+  const runtimeDescriptionStyle = window.getComputedStyle(runtimeActionDescription);
+  eq(runtimeDescriptionStyle.whiteSpace, "normal", "shared decision descriptions can wrap");
+  eq(runtimeDescriptionStyle.display, "-webkit-box", "supplementary runtime copy uses the shared three-line clamp");
+  eq(runtimeDescriptionStyle.overflow, "hidden", "collapsed runtime descriptions stay inside their row");
+  eq(runtimeDescriptionStyle.overflowWrap, "anywhere", "unspaced decision descriptions stay inside their row");
+  eq(runtimeDescriptionStyle.lineHeight, "1.4", "wrapped decision descriptions keep readable density");
+  const runtimeDescriptionToggle = document.querySelector(".prompt-action-row .prompt-action__description-toggle") as HTMLButtonElement | null;
+  if (!runtimeDescriptionToggle) throw new Error("runtime description disclosure did not render");
+  eq(runtimeDescriptionToggle.getAttribute("aria-expanded"), "false", "runtime description starts collapsed");
+  await act(async () => {
+    runtimeDescriptionToggle.click();
+    await flushTimers();
+  });
+  eq(selected.length, 0, "expanding runtime details never triggers the decision action");
+  eq(runtimeDescriptionToggle.getAttribute("aria-expanded"), "true", "runtime description expansion is announced");
+  eq(window.getComputedStyle(runtimeActionDescription).overflow, "visible", "expanded runtime description reveals the full copy");
+  const runtimeActionButtons = [...document.querySelectorAll(".prompt-shelf__actions .prompt-action")] as HTMLElement[];
+  const dangerousRuntimeDescription = runtimeActionButtons[2]?.querySelector(".prompt-action__desc") as HTMLElement | null;
+  if (!dangerousRuntimeDescription) throw new Error("dangerous runtime description did not render");
+  ok(!runtimeActionButtons[2].classList.contains("prompt-action--description-collapsible"), "dangerous runtime consequences are never clamped");
+  eq(window.getComputedStyle(dangerousRuntimeDescription).overflow, "visible", "dangerous runtime consequences stay fully visible");
 
   await act(async () => {
     document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "1", bubbles: true }));
@@ -715,6 +839,34 @@ console.log("\ndecision surface");
 
   const actions = [...document.querySelectorAll(".prompt-shelf__actions .prompt-action")] as HTMLButtonElement[];
   ok(actions[0].classList.contains("prompt-action--selected"), "clear context defaults to cancel");
+  const clearDescriptionToggle = document.querySelector(".prompt-shelf__footnote .prompt-action__description-toggle") as HTMLButtonElement | null;
+  if (!clearDescriptionToggle) throw new Error("clear-context description disclosure did not render");
+  await act(async () => {
+    clearDescriptionToggle.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }));
+    await flushTimers();
+  });
+  eq(cancelled, 0, "Enter on clear-context disclosure does not trigger the safe default");
+  eq(confirmed, 0, "Enter on clear-context disclosure never clears the conversation");
+  eq(clearDescriptionToggle.getAttribute("aria-expanded"), "true", "Enter expands clear-context copy");
+  await act(async () => {
+    clearDescriptionToggle.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }));
+    await flushTimers();
+  });
+  eq(clearDescriptionToggle.getAttribute("aria-expanded"), "false", "Enter collapses clear-context copy again");
+  await act(async () => {
+    clearDescriptionToggle.click();
+    await flushTimers();
+  });
+  eq(cancelled, 0, "expanding clear-context copy does not trigger the safe default");
+  eq(confirmed, 0, "expanding clear-context copy does not clear anything");
 
   await act(async () => {
     actions[1].click();

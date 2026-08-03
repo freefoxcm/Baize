@@ -6,12 +6,12 @@
       "date": "2026-08-03",
       "channel": "stable",
       "title": {
-        "en": "Safer reasoning and a reliable Windows launch path",
-        "zh": "更安全的推理与可靠的 Windows 启动链路"
+        "en": "Provider-aware reasoning, resilient updates, and reliable Windows launches",
+        "zh": "模型感知推理、可靠更新与 Windows 启动链路"
       },
       "summary": {
-        "en": "This release brings important stability and usability fixes, including a reasoning usage guard to prevent runaway token consumption, silent recovery of missing tool-call reasoning, significantly faster crash dashboard and preferences, a fix for a provider model picker crash, Windows launcher junction resolution, and workspace tab alignment.",
-        "zh": "此版本带来了重要的稳定性和可用性修复，包括推理消耗保护以阻止令牌失控、工具调用推理缺失的静默恢复、显著加速的崩溃仪表板和偏好设置、提供程序模型选择器崩溃修复、Windows 启动器目录联接解析以及工作区标签页对齐。"
+        "en": "This release adds the Token Rhythm provider with model-aware DeepSeek and GLM reasoning, strengthens reasoning and tool-call recovery, restores the CLI -c continuation shortcut, repairs native shortcut icons after updates, stops Remote profile resync loops, and fixes the Windows launcher path used by Scoop, while preventing conditional React Hook crashes and making long decision details accessible without overflowing the Desktop.",
+        "zh": "此版本新增基元律动提供商及面向 DeepSeek 与 GLM 的模型感知推理，加强推理与工具调用恢复，恢复 CLI 的 -c 续聊快捷参数，自动修复更新后的原生快捷方式图标，阻止远程 Profile 重同步循环，并修复 Scoop 使用的 Windows 启动链路，同时防止条件式 React Hook 顺序崩溃，让较长的决策详情可访问且不会撑出桌面窗口。"
       },
       "surfaces": [
         "desktop"
@@ -23,10 +23,10 @@
             "zh": "Reasonix 规范文档"
           },
           "body": {
-            "en": "See the Reasonix Specification for protocol and feature details.",
+            "en": "Refer to the Reasonix specification for detailed protocol and features.",
             "zh": "请参阅 Reasonix 规范文档以获取协议和功能的详细信息。"
           },
-          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/df05ddd1bb79d65556976a62160eb9747e8e7426/docs/SPEC.md"
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/26e004f4bad2a51b635793dc7f0531222c6700f3/docs/SPEC.md"
         },
         {
           "title": {
@@ -34,36 +34,50 @@
             "zh": "Reasonix 规范文档（中文）"
           },
           "body": {
-            "en": "See the Chinese version of the Reasonix Specification.",
+            "en": "Refer to the Chinese version of the Reasonix specification.",
             "zh": "请参阅 Reasonix 规范文档的中文版本。"
           },
-          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/df05ddd1bb79d65556976a62160eb9747e8e7426/docs/SPEC.zh-CN.md"
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/26e004f4bad2a51b635793dc7f0531222c6700f3/docs/SPEC.zh-CN.md"
         }
       ],
       "highlights": [
         {
-          "kind": "improved",
+          "kind": "new",
           "title": {
-            "en": "Guard against runaway reasoning usage",
+            "en": "Reasoning Consumption Protection",
             "zh": "推理消耗保护"
           },
           "body": {
-            "en": "Introduced client-side 128KB reasoning guard and configurable per-model output token budgets. Defaulted official DeepSeek endpoints to a 32K total-output budget. The client now estimates approximate token usage when a stream is cancelled before the final usage record arrives.",
-            "zh": "引入了客户端 128KB 推理守卫和可配置的每模型输出令牌预算。为官方 DeepSeek 端点默认设置了 32K 总输出预算。当流在最终使用记录到达前被取消时，客户端现在会估算令牌使用量。"
+            "en": "Introduced a client-side 128KB reasoning guard and configurable per-model output token budget. Official DeepSeek endpoints default to a 32K total output budget. When a stream is cancelled before final usage records arrive, the client now estimates token usage, preventing runaway tokens and improving cost predictability.",
+            "zh": "引入了客户端128KB推理守卫和可配置的每模型输出令牌预算。官方DeepSeek端点默认应用32K总输出预算。当流在最终使用记录到达前被取消时，客户端现在会估算令牌使用量，防止令牌失控并使成本更可预测。"
           },
           "refs": [
             7186
           ]
         },
         {
+          "kind": "new",
+          "title": {
+            "en": "Token Rhythm with model-aware reasoning",
+            "zh": "基元律动与模型感知推理"
+          },
+          "body": {
+            "en": "Added the Token Rhythm provider preset with model discovery, 14 curated models, vision metadata, and localized Desktop branding. DeepSeek V4 models expose supported effort scales, while GLM 5/5.1/5.2 use the official thinking.type request shape and preserve provider-issued reasoning history; matching legacy gateway configurations are detected automatically.",
+            "zh": "新增基元律动提供商预设，支持模型发现、14 个精选模型、视觉元数据和本地化桌面端品牌展示。DeepSeek V4 模型会提供其支持的推理强度，GLM 5/5.1/5.2 则使用官方 thinking.type 请求格式并保留提供商返回的推理历史；匹配的旧版网关配置也会自动识别。"
+          },
+          "refs": [
+            7301
+          ]
+        },
+        {
           "kind": "fixed",
           "title": {
-            "en": "Silently recover missing tool-call reasoning",
+            "en": "Silent Recovery for Missing Tool-Call Reasoning",
             "zh": "静默恢复工具调用推理缺失"
           },
           "body": {
-            "en": "Removed user-visible warnings for missing reasoning content; the agent now silently retries the request before executing any tool. This prevents disruptive warnings and improves agent reliability.",
-            "zh": "移除了推理内容缺失的用户可见警告；代理现在在工具执行前静默重试请求。这防止了干扰性警告并提高了代理的可靠性。"
+            "en": "Removed the user-visible warning for missing reasoning content; the agent now silently retries the request before tool execution, reducing interference and improving agent reliability.",
+            "zh": "移除了推理内容缺失的用户可见警告；代理现在在工具执行前静默重试请求，减少了干扰性警告并提高了代理可靠性。"
           },
           "refs": [
             7259
@@ -72,12 +86,12 @@
         {
           "kind": "improved",
           "title": {
-            "en": "Faster crash dashboard and preferences",
+            "en": "Accelerated Crash Dashboard and Preferences",
             "zh": "加速的崩溃仪表板与偏好设置"
           },
           "body": {
-            "en": "Precomputed the 30-day preferences deduplication, making that view load in 68ms instead of the 5.6s required by the live 7-day query. Dropped redundant database indexes to speed up dashboard aggregate queries; homepage avatars were also optimized to WebP for smaller downloads.",
-            "zh": "预计算了 30 天偏好去重，使该视图加载仅需 68 毫秒，而实时计算的 7 天视图需要 5.6 秒。删除了冗余数据库索引以加速仪表板聚合查询；首页头像也优化为 WebP 格式，以减小下载量。"
+            "en": "Precomputed 30-day preference deduplication, making that view load in only 68ms compared to 5.6s for the real-time 7-day view. Removed redundant database indexes to speed up dashboard aggregation queries; homepage avatars also optimized as WebP for smaller downloads.",
+            "zh": "预计算了30天偏好去重，使该视图加载仅需68毫秒，而实时计算的7天视图需要5.6秒。删除了冗余数据库索引以加速仪表板聚合查询；首页头像也优化为WebP格式，以减小下载量。"
           },
           "refs": [
             7279,
@@ -89,26 +103,27 @@
         {
           "kind": "fixed",
           "title": {
-            "en": "Provider model picker no longer crashes",
-            "zh": "提供程序模型选择器不再崩溃"
+            "en": "Desktop React Hook Transitions No Longer Crash",
+            "zh": "桌面端 React Hook 状态切换不再崩溃"
           },
           "body": {
-            "en": "Fixed a React Hook order issue that caused a crash when the model list loaded asynchronously. The picker now handles the transition from empty to populated safely.",
-            "zh": "修复了一个 React Hook 顺序问题，该问题在异步加载模型列表时导致崩溃。选择器现在能安全地处理从空到有内容的过渡。"
+            "en": "Fixed Hook ordering across asynchronously loaded model lists, built-in-to-custom provider editor transitions, and closed-to-open workspace code search. Production builds now enforce the React Hooks lint rules so the same class of crash is blocked before release.",
+            "zh": "修复了异步模型列表、内置到自定义提供商编辑器切换，以及工作区代码搜索从关闭到打开时的 Hook 顺序。生产构建现会强制执行 React Hooks 检查，在发布前阻止同类崩溃。"
           },
           "refs": [
-            7195
+            7195,
+            7310
           ]
         },
         {
           "kind": "fixed",
           "title": {
-            "en": "Windows launcher resolves directory junctions",
+            "en": "Windows Launcher Resolves Directory Junctions",
             "zh": "Windows 启动器解析目录联接"
           },
           "body": {
-            "en": "Fixed the Windows launcher to correctly resolve directory junctions such as Scoop's 'current' link, preventing launch failures in junction-based installs.",
-            "zh": "修复了 Windows 启动器以正确解析 Scoop 的“current”等目录联接，防止通过目录联接安装时启动失败。"
+            "en": "Fixed the Windows launcher to correctly resolve directory junctions like Scoop's 'current', preventing launch failures when installed through Scoop.",
+            "zh": "修复了Windows启动器以正确解析Scoop的'current'目录联接，防止通过Scoop安装时启动失败。"
           },
           "refs": [
             7275
@@ -117,29 +132,84 @@
         {
           "kind": "fixed",
           "title": {
-            "en": "Aligned Windows workspace tabs",
-            "zh": "统一 Windows 工作区标签页"
+            "en": "Unified Windows Workspace Tab Bar",
+            "zh": "统一 Windows 工作区标签栏"
           },
           "body": {
-            "en": "Ensured the workspace sidebar shows only the four intended views (Overview, Files, Changes, Remote), removed duplicate Terminal tab, and properly positioned Windows title controls.",
-            "zh": "确保工作区侧边栏仅显示四个预定的视图（概览、文件、变更、远程），移除了重复的终端标签页，并正确放置了 Windows 标题控件。"
+            "en": "Workspace sidebar now shows only the four intended views (Overview, Files, Changes, Remote), removes duplicate terminal tab, and correctly positions Windows caption controls.",
+            "zh": "工作区侧边栏现在仅显示四个预期视图（概览、文件、变更、远程），移除了重复的终端标签页，并正确放置了Windows标题控件。"
           },
           "refs": [
             7270
           ]
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Native shortcut icons repair themselves after updates",
+            "zh": "更新后自动修复原生快捷方式图标"
+          },
+          "body": {
+            "en": "Reasonix now repairs only owned, stale icon integrations after upgrades: version-scoped Windows shortcut icons, broken or outdated macOS Finder aliases, and Linux desktop icon caches. Healthy, unrelated, and customized integrations are preserved, and repair failures never block startup.",
+            "zh": "Reasonix 现在会在升级后仅修复自身拥有且已过期的图标集成：Windows 版本目录中的快捷方式图标、损坏或过期的 macOS Finder 别名，以及 Linux 桌面图标缓存。健康、无关或自定义的集成会被保留，修复失败也不会阻止启动。"
+          },
+          "refs": [
+            7296
+          ]
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Remote profiles stop resyncing in a loop",
+            "zh": "远程 Profile 不再循环重同步"
+          },
+          "body": {
+            "en": "Identical Remote profile updates are now side-effect free, late control-plane responses cannot restore stale runtime authority, and runtime epochs remain intact across the Desktop bridge so replaced-runtime events are rejected correctly.",
+            "zh": "相同的远程 Profile 更新现在不会产生副作用，延迟到达的控制面响应无法恢复过期的运行时权威，运行时 epoch 也会完整通过 Desktop 桥接，从而正确拒绝已被替换运行时的事件。"
+          },
+          "refs": [
+            7277
+          ]
         }
       ],
       "changes": {
-        "new": [],
+        "new": [
+          {
+            "title": {
+              "en": "Reasoning consumption protection",
+              "zh": "推理消耗保护"
+            },
+            "body": {
+              "en": "Added a client-side reasoning byte guard and configurable per-model output token budgets to prevent unexpected token consumption.",
+              "zh": "增加客户端推理字节守卫和可配置的每模型输出令牌预算，以防止意外的令牌消耗。"
+            },
+            "refs": [
+              7186
+            ]
+          },
+          {
+            "title": {
+              "en": "Token Rhythm provider preset",
+              "zh": "基元律动提供商预设"
+            },
+            "body": {
+              "en": "Added model discovery, 14 curated models, vision metadata, localized branding, and model-specific DeepSeek and GLM reasoning behavior for Token Rhythm.",
+              "zh": "为基元律动新增模型发现、14 个精选模型、视觉元数据、本地化品牌展示，以及面向 DeepSeek 与 GLM 的模型专用推理行为。"
+            },
+            "refs": [
+              7301
+            ]
+          }
+        ],
         "improved": [
           {
             "title": {
-              "en": "Faster dashboard and preferences",
-              "zh": "加速的仪表板与偏好设置"
+              "en": "Faster crash dashboard and preferences",
+              "zh": "更快的崩溃仪表板与偏好设置"
             },
             "body": {
-              "en": "Precomputed 30-day deduplication and dropped redundant indexes significantly speed up dashboard queries. Default preferences window restored to 30 days. Homepage avatars converted to WebP for improved load times.",
-              "zh": "预计算 30 天去重和删除冗余索引显著加速了仪表板查询。默认偏好窗口恢复为 30 天。首页头像转换为 WebP 以缩短加载时间。"
+              "en": "Precomputed 30-day deduplication and removed redundant indexes to speed up dashboard aggregate queries; homepage avatars now use WebP for smaller downloads.",
+              "zh": "通过预计算 30 天去重和删除冗余索引来加速仪表板聚合查询；首页头像改用 WebP 以减小下载量。"
             },
             "refs": [
               7279,
@@ -150,27 +220,27 @@
           },
           {
             "title": {
-              "en": "Reasoning usage guard",
-              "zh": "推理消耗保护"
+              "en": "Creation Interface Refinements",
+              "zh": "创作界面优化"
             },
             "body": {
-              "en": "Added client-side reasoning byte limit and configurable per-model output token budgets to prevent unexpected token consumption.",
-              "zh": "添加了客户端推理字节限制和可配置的每模型输出令牌预算，以防止意外的令牌消耗。"
+              "en": "Simplified the input mode pill and moved the folder opener to the front of the toolbar in Creation style, resulting in a more compact and cohesive layout. Classic and Workbench styles remain unchanged.",
+              "zh": "精简了创作风格下的输入模式pill，并将文件夹打开器移至工具栏最前，布局更紧凑协调。经典版和工作台风格保持不变。"
             },
             "refs": [
-              7186
+              7276
             ]
           }
         ],
         "fixed": [
           {
             "title": {
-              "en": "Agent missing tool-call reasoning",
-              "zh": "代理工具调用推理缺失"
+              "en": "Missing tool-call reasoning recovery",
+              "zh": "工具调用推理缺失恢复"
             },
             "body": {
-              "en": "Silently retries when reasoning content is absent, preventing warnings and improving tool call reliability.",
-              "zh": "当推理内容缺失时静默重试，防止警告并提高工具调用可靠性。"
+              "en": "Silently retries when tool-call reasoning content is absent, avoiding user-visible warnings and improving tool reliability.",
+              "zh": "工具调用推理内容缺失时会静默重试，避免用户可见警告并提升工具可靠性。"
             },
             "refs": [
               7259
@@ -178,25 +248,39 @@
           },
           {
             "title": {
-              "en": "Provider model picker crash",
-              "zh": "提供程序模型选择器崩溃"
+              "en": "Conditional React Hook crashes",
+              "zh": "条件式 React Hook 顺序崩溃"
             },
             "body": {
-              "en": "Stabilized React Hook order to prevent crash when loading model list.",
-              "zh": "稳定了 React Hook 顺序，防止加载模型列表时崩溃。"
+              "en": "Fixed Hook ordering in model lists, provider editing, and workspace code search, and added a build-time Hooks lint gate.",
+              "zh": "修复模型列表、提供商编辑和工作区代码搜索中的 Hook 顺序，并新增构建期 Hooks 检查门禁。"
             },
             "refs": [
-              7195
+              7195,
+              7310
+            ]
+          },
+          {
+            "title": {
+              "en": "Long decision details",
+              "zh": "较长的决策详情"
+            },
+            "body": {
+              "en": "Long Ask, approval, plan, safety, clear-context, and recovery descriptions now use an overflow-aware, keyboard- and touch-accessible disclosure while keeping consequences and action controls visible.",
+              "zh": "Ask、审批、计划、安全、清除上下文和恢复场景中的较长说明现在会使用感知溢出且支持键盘与触控的展开控件，同时保持后果提示和操作按钮可见。"
+            },
+            "refs": [
+              7300
             ]
           },
           {
             "title": {
               "en": "Windows launcher junction resolution",
-              "zh": "Windows 启动器联接解析"
+              "zh": "Windows 启动器目录联接解析"
             },
             "body": {
-              "en": "Resolves directory junctions correctly to avoid launch failures.",
-              "zh": "正确解析目录联接以避免启动失败。"
+              "en": "The launcher now resolves Scoop's `current` directory junction and starts the active version reliably.",
+              "zh": "启动器现在会解析 Scoop 的 `current` 目录联接，并可靠启动当前活动版本。"
             },
             "refs": [
               7275
@@ -208,11 +292,50 @@
               "zh": "Windows 工作区标签页对齐"
             },
             "body": {
-              "en": "Shows only four workspace views and properly places title controls.",
-              "zh": "仅显示四个工作区视图并正确放置标题控件。"
+              "en": "The workspace sidebar now shows only the intended views and places Windows caption controls correctly.",
+              "zh": "工作区侧边栏现在仅显示预期视图，并正确放置 Windows 标题栏控件。"
             },
             "refs": [
               7270
+            ]
+          },
+          {
+            "title": {
+              "en": "Native icon repair after updates",
+              "zh": "更新后的原生图标修复"
+            },
+            "body": {
+              "en": "Repairs stale Reasonix-owned shortcut icons and aliases across Windows, macOS, and native Linux packages without overwriting healthy customizations.",
+              "zh": "在 Windows、macOS 与原生 Linux 包中修复 Reasonix 自有的过期快捷方式图标和别名，同时不覆盖健康的自定义设置。"
+            },
+            "refs": [
+              7296
+            ]
+          },
+          {
+            "title": {
+              "en": "Remote profile resync loops",
+              "zh": "远程 Profile 重同步循环"
+            },
+            "body": {
+              "en": "Made identical profile and goal mutations no-ops and fenced stale control-plane responses and runtime events.",
+              "zh": "将相同的 Profile 与 Goal 变更处理为无操作，并隔离过期的控制面响应与运行时事件。"
+            },
+            "refs": [
+              7277
+            ]
+          },
+          {
+            "title": {
+              "en": "CLI continuation shorthand",
+              "zh": "CLI 续聊快捷参数"
+            },
+            "body": {
+              "en": "Fixed -c so it correctly aliases --continue for interactive and headless CLI sessions instead of exiting silently with a flag parsing error.",
+              "zh": "修复 -c，使其在交互式与无头 CLI 会话中正确等同于 --continue，不再因参数解析错误而静默退出。"
+            },
+            "refs": [
+              7223
             ]
           }
         ]
@@ -220,6 +343,8 @@
       "upgrade": [],
       "risks": [],
       "contributors": [
+        "Li-Charles-One",
+        "Lxiny-zy",
         "SivanCola",
         "esengine",
         "paradoxSCH"

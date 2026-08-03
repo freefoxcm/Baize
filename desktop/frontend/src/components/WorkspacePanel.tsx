@@ -1216,6 +1216,15 @@ export function WorkspacePanel({
     [effectiveTreeWidth, maxTreeWidthForPanel, setSavedTreeWidth],
   );
 
+  useEffect(() => {
+    setCodeSearchRequestPending(false);
+    setCodeSearchRequestPath(null);
+  }, [selectedPath]);
+
+  const consumeCodeSearchRequest = useCallback(() => {
+    setCodeSearchRequestPending(false);
+  }, []);
+
   if (!open) return null;
 
   const selectedTextFromPreview = (): string => {
@@ -1420,19 +1429,11 @@ export function WorkspacePanel({
       !preview.binary &&
       !isMarkdown,
   );
-  useEffect(() => {
-    setCodeSearchRequestPending(false);
-    setCodeSearchRequestPath(null);
-  }, [selectedPath]);
-
   const openCodeSearch = () => {
     if (!codePreviewActive || !selectedPath) return;
     setCodeSearchRequestPath(selectedPath);
     setCodeSearchRequestPending(true);
   };
-  const consumeCodeSearchRequest = useCallback(() => {
-    setCodeSearchRequestPending(false);
-  }, []);
   const treeBlankMenuItems: ContextMenuItem[] = [
     {
       key: "refresh-tree",

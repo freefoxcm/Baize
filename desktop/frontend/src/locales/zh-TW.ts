@@ -806,6 +806,8 @@ export const zhTW: Record<DictKey, string> = {
   "decision.confirm": "確認",
   "decision.selectHint": "數字鍵/↑↓ 選擇，Enter 確認",
   "decision.stopTask": "停止任務",
+  "decision.showFullDescription": "查看完整說明",
+  "decision.hideFullDescription": "收起完整說明",
   "approval.allowEditsSession": "本會話允許編輯",
   "approval.allowFilePersistent": "總是允許此檔案（儲存）",
   "approval.allowSandboxEscapeSession": "本會話使用真實環境",

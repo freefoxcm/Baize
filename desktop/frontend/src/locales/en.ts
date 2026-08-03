@@ -1035,6 +1035,8 @@ export const en = {
   "decision.confirm": "Confirm",
   "decision.selectHint": "↑↓ or number to select · Enter to confirm",
   "decision.stopTask": "Stop task",
+  "decision.showFullDescription": "View full description",
+  "decision.hideFullDescription": "Collapse full description",
   "approval.allowEditsSession": "Allow edits for session",
   "approval.allowFilePersistent": "Always allow this file (save)",
   "approval.allowSandboxEscapeSession": "Use real environment for this session",

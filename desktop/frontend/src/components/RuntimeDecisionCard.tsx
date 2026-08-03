@@ -70,10 +70,12 @@ export function RuntimeDecisionCard({
           keyLabel={action.key}
           label={action.label}
           description={action.description}
+          descriptionDisclosure={!action.danger}
           onClick={action.onClick}
           disabled={action.disabled}
           tone={action.danger ? "danger" : "default"}
           role="button"
+          title={action.description}
         />
       ))}
     >

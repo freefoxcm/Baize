@@ -8137,6 +8137,11 @@ body > .mermaid-diagram--fullscreen {
   padding: 10px;
   outline: none;
 }
+.prompt-shelf__content {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
 .prompt-shelf__card:focus-visible {
   border-color: var(--accent);
   box-shadow:
@@ -8335,12 +8340,22 @@ body > .mermaid-diagram--fullscreen {
   flex: 0 0 auto;
   min-width: 88px;
 }
-/* Unified decision surface: vertical full-width options, sticky footer,
-   content scrolls within 55vh. Never collapses to horizontal pills. */
+/* Unified decision surface: vertical full-width options, sticky footer, and
+   one bounded content scroller. Never collapses to horizontal pills. */
 .prompt-shelf--decision .prompt-shelf__card {
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 8px;
+  max-height: min(82vh, 720px);
   padding: 10px 12px;
+  overflow: hidden;
   border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+.prompt-shelf--decision .prompt-shelf__content {
+  min-height: 0;
+  align-content: start;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 .prompt-shelf--decision .prompt-shelf__header {
   align-items: flex-start;
@@ -8352,47 +8367,66 @@ body > .mermaid-diagram--fullscreen {
   overflow-wrap: anywhere;
 }
 .prompt-shelf--decision .prompt-shelf__body {
-  max-height: min(55vh, 420px);
-  overflow: auto;
-  padding-right: 2px;
+  max-height: none;
+  overflow: visible;
 }
 .prompt-shelf--decision .prompt-shelf__actions {
   display: grid !important;
   grid-template-columns: 1fr !important;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 6px;
-  max-height: min(40vh, 320px);
-  overflow: auto;
-  padding-right: 2px;
+  max-height: none;
+  overflow: visible;
 }
-.prompt-shelf--decision .prompt-action {
+.prompt-shelf--decision .prompt-shelf__actions > .prompt-action-row {
+  width: 100%;
+}
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action {
   width: 100% !important;
   min-height: 40px;
+  height: auto;
   align-items: flex-start;
   border-radius: 8px !important;
   padding: 8px 10px;
   white-space: normal !important;
 }
-.prompt-shelf--decision .prompt-action__copy {
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action__key {
+  margin-top: 1px;
+}
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action__copy {
   display: grid !important;
   gap: 2px;
 }
-.prompt-shelf--decision .prompt-action__label,
-.prompt-shelf--decision .prompt-action__desc {
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action__label,
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action__desc {
   white-space: normal !important;
   overflow: visible;
+  overflow-wrap: anywhere;
   text-overflow: clip;
+}
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action__label {
+  font-weight: 620;
+}
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action__desc {
+  line-height: 1.4;
+}
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action--description-collapsible:not(.prompt-action--description-expanded) .prompt-action__desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.prompt-shelf--decision .prompt-shelf__actions .prompt-action--description-expanded .prompt-action__desc {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 .prompt-shelf--recovery-approval {
   max-width: min(var(--maxw), 760px);
 }
 .prompt-shelf--recovery-approval .prompt-shelf__card {
   border-color: var(--border);
-}
-.prompt-shelf--recovery-approval .prompt-shelf__body,
-.prompt-shelf--recovery-approval .prompt-shelf__actions {
-  max-height: none;
-  overflow: visible;
-  padding-right: 0;
 }
 .prompt-shelf--recovery-approval .prompt-action__key {
   border-color: transparent;
@@ -8585,6 +8619,43 @@ body > .mermaid-diagram--fullscreen {
   font-size: 11px;
   line-height: 1.35;
 }
+.prompt-action-row {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.prompt-action__description-toggle {
+  --wails-draggable: no-drag;
+  justify-self: start;
+  min-height: 24px;
+  margin: -2px 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.prompt-action-row > .prompt-action__description-toggle {
+  margin: -2px 10px 2px 42px;
+}
+.prompt-action__description-toggle:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+.prompt-action__description-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--fg);
+}
+.prompt-action__description-toggle:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
 .prompt-shelf__note {
   margin: 0;
   color: var(--fg-dim);
@@ -8697,13 +8768,13 @@ body > .mermaid-diagram--fullscreen {
   background: var(--accent-soft);
 }
 
-.prompt-shelf--recovery-approval .recovery-continue-option > .prompt-action {
+.prompt-shelf--recovery-approval .recovery-continue-option > .prompt-action-row > .prompt-action {
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent;
 }
 
-.prompt-shelf--recovery-approval .recovery-continue-option > .prompt-action:hover {
+.prompt-shelf--recovery-approval .recovery-continue-option > .prompt-action-row > .prompt-action:hover {
   background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
@@ -8921,31 +8992,6 @@ body > .mermaid-diagram--fullscreen {
   text-overflow: clip;
   white-space: normal;
   overflow-wrap: anywhere;
-}
-.prompt-shelf--ask .prompt-shelf__actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  max-height: min(220px, 30vh);
-  overflow: auto;
-  padding-right: 2px;
-}
-.prompt-shelf--ask .prompt-action {
-  width: 100%;
-  min-height: 36px;
-  align-items: center;
-  border-radius: 8px;
-  padding: 5px 8px;
-  white-space: normal;
-}
-.prompt-shelf--ask .prompt-action__copy {
-  display: grid;
-  gap: 1px;
-}
-.prompt-shelf--ask .prompt-action__label,
-.prompt-shelf--ask .prompt-action__desc {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .prompt-shelf--ask .prompt-shelf__quick-actions {
   justify-content: flex-end;
