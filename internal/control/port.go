@@ -61,6 +61,7 @@ type TurnControl interface {
 	RunTurn(ctx context.Context, input string) error
 	RunShell(command string)
 	Cancel()
+	TrySteer(text string) bool
 	Steer(text string)
 	SteerConsumed() bool
 	Running() bool

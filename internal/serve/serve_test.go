@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"reasonix/internal/eventwire"
 	"reasonix/internal/jobs"
 	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
 
 func TestTitlePromptRequiresUserMessageLanguage(t *testing.T) {
@@ -151,6 +153,90 @@ func TestServeEndpoints(t *testing.T) {
 
 	if resp, _ := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{}`)); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("empty submit should be 400, got %d", resp.StatusCode)
+	}
+}
+
+// steerBlockingProvider keeps the model stream open until the turn's context
+// is cancelled, so steer admission can be observed while the turn is active.
+// It signals through started once the agent has entered the tool loop (the
+// steer intake is open only from that point on).
+type steerBlockingProvider struct {
+	started chan struct{}
+}
+
+func (steerBlockingProvider) Name() string { return "steer-test" }
+
+func (p steerBlockingProvider) Stream(ctx context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
+	select {
+	case p.started <- struct{}{}:
+	default:
+	}
+	ch := make(chan provider.Chunk)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
+}
+
+// TestServeSteer covers the /steer endpoint contract: whitespace text is
+// rejected (400), steer without an active turn is refused (409, the client
+// keeps the text queued and retries), and an active turn accepts the guidance
+// (202) until the turn ends.
+func TestServeSteer(t *testing.T) {
+	bc := NewBroadcaster()
+	started := make(chan struct{}, 1)
+	ag := agent.New(steerBlockingProvider{started: started}, tool.NewRegistry(), agent.NewSession(""), agent.Options{}, bc)
+	ctrl := control.New(control.Options{Runner: ag, Executor: ag, Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	postSteer := func(text string) int {
+		resp, err := http.Post(srv.URL+"/steer", "application/json", strings.NewReader(`{"text":`+strconv.Quote(text)+`}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Whitespace-only text is rejected before any steer admission logic.
+	if got := postSteer("  "); got != http.StatusBadRequest {
+		t.Fatalf("empty steer status = %d, want 400", got)
+	}
+
+	// No active turn: the steer is not queued (client keeps it and retries).
+	if got := postSteer("late guidance"); got != http.StatusConflict {
+		t.Fatalf("idle steer status = %d, want 409", got)
+	}
+
+	// Start a turn and keep it alive, then steer into it.
+	resp, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"work"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit status = %d, want 202", resp.StatusCode)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("agent never entered the tool loop")
+	}
+	if got := postSteer("keep the diff small"); got != http.StatusAccepted {
+		t.Fatalf("active steer status = %d, want 202", got)
+	}
+
+	// Once the turn ends, steer admission closes again.
+	resp, err = http.Post(srv.URL+"/cancel", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitNotRunning(t, ctrl)
+	if got := postSteer("after the turn"); got != http.StatusConflict {
+		t.Fatalf("post-turn steer status = %d, want 409", got)
 	}
 }
 

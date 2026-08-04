@@ -596,6 +596,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /context", s.context)
 	mux.HandleFunc("GET /usage/calendar", s.usageCalendar)
 	mux.HandleFunc("POST /submit", s.submit)
+	mux.HandleFunc("POST /steer", s.steer)
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
 	mux.HandleFunc("POST /attach", s.attach)
@@ -841,6 +842,25 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ctl().SubmitHTTP(body.Input)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		http.Error(w, "missing text", http.StatusBadRequest)
+		return
+	}
+	// TrySteer reports whether the active turn accepted the guidance. A
+	// rejection means the turn exited between the client's running check and
+	// the enqueue; the client keeps the text queued and retries it as a
+	// regular follow-up after the turn (Desktop guidance-queue semantics).
+	if !s.ctl().TrySteer(body.Text) {
+		http.Error(w, "no active turn accepted the guidance", http.StatusConflict)
+		return
+	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
