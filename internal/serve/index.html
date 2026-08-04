@@ -444,10 +444,9 @@ input,textarea{font:inherit;color:inherit}
 .welcome__brand{display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;position:relative}
 .welcome__logo{width:52px;height:52px;border-radius:13px;background:linear-gradient(135deg,var(--accent),var(--violet));display:flex;align-items:center;justify-content:center;font-family:var(--heading);font-weight:700;font-size:20px;color:oklch(99% 0 0);margin-bottom:16px;box-shadow:0 4px 18px oklch(68% .16 38/.2);position:relative}
 .welcome__title{font-family:var(--heading);font-size:24px;font-weight:700;letter-spacing:-.03em;position:relative}
-.welcome__tag{margin-top:6px;font-size:13.5px;color:var(--fg-2);position:relative}
-.welcome__calendar{width:100%;max-width:680px;margin:20px auto 0;padding:13px 15px 11px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--bg-2) 88%,transparent);position:relative;text-align:left}
+.welcome__calendar{width:fit-content;min-width:min(360px,100%);max-width:min(600px,100%);margin:14px auto 0;padding:12px 12px 10px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--bg-2) 88%,transparent);position:relative;text-align:left}
 .welcome__calendar--loading .welcome__calendar-body{opacity:.5}
-.welcome__calendar-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}
+.welcome__calendar-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
 .welcome__calendar-info{display:flex;flex-direction:column;gap:2px;min-width:0}
 .welcome__calendar-title{font-size:12.5px;font-weight:600;color:var(--fg);letter-spacing:.01em;white-space:nowrap}
 .welcome__calendar-sum{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -474,7 +473,7 @@ input,textarea{font:inherit;color:inherit}
 .welcome__calendar-tip .cal-model{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:286px}
 .welcome__calendar-tip .cal-model span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .welcome__calendar-error{margin-top:3px;color:var(--danger);font-size:11.5px;text-align:center}
-.welcome__calendar-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:4px;font-size:10.5px;color:var(--muted)}
+.welcome__calendar-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:3px;font-size:10.5px;color:var(--muted)}
 .cal-legend{display:inline-flex;align-items:center;gap:4px}
 .cal-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .welcome__meta{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:680px;margin-top:14px;position:relative}
@@ -620,7 +619,6 @@ input,textarea{font:inherit;color:inherit}
   <section class="transcript" id="log">
     <div class="welcome" id="welcome">
       <div class="welcome__brand"><img src="/assets/logo-wordmark.svg" alt="Reasonix" class="brand-wordmark brand-wordmark--welcome" draggable="false"></div>
-      <div class="welcome__tag">__('welcome_tag')</div>
       <div class="welcome__calendar" id="welcome-calendar" style="display:none">
         <div class="welcome__calendar-head">
           <div class="welcome__calendar-info">
@@ -628,9 +626,8 @@ input,textarea{font:inherit;color:inherit}
             <span class="welcome__calendar-sum" id="cal-sum"></span>
           </div>
           <div class="welcome__calendar-ranges" role="group" aria-label="__('cal_range_label')">
-            <button type="button" class="cal-range" data-cal-range="month" aria-pressed="true">__('cal_range_month')</button>
             <button type="button" class="cal-range" data-cal-range="year" aria-pressed="false">__('cal_range_year')</button>
-            <button type="button" class="cal-range" data-cal-range="6m" aria-pressed="false">__('cal_range_6m')</button>
+            <button type="button" class="cal-range" data-cal-range="6m" aria-pressed="true">__('cal_range_6m')</button>
             <button type="button" class="cal-range" data-cal-range="3m" aria-pressed="false">__('cal_range_3m')</button>
           </div>
         </div>
@@ -1046,10 +1043,8 @@ const __T = {
     'scope_sumfrom': 'Summarize from here',
     'scope_sumupto': 'Summarize up to here',
     'delete_confirm': 'Delete this session?',
-    'welcome_tag': 'AI coding agent',
     'usage_calendar': 'Token activity',
     'cal_range_label': 'Token activity range',
-    'cal_range_month': 'This month',
     'cal_range_year': 'This year',
     'cal_range_6m': 'Last 6 months',
     'cal_range_3m': 'Last 3 months',
@@ -1243,10 +1238,8 @@ const __T = {
     'scope_sumfrom': '从此处总结',
     'scope_sumupto': '总结到此处',
     'delete_confirm': '删除此会话？',
-    'welcome_tag': 'AI 编码助手',
     'usage_calendar': 'Token活动',
     'cal_range_label': 'Token活动范围',
-    'cal_range_month': '本月',
     'cal_range_year': '全年',
     'cal_range_6m': '近6个月',
     'cal_range_3m': '近3个月',
@@ -1394,11 +1387,11 @@ log.addEventListener('scroll',()=>{pinnedToBottom=atBottom();});
 log.addEventListener('wheel',e=>{if(e.deltaY<0&&log.scrollHeight>log.clientHeight)pinnedToBottom=false;},{passive:true});
 function scrollDown(force) { if(force)pinnedToBottom=true; if(!pinnedToBottom)return; requestAnimationFrame(()=>{if(force)pinnedToBottom=true; else if(!pinnedToBottom)return; log.scrollTo({top:log.scrollHeight,behavior:'instant'});});}
 function hideWelcome() { if(welcome) welcome.style.display='none';}
-function showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('month',true);}
+function showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('6m',true);}
 
 // ── welcome Token activity (Codex-style week-column heatmap) ──
-let calData=null, calRange='month', calSelected=null, calAbort=null, calGeneration=0, calWeeks=0;
-const CAL_RANGES=new Set(['month','year','6m','3m']);
+let calData=null, calRange='6m', calSelected=null, calAbort=null, calGeneration=0, calWeeks=0;
+const CAL_RANGES=new Set(['year','6m','3m']);
 function fmtDayKey(dt){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
 function parseDayKey(key){const p=String(key||'').split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);}
 function calLevel(toks,max){if(toks<=0)return 0;if(max<=0)return 1;return Math.max(1,Math.min(5,Math.ceil(toks/max*5)));}

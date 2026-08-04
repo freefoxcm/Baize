@@ -410,18 +410,15 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	}
 }
 
-
 func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
 		`'usage_calendar': 'Token activity'`,
-		`'cal_range_month': 'This month'`,
 		`'cal_range_year': 'This year'`,
 		`'cal_range_6m': 'Last 6 months'`,
 		`'cal_range_3m': 'Last 3 months'`,
-		`aria-pressed="true"`,
+		`data-cal-range="6m" aria-pressed="true"`,
 		`'usage_calendar': 'Token活动'`,
-		`data-cal-range="month"`,
 		`data-cal-range="year"`,
 		`data-cal-range="6m"`,
 		`data-cal-range="3m"`,
@@ -434,13 +431,23 @@ func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
 		`const trimmed=raw.replace(/[\\/]+$/,'');`,
 		`welcomeCwd.title=cwd;`,
 		`.welcome__pill strong{flex:0 0 auto;`,
+		`showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('6m',true);}`,
+		`.welcome__calendar{width:fit-content;min-width:min(360px,100%);max-width:min(600px,100%);`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing Token activity/workspace support %q", want)
 		}
 	}
-	if strings.Contains(html, "CAL_DAYS = 120") || strings.Contains(html, "/usage/calendar?days=") {
-		t.Fatal("serve index still contains the fixed 120-day calendar contract")
+	yearPos := strings.Index(html, `data-cal-range="year"`)
+	sixMonthPos := strings.Index(html, `data-cal-range="6m"`)
+	threeMonthPos := strings.Index(html, `data-cal-range="3m"`)
+	if yearPos < 0 || sixMonthPos < 0 || threeMonthPos < 0 || !(yearPos < sixMonthPos && sixMonthPos < threeMonthPos) {
+		t.Fatalf("Token activity ranges are not ordered year, 6m, 3m: %d, %d, %d", yearPos, sixMonthPos, threeMonthPos)
+	}
+	for _, old := range []string{"CAL_DAYS = 120", "/usage/calendar?days=", `data-cal-range="month"`, "AI coding agent", "AI 编码助手"} {
+		if strings.Contains(html, old) {
+			t.Fatalf("serve index still contains removed welcome content %q", old)
+		}
 	}
 }
 func TestServeIndexReportsSessionDeleteFailures(t *testing.T) {
@@ -1013,8 +1020,8 @@ func TestUsageCalendarRange(t *testing.T) {
 		name, now, preset, wantKey, wantFrom, wantTo string
 		wantErr                                      bool
 	}{
-		{name: "default month", now: "2026-08-04", wantKey: "month", wantFrom: "2026-08-01", wantTo: "2026-08-04"},
-		{name: "month", now: "2026-08-04", preset: "month", wantKey: "month", wantFrom: "2026-08-01", wantTo: "2026-08-04"},
+		{name: "default six months", now: "2026-08-04", wantKey: "6m", wantFrom: "2026-02-04", wantTo: "2026-08-04"},
+		{name: "month is no longer supported", now: "2026-08-04", preset: "month", wantErr: true},
 		{name: "year", now: "2026-08-04", preset: "year", wantKey: "year", wantFrom: "2026-01-01", wantTo: "2026-08-04"},
 		{name: "three months", now: "2026-08-04", preset: "3m", wantKey: "3m", wantFrom: "2026-05-04", wantTo: "2026-08-04"},
 		{name: "six months crosses year", now: "2026-03-04", preset: "6m", wantKey: "6m", wantFrom: "2025-09-04", wantTo: "2026-03-04"},
@@ -1121,8 +1128,8 @@ func TestServeUsageCalendar(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Range != "month" || got.From != "2026-08-01" || got.To != "2026-08-04" {
-		t.Fatalf("range = %q %s..%s, want month 2026-08-01..2026-08-04", got.Range, got.From, got.To)
+	if got.Range != "6m" || got.From != "2026-02-04" || got.To != "2026-08-04" {
+		t.Fatalf("range = %q %s..%s, want 6m 2026-02-04..2026-08-04", got.Range, got.From, got.To)
 	}
 	if got.Total != 1000+500+200 {
 		t.Fatalf("total = %d, want 1700", got.Total)
@@ -1163,8 +1170,8 @@ func TestServeUsageCalendar(t *testing.T) {
 		t.Fatal("out-of-window day leaked")
 	}
 	// Day ordering must be ascending and contiguous (Query contract).
-	if len(got.Days) != 4 {
-		t.Fatalf("days = %d, want 4 for August 1..4", len(got.Days))
+	if len(got.Days) != 182 {
+		t.Fatalf("days = %d, want 182 for February 4..August 4", len(got.Days))
 	}
 	for i := 1; i < len(got.Days); i++ {
 		if got.Days[i].Day <= got.Days[i-1].Day {

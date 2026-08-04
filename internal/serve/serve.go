@@ -1708,11 +1708,9 @@ func usageCalendarRange(now time.Time, preset string) (key string, from, to time
 	to = time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 	key = strings.TrimSpace(preset)
 	if key == "" {
-		key = "month"
+		key = "6m"
 	}
 	switch key {
-	case "month":
-		from = time.Date(y, m, 1, 0, 0, 0, 0, now.Location())
 	case "year":
 		from = time.Date(y, time.January, 1, 0, 0, 0, 0, now.Location())
 	case "3m":

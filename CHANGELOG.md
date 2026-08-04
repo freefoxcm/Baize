@@ -9,10 +9,11 @@ branch.
 ### Added
 
 - Welcome-page **Token activity** uses the Codex-style seven-row, week-column
-  heatmap with theme-derived activity levels and presets for this month, this
-  year, the last six months, and the last three months. Hover, focus, or tap a
+  heatmap with theme-derived activity levels and presets for the last six
+  months (the default), the last three months, and this year. Hover, focus, or
+  tap a
   day for a floating requests / turns / per-model breakdown without shifting
-  the welcome layout. The new `GET /usage/calendar?range=month|year|6m|3m`
+  the welcome layout. The new `GET /usage/calendar?range=year|6m|3m`
   endpoint aggregates existing `serve` stats rows, so historical usage needs
   no new ledger. Long Windows and POSIX workspace paths now display their final
   folder while keeping the complete path available as hover/accessibility text.
