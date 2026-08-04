@@ -919,6 +919,13 @@ func securePathJoin(root, raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Normalize the root the same way the target gets normalized below: on
+	// macOS /var is a symlink to /private/var, so an unresolved root would
+	// never match the EvalSymlinks'd target (and vice versa). If the root
+	// does not exist yet, EvalSymlinks fails and the raw form is kept.
+	if resolved, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootAbs = resolved
+	}
 	p := raw
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(rootAbs, filepath.FromSlash(p))
