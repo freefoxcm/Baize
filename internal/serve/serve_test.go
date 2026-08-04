@@ -410,6 +410,74 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	}
 }
 
+func TestServeBrandingAndAssets(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		"<title>Baize</title>",
+		"href=\"/assets/logo-symbol.svg\"",
+		"alt=\"Baize\" class=\"brand-wordmark brand-wordmark--sidebar\"",
+		"alt=\"Baize\" class=\"brand-wordmark brand-wordmark--welcome\"",
+		"'placeholder': 'Message Baize...  / for commands'",
+		"'placeholder': '给 Baize 发消息...  / 查看命令'",
+		"Automatic retries paused. Baize stopped repeated attempts",
+		"已暂停自动重试。Baize 已停止重复尝试",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing Baize branding %q", want)
+		}
+	}
+	for _, old := range []string{"<title>Reasonix</title>", "alt=\"Reasonix\"", "Message Reasonix", "给 Reasonix 发消息", "Reasonix stopped repeated attempts"} {
+		if strings.Contains(html, old) {
+			t.Fatalf("serve index still contains retired display branding %q", old)
+		}
+	}
+
+	login := string(loginHTML)
+	for _, want := range []string{"<title>Baize — Login</title>", "href=\"/assets/logo-symbol.svg\"", "src=\"/assets/logo-wordmark.svg\" alt=\"Baize\""} {
+		if !strings.Contains(login, want) {
+			t.Fatalf("login page missing Baize branding %q", want)
+		}
+	}
+	if strings.Contains(login, "Reasonix") {
+		t.Fatalf("login page still contains retired display branding: %s", login)
+	}
+
+	for name, asset := range map[string][]byte{"wordmark": logoWordmarkSVG, "symbol": logoSymbolSVG} {
+		body := string(asset)
+		if !strings.Contains(body, "aria-label=\"Baize\"") || !strings.Contains(body, "<path ") {
+			t.Fatalf("%s SVG is missing Baize accessibility metadata or path geometry", name)
+		}
+		if strings.Contains(body, "<image") || strings.Contains(body, "Reasonix") {
+			t.Fatalf("%s SVG embeds raster content or retired branding", name)
+		}
+	}
+}
+
+func TestServeBrandAssetRoutes(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	t.Cleanup(func() { ctrl.Close() })
+	handler := New(ctrl, bc, config.ServeConfig{}).Handler()
+	for _, path := range []string{"/assets/logo-wordmark.svg", "/assets/logo-symbol.svg"} {
+		t.Run(path, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("GET %s status = %d, want 200", path, recorder.Code)
+			}
+			if got := recorder.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
+				t.Fatalf("GET %s Content-Type = %q", path, got)
+			}
+			if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=3600" {
+				t.Fatalf("GET %s Cache-Control = %q", path, got)
+			}
+			if !strings.Contains(recorder.Body.String(), "aria-label=\"Baize\"") {
+				t.Fatalf("GET %s did not return the Baize SVG", path)
+			}
+		})
+	}
+}
+
 func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
@@ -486,8 +554,8 @@ func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
 	for _, want := range []string{
 		"e.outcome==='recovery_paused'",
 		"showNotice('⏸ '+__('recovery_paused'))",
-		"'recovery_paused': 'Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
-		"'recovery_paused': '已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
+		"'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
+		"'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing recovery pause support %q", want)

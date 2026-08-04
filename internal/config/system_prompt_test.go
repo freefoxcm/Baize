@@ -19,10 +19,16 @@ func TestDefaultSystemPromptStaysLean(t *testing.T) {
 			t.Fatalf("default system prompt duplicates %q workflow guidance: %q", duplicate, DefaultSystemPrompt)
 		}
 	}
-	for _, want := range []string{"Reasonix", "available tools", "focused", "concise"} {
+	for _, want := range []string{"Baize", "intelligent agent", "available tools", "focused", "concise"} {
 		if !strings.Contains(DefaultSystemPrompt, want) {
 			t.Fatalf("default system prompt missing %q: %q", want, DefaultSystemPrompt)
 		}
+	}
+	if strings.Contains(DefaultSystemPrompt, "Reasonix") {
+		t.Fatalf("default system prompt still uses the retired display identity: %q", DefaultSystemPrompt)
+	}
+	if strings.Contains(strings.ToLower(DefaultSystemPrompt), "coding agent") {
+		t.Fatalf("default system prompt still uses the retired coding-only role: %q", DefaultSystemPrompt)
 	}
 }
 

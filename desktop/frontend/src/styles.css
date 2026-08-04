@@ -30180,23 +30180,61 @@ body > .mermaid-diagram--fullscreen {
   height: 12px;
 }
 
-.app--creation .footer {
+.app--creation .footer,
+:root[data-theme-style] .app--creation .footer {
   border-top: 0;
   padding: 0 clamp(22px, 5vw, 56px) clamp(22px, 4vh, 36px);
   background: transparent;
   transition: padding 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Empty Creation: title + composer share one responsive column (no fixed lift). */
+/* Empty Creation: headline + composer share one footer stack, centered in chat. */
 .app--creation .chat-pane--creation-empty {
   --creation-hero-col: min(100%, 720px);
   --creation-hero-inline: clamp(16px, 4vw, 56px);
+  --creation-hero-stack-gap: clamp(14px, 2.2vh, 22px);
+}
+
+.app--creation .chat-pane--creation-empty > .main {
+  flex: 0 0 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .app--creation .chat-pane--creation-empty > .footer {
-  flex: 0 0 auto;
-  padding: 0 var(--creation-hero-inline) clamp(16px, 3vh, 28px);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  padding: 0 var(--creation-hero-inline);
   transform: none;
+  border-top: 0;
+}
+
+.app--creation .composer-decision-host--creation-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--creation-hero-stack-gap);
+  width: min(100%, var(--creation-hero-col));
+  max-width: var(--creation-hero-col);
+  margin-inline: auto;
+}
+
+.app--creation .composer-decision-host--creation-hero .welcome-creation__headline {
+  width: 100%;
+  margin: 0;
+}
+
+.app--creation .composer-decision-host--creation-hero .composer-wrap {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  flex: 0 0 auto;
 }
 
 .app--creation .composer-wrap {
@@ -31174,6 +31212,11 @@ body > .mermaid-diagram--fullscreen {
     padding: 0 12px 14px;
   }
 
+  .app--creation .chat-pane--creation-empty > .footer,
+  :root[data-theme-style] .app--creation .chat-pane--creation-empty > .footer {
+    padding: var(--creation-hero-stack-gap) 12px 0;
+  }
+
   .app--creation .composer-wrap,
   :root[data-theme-style] .app--creation .composer-wrap {
     width: 100%;
@@ -31777,14 +31820,11 @@ body > .mermaid-diagram--fullscreen {
   padding: 24px 32px clamp(180px, 22vh, 260px);
 }
 
-/* Empty Creation: flex stack keeps headline + footer composer in one flow. */
-.app--creation .chat-pane--creation-empty > .main {
-  flex: 1 1 auto;
+.app--creation .chat-pane--creation-empty .transcript-shell {
+  flex: 0 0 auto;
+  height: auto;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  overflow: visible;
+  overflow: visible !important;
 }
 
 .app--creation .chat-pane--creation-empty .transcript-shell,
@@ -31796,10 +31836,11 @@ body > .mermaid-diagram--fullscreen {
 
 .app--creation .chat-pane--creation-empty .transcript--empty {
   flex: 0 0 auto;
+  height: auto;
   justify-content: flex-end;
   align-items: center;
   min-height: 0;
-  padding: clamp(12px, 3vh, 28px) var(--creation-hero-inline) clamp(10px, 2vh, 20px);
+  padding: 0 var(--creation-hero-inline);
 }
 
 .app--creation .transcript--empty > .welcome--creation {
@@ -32699,10 +32740,6 @@ body > .mermaid-diagram--fullscreen {
 }
 
 @media (max-height: 640px) {
-  .app--creation .chat-pane--creation-empty .transcript--empty {
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
   .app--creation .welcome-creation__headline {
     font-size: clamp(calc(24px * var(--font-scale)), 3.6vw, calc(36px * var(--font-scale)));
   }

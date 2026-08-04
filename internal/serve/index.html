@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Reasonix</title>
+<title>Baize</title>
+<link rel="icon" type="image/svg+xml" href="/assets/logo-symbol.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -53,7 +54,7 @@ input,textarea{font:inherit;color:inherit}
 .sidebar__name{font-family:var(--heading);font-size:14px;font-weight:600}
 .brand-wordmark{display:block;object-fit:contain;filter:brightness(0) invert(1);opacity:.94}
 .brand-wordmark--sidebar{width:136px;height:32px;object-position:left center}
-.brand-wordmark--welcome{width:240px;height:56px}
+.brand-wordmark--welcome{width:240px;height:56px;filter:brightness(0) invert(1) drop-shadow(0 0 12px color-mix(in srgb,var(--accent) 32%,transparent))}
 .sidebar__nav{flex:0 0 auto;padding:8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
 .sidebar__item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;color:var(--fg-2);font-size:13px;transition:background .18s ease,color .18s ease;cursor:pointer}
 .sidebar__item:hover{background:var(--panel);color:var(--fg)}
@@ -580,7 +581,7 @@ input,textarea{font:inherit;color:inherit}
 <div class="app">
   <aside class="sidebar">
     <div class="sidebar__brand">
-      <img src="/assets/logo-wordmark.svg" alt="Reasonix" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
+      <img src="/assets/logo-wordmark.svg" alt="Baize" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
     </div>
 <nav class="sidebar__nav" style="border-top:none;padding-top:0">
       <div class="sidebar__item sidebar__item--accent" id="btn-new">
@@ -618,7 +619,7 @@ input,textarea{font:inherit;color:inherit}
 
   <section class="transcript" id="log">
     <div class="welcome" id="welcome">
-      <div class="welcome__brand"><img src="/assets/logo-wordmark.svg" alt="Reasonix" class="brand-wordmark brand-wordmark--welcome" draggable="false"></div>
+      <div class="welcome__brand"><img src="/assets/logo-wordmark.svg" alt="Baize" class="brand-wordmark brand-wordmark--welcome" draggable="false"></div>
       <div class="welcome__calendar" id="welcome-calendar" style="display:none">
         <div class="welcome__calendar-head">
           <div class="welcome__calendar-info">
@@ -932,7 +933,7 @@ const __T = {
     'provider_label_deepseek': 'DeepSeek Official',
     'model_no_match': 'No matching models',
     'effort_title': 'Reasoning effort',
-    'recovery_paused': 'Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
+    'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
     'stats': 'Stats',
     'statistics': 'Statistics',
     'model': 'Model',
@@ -945,7 +946,7 @@ const __T = {
     'connected': 'Connected',
     'reconnecting': 'Reconnecting...',
     'disconnected': 'Disconnected',
-    'placeholder': 'Message Reasonix...  / for commands',
+    'placeholder': 'Message Baize...  / for commands',
     'cmd_compact': 'Compact conversation',
     'cmd_new': 'New session',
     'cmd_resume': 'Resume session',
@@ -1127,7 +1128,7 @@ const __T = {
     'provider_label_deepseek': 'DeepSeek 官方',
     'model_no_match': '没有匹配的模型',
     'effort_title': '思考长度',
-    'recovery_paused': '已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
+    'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
     'stats': '统计',
     'statistics': '统计',
     'model': '模型',
@@ -1140,7 +1141,7 @@ const __T = {
     'connected': '已连接',
     'reconnecting': '重新连接...',
     'disconnected': '已断开',
-    'placeholder': '给 Reasonix 发消息...  / 查看命令',
+    'placeholder': '给 Baize 发消息...  / 查看命令',
     'cmd_compact': '压缩对话',
     'cmd_new': '新建会话',
     'cmd_resume': '恢复会话',

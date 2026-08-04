@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Reasonix — Login</title>
+<title>Baize — Login</title>
+<link rel="icon" type="image/svg+xml" href="/assets/logo-symbol.svg">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -23,11 +24,18 @@
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
   }
   .login-box h1 {
-    font-size: 22px;
-    font-weight: 600;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin-bottom: 8px;
-    color: #e94560;
+  }
+  .login-box h1 img {
+    display: block;
+    width: 220px;
+    max-width: 100%;
+    height: 64px;
+    object-fit: contain;
+    filter: brightness(0) invert(1) drop-shadow(0 0 12px rgba(233, 69, 96, 0.28));
   }
   .login-box .subtitle {
     text-align: center;
@@ -83,7 +91,7 @@
 </head>
 <body>
 <div class="login-box">
-  <h1>Reasonix</h1>
+  <h1><img src="/assets/logo-wordmark.svg" alt="Baize" draggable="false"></h1>
   <p class="subtitle">Enter the password to continue</p>
   <!--ERROR-->
   <form method="post" action="/login">

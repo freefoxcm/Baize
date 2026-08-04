@@ -40,6 +40,9 @@ var indexHTML []byte
 //go:embed logo-wordmark.svg
 var logoWordmarkSVG []byte
 
+//go:embed logo-symbol.svg
+var logoSymbolSVG []byte
+
 //go:embed assets/vendor.min.js
 var vendorJS []byte
 
@@ -571,6 +574,7 @@ func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
+	mux.HandleFunc("GET /assets/logo-symbol.svg", s.logoSymbol)
 	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
@@ -698,6 +702,12 @@ func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 	html := string(indexHTML)
 	html = strings.ReplaceAll(html, "__LANG__", lang)
 	_, _ = w.Write([]byte(html))
+}
+
+func (s *Server) logoSymbol(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(logoSymbolSVG)
 }
 
 func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
