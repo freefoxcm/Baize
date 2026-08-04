@@ -296,3 +296,45 @@ func TestServeProfileEndpoints(t *testing.T) {
 		t.Fatalf("mode after switch = %v, want economy", body["mode"])
 	}
 }
+
+// TestSecurePathJoinNormalizesRootSymlinks locks the macOS /var →
+// /private/var fix: t.TempDir() resolves under a symlinked prefix on macOS,
+// so an unresolved root used to fail every containment check (400 on /file).
+// On Windows/Linux the prefix is not a symlink and the test passes trivially.
+func TestSecurePathJoinNormalizesRootSymlinks(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "ws")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	img := filepath.Join(root, "pic.png")
+	if err := os.WriteFile(img, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Relative path inside the workspace must resolve.
+	got, err := securePathJoin(root, "pic.png")
+	if err != nil {
+		t.Fatalf("relative path: %v", err)
+	}
+	if fi, err := os.Stat(got); err != nil || fi.IsDir() {
+		t.Fatalf("resolved path %q not servable: %v", got, err)
+	}
+
+	// Absolute path (possibly unresolved form) must resolve too.
+	if _, err := securePathJoin(root, img); err != nil {
+		t.Fatalf("absolute path: %v", err)
+	}
+
+	// Escapes must still be rejected.
+	outside := filepath.Join(base, "secret.txt")
+	if err := os.WriteFile(outside, []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := securePathJoin(root, outside); err == nil {
+		t.Fatal("absolute path outside workspace was accepted")
+	}
+	if _, err := securePathJoin(root, filepath.Join(root, "..", "secret.txt")); err == nil {
+		t.Fatal(".. escape was accepted")
+	}
+}
