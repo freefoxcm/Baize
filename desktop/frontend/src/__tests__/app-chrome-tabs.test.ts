@@ -508,11 +508,12 @@ ok(
 
 ok(
   /const creationEmptyHero =/.test(appSource) &&
+    /!sidebarImDetailConnection/.test(appSource) &&
     /!transcriptHydrating/.test(appSource) &&
     /!hydratePlaceholderActive/.test(appSource) &&
     /chat-pane\$\{creationEmptyHero \? " chat-pane--creation-empty" : ""\}/.test(appSource) &&
     /heroMode=\{creationEmptyHero\}/.test(appSource),
-  "Creation empty hero waits for hydration to settle before enabling",
+  "Creation empty hero waits for hydration and skips IM/Bot detail panels",
 );
 
 ok(

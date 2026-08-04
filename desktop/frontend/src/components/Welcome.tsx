@@ -8,14 +8,10 @@ import { useT } from "../lib/i18n";
 export function Welcome({ onPrompt, variant = "default" }: { onPrompt: (text: string) => void; variant?: "default" | "creation" }) {
   const t = useT();
   if (variant === "creation") {
-    // Creation empty state is headline-only; the slim hero Composer sits in the
-    // former prompt-card band (App.tsx chat-pane--creation-empty + Composer hero).
+    // Headline lives above the hero Composer in App footer (same stack).
     void onPrompt;
-    return (
-      <div className="welcome welcome--creation">
-        <h2 className="welcome-creation__headline">{t("welcome.creation.title")}</h2>
-      </div>
-    );
+    void t;
+    return null;
   }
 
   const examples = [t("welcome.ex1"), t("welcome.ex2"), t("welcome.ex3"), t("welcome.ex4")];
