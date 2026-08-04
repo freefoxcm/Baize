@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -223,6 +224,105 @@ func TestServeEffortEndpoints(t *testing.T) {
 	bad.Body.Close()
 	if bad.StatusCode != http.StatusBadRequest {
 		t.Errorf("POST /effort {} status = %d, want 400", bad.StatusCode)
+	}
+}
+
+// TestServeDefaultToolApprovalMode checks desktop parity: a freshly built
+// serve controller defaults to the config desktop.default_tool_approval_mode
+// (auto under the default config), and an explicit ask config keeps ask.
+func TestServeDefaultToolApprovalMode(t *testing.T) {
+	// Default config → auto (desktop parity).
+	ctrl, _ := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var st struct {
+		ToolApprovalMode string `json:"toolApprovalMode"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.ToolApprovalMode != "auto" {
+		t.Fatalf("default toolApprovalMode = %q, want auto", st.ToolApprovalMode)
+	}
+
+	// Explicit ask config → ask preserved (persisted before the server reads it).
+	editPath := config.UserConfigPath()
+	if editPath == "" {
+		t.Skip("no user config path in this test environment")
+	}
+	edit := config.LoadForEdit(editPath)
+	if err := edit.SetDesktopDefaultToolApprovalMode("ask"); err != nil {
+		t.Fatal(err)
+	}
+	if err := edit.SaveTo(editPath); err != nil {
+		t.Fatal(err)
+	}
+	ctrl2, _ := testCtrlWithWorkspace(t)
+	srv2 := httptest.NewServer(New(ctrl2, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv2.Close()
+	resp2, err := http.Get(srv2.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if err := json.NewDecoder(resp2.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.ToolApprovalMode != "ask" {
+		t.Fatalf("configured toolApprovalMode = %q, want ask", st.ToolApprovalMode)
+	}
+}
+
+// TestServeSubmitEffortBare checks that a bare /effort submit is intercepted
+// (reporting the current effort capability) instead of falling through to the
+// controller's "unknown command" notice.
+func TestServeSubmitEffortBare(t *testing.T) {
+	ctrl, _ := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	// Bare command (with and without trailing whitespace) must return the
+	// same capability payload as GET /effort — 200 JSON, not unknown command.
+	for _, input := range []string{`{"input":"/effort"}`, `{"input":"/effort "}`} {
+		resp, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("POST /submit %s status = %d, want 200 (%s)", input, resp.StatusCode, body)
+		}
+		var body struct {
+			Supported bool     `json:"supported"`
+			Levels    []string `json:"levels"`
+			Current   string   `json:"current"`
+			Default   string   `json:"default"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			resp.Body.Close()
+			t.Fatalf("decode /submit %s: %v", input, err)
+		}
+		resp.Body.Close()
+		if body.Supported && (len(body.Levels) == 0 || body.Current == "") {
+			t.Errorf("bare /effort payload inconsistent: %+v", body)
+		}
+	}
+
+	// An invalid level must not fall through to the controller either — the
+	// switch rejects it before any turn is submitted.
+	bad, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"/effort bogus"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusInternalServerError {
+		t.Errorf("POST /submit /effort bogus status = %d, want 500", bad.StatusCode)
 	}
 }
 
