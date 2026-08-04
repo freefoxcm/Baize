@@ -339,6 +339,53 @@ func (s *Server) switchEffort(ctx context.Context, level string) error {
 	return s.switchModel(ctx, entry.Name+"/"+entry.Model)
 }
 
+// effort reports the reasoning-effort capability of the active provider
+// (desktop EffortSwitcher data: supported / levels / current / default).
+func (s *Server) effort(w http.ResponseWriter, _ *http.Request) {
+	cfg, err := config.Load()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ref := currentModelRef(s.ctl())
+	entry, ok := cfg.ResolveModel(ref)
+	if !ok {
+		writeJSON(w, map[string]any{"supported": false, "levels": []string{}, "current": "", "default": ""})
+		return
+	}
+	cap := config.EffortCapabilityForEntry(entry)
+	current := entry.Effort
+	if current == "" {
+		current = cap.Default
+	}
+	writeJSON(w, map[string]any{
+		"supported": cap.Supported,
+		"levels":    cap.Levels,
+		"current":   current,
+		"default":   cap.Default,
+	})
+}
+
+// setEffort switches the reasoning-effort level of the active provider.
+func (s *Server) setEffort(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Level string `json:"level"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Level == "" {
+		http.Error(w, "missing level", http.StatusBadRequest)
+		return
+	}
+	if controllerHasActiveRuntimeWork(s.ctl()) {
+		http.Error(w, "cannot change effort while work is running", http.StatusConflict)
+		return
+	}
+	if err := s.switchEffort(r.Context(), req.Level); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func controllerHasActiveRuntimeWork(ctrl control.SessionAPI) bool {
 	if ctrl == nil {
 		return false
@@ -391,6 +438,8 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
 	mux.HandleFunc("POST /attach", s.attach)
+	mux.HandleFunc("GET /effort", s.effort)
+	mux.HandleFunc("POST /effort", s.setEffort)
 	mux.HandleFunc("POST /cancel", s.cancel)
 	mux.HandleFunc("POST /approve", s.approve)
 	mux.HandleFunc("POST /plan", s.plan)

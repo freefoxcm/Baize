@@ -57,6 +57,18 @@ branch.
   The turn fold bar now sits after the user message (desktop TurnCollapse
   position) and is styled as a borderless inline button with a hover tint
   instead of a bordered card, aligned to the message column width.
+  The composer is now a desktop-style card: a run strip above the input
+  (spinner-word ticker, elapsed time, live token count; "waiting for
+  approval/answer" and retry states), an ↑ send / ⏹ stop button pair, and a
+  bottom meta bar with an ask/auto/yolo approval modebar (toolbar auto/yolo
+  buttons removed) and an inline model switcher opening the models modal.
+  The composer meta bar is now fully desktop-aligned: a Direct/Plan/Goal task
+  mode trigger (toolbar plan/goal buttons removed), modebar thumb colors per
+  mode (ask neutral, auto blue, yolo red with white active text), a model
+  switcher popover (search, provider grouping with current group first,
+  check mark on the active model, `label · provider` trigger), and an effort
+  switcher backed by new GET/POST /effort endpoints (hidden when the active
+  provider does not support effort).
 - The serve WebUI now renders assistant messages with GFM markdown, syntax
   highlighting (highlight.js), collapsible reasoning blocks that auto-expand
   while streaming and auto-collapse when done, per-turn grouping with a

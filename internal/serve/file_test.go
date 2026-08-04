@@ -184,3 +184,43 @@ func TestServeAttachSavesBase64Image(t *testing.T) {
 		t.Errorf("missing data status = %d, want 400", resp.StatusCode)
 	}
 }
+
+// TestServeEffortEndpoints checks the effort capability shape and validation.
+func TestServeEffortEndpoints(t *testing.T) {
+	ctrl, _ := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/effort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /effort status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Supported bool     `json:"supported"`
+		Levels    []string `json:"levels"`
+		Current   string   `json:"current"`
+		Default   string   `json:"default"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /effort: %v", err)
+	}
+	if body.Supported && len(body.Levels) == 0 {
+		t.Error("supported=true but no levels")
+	}
+	if body.Supported && body.Current == "" {
+		t.Error("supported=true but empty current")
+	}
+
+	bad, err := http.Post(srv.URL+"/effort", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Errorf("POST /effort {} status = %d, want 400", bad.StatusCode)
+	}
+}
