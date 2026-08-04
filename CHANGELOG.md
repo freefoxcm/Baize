@@ -7,6 +7,19 @@ branch.
 ## Unreleased
 
 ### Added
+- Run-strip desktop parity: the ticker now counts NET work time (approval/ask
+  waits are paused and excluded via `waitAccumMs`), waits freeze the ticker and
+  show a stable status line, and retry shows only its own copy. The footer
+  status text is back to pure connection state (connected/reconnecting/
+  disconnected) — running state lives solely in the composer run-strip. The
+  strip matches the desktop styles (accent color, 6px currentColor dot, warn
+  waiting tint, `tabular-nums`) and gained `sr-only` announce + `aria-hidden`
+  ticker for accessibility.
+  The footer toolbar is gone: the connection dot/label, turn-info and the
+  duplicate balance display were all redundant with the sidebar status block.
+  Connection state now lives solely in the sidebar dot (with a tooltip), the
+  approval slot sits directly above the composer card, and the duplicate
+  `#approval-slot` element was removed.
 
 - Added a **Remote SSH** module (VS Code Remote-SSH style): a user-global
   `[remote]` host config, `reasonix remote` CLI (add/list/remove/import/test/
@@ -69,6 +82,19 @@ branch.
   check mark on the active model, `label · provider` trigger), and an effort
   switcher backed by new GET/POST /effort endpoints (hidden when the active
   provider does not support effort).
+  Composer width now matches the message column (960px, desktop --maxw) and
+  the card uses overflow:visible so the upward menus are no longer clipped.
+  The approval modebar thumb/text details are aligned item-by-item with
+  desktop (14px icons, fg-dim inactive text, 620 weight, elevated ask thumb).
+  Work mode (runtime profile) is now a separate control from execution mode,
+  matching desktop: execution method shows Standard/Plan/Goal, and a new Work
+  mode trigger switches Balanced/Lightweight/Delivery via new GET/POST
+  /profile endpoints (rebuilds the controller under boot.Options.TokenMode;
+  in-memory, resets to full on restart).
+  The model switcher groups by the mapped provider label instead of the raw
+  provider name, so deepseek / deepseek-flash / deepseek-pro collapse into a
+  single provider group; same-named models inside a group are de-duplicated
+  (active/default entry wins).
 - The serve WebUI now renders assistant messages with GFM markdown, syntax
   highlighting (highlight.js), collapsible reasoning blocks that auto-expand
   while streaming and auto-collapse when done, per-turn grouping with a

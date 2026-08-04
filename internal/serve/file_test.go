@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -222,5 +223,76 @@ func TestServeEffortEndpoints(t *testing.T) {
 	bad.Body.Close()
 	if bad.StatusCode != http.StatusBadRequest {
 		t.Errorf("POST /effort {} status = %d, want 400", bad.StatusCode)
+	}
+}
+
+// TestServeProfileEndpoints checks the work-mode (runtime profile) endpoints.
+func TestServeProfileEndpoints(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{
+		Sink:       bc,
+		Label:      "m",
+		SessionDir: t.TempDir(),
+	})
+	server := New(ctrl, bc, config.ServeConfig{})
+	var rebuilt bool
+	server.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
+		rebuilt = true
+		return control.New(control.Options{
+			Sink:       bc,
+			Label:      "m",
+			SessionDir: t.TempDir(),
+		}), nil
+	}
+	srv := httptest.NewServer(server.Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["mode"] != "full" {
+		t.Fatalf("initial mode = %v, want full", body["mode"])
+	}
+
+	// Missing / invalid mode are rejected.
+	for _, payload := range []string{`{}`, `{"mode":"bogus"}`} {
+		bad, err := http.Post(srv.URL+"/profile", "application/json", strings.NewReader(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad.Body.Close()
+		if bad.StatusCode != http.StatusBadRequest {
+			t.Errorf("POST /profile %s status = %d, want 400", payload, bad.StatusCode)
+		}
+	}
+
+	// Switching to economy rebuilds the controller and persists the mode.
+	ok, err := http.Post(srv.URL+"/profile", "application/json", strings.NewReader(`{"mode":"economy"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /profile economy status = %d, want 204", ok.StatusCode)
+	}
+	if !rebuilt {
+		t.Error("work-mode switch did not rebuild the controller")
+	}
+	resp2, err := http.Get(srv.URL + "/profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if err := json.NewDecoder(resp2.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["mode"] != "economy" {
+		t.Fatalf("mode after switch = %v, want economy", body["mode"])
 	}
 }
