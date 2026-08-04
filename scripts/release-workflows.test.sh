@@ -1131,6 +1131,7 @@ expect_invalid_desktop_manifest "a non-official asset base" preview "$desktop_pr
 # Release notes use one deterministic branch per official version. Failure to
 # open the PR must preserve that branch and print an exact manual handoff.
 prepare_notes="$repo_root/.github/workflows/prepare-release-notes.yml"
+generate_notes="$repo_root/scripts/generate-release-notes.mjs"
 if grep -Eq '^      (target_pr|from_tag):$' "$prepare_notes"; then
 	echo "Prepare release must expose only the official version input" >&2
 	exit 1
@@ -1139,6 +1140,7 @@ grep -Fq 'branch="release-notes/v${VERSION}"' "$prepare_notes"
 grep -Fq 'GitHub Actions could not open the PR; the reviewed branch is preserved.' "$prepare_notes"
 grep -Fq 'gh pr create --repo ${{ github.repository }} --base main-v2 --head $RELEASE_NOTES_BRANCH --fill' "$prepare_notes"
 grep -Eq 'GITHUB_STEP_SUMMARY' "$prepare_notes"
+grep -Fq 'thinking: { type: "disabled" }' "$generate_notes"
 
 desktop_candidate_resolver="$repo_root/scripts/resolve-desktop-candidate.sh"
 test -x "$desktop_candidate_resolver"

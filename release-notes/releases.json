@@ -2,6 +2,494 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.19.6",
+      "date": "2026-08-04",
+      "channel": "stable",
+      "title": {
+        "en": "Versioned docs, transactional rewind, and safer recovery",
+        "zh": "版本化文档、事务性回滚与更安全的恢复"
+      },
+      "summary": {
+        "en": "This release brings embedded version-matched documentation, transactional rewind, safer subagent cleanup, and numerous desktop and CLI fixes.",
+        "zh": "此版本带来内置版本匹配文档、事务性回滚、更安全的子代理清理以及大量桌面和 CLI 修复。"
+      },
+      "surfaces": [
+        "desktop",
+        "cli",
+        "config",
+        "recovery",
+        "security",
+        "updates"
+      ],
+      "guides": [
+        {
+          "title": {
+            "en": "Embedded Documentation",
+            "zh": "内置文档"
+          },
+          "body": {
+            "en": "Use /docs to access version-matched product documentation directly in Reasonix.",
+            "zh": "使用 /docs 直接在 Reasonix 中访问版本匹配的产品文档。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ad763bce81b381efd2ada78ac1bae20d3a25dd23/docs/GUIDE.md"
+        }
+      ],
+      "highlights": [
+        {
+          "kind": "new",
+          "title": {
+            "en": "Embedded version-matched documentation",
+            "zh": "内置版本匹配文档"
+          },
+          "body": {
+            "en": "Access official product docs and release history directly in Reasonix with the /docs command. The built-in docs tool retrieves version-matched evidence before the AI composes an answer.",
+            "zh": "使用 /docs 命令直接在 Reasonix 中访问官方产品文档和发布历史。内置文档工具在 AI 撰写答案前检索版本匹配的证据。"
+          },
+          "refs": [
+            7402
+          ]
+        },
+        {
+          "kind": "new",
+          "title": {
+            "en": "Transactional rewind and single-file revert",
+            "zh": "事务性回滚与单文件还原"
+          },
+          "body": {
+            "en": "Rewind operations now use durable transactions with SHA-256-verified blobs, crash recovery, and conflict detection. Undo is available for both code rewind and single-file session revert.",
+            "zh": "回滚操作现在使用持久事务，具有 SHA-256 验证的 blob、崩溃恢复和冲突检测。代码回滚和单文件会话还原均支持撤销。"
+          },
+          "refs": [
+            7356
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": {
+            "en": "Safer subagent cleanup and startup",
+            "zh": "更安全的子代理清理与启动"
+          },
+          "body": {
+            "en": "Subagent cleanup no longer causes false startup errors or blocks on corrupt metadata. Stale subagents are cleaned up on every controller build with a parent-session liveness probe.",
+            "zh": "子代理清理不再导致误启动错误或因损坏的元数据而阻塞。每次控制器构建时都会通过父会话活跃探测清理过时的子代理。"
+          },
+          "refs": [
+            7405,
+            7225
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": {
+            "en": "Desktop and CLI quality improvements",
+            "zh": "桌面与 CLI 质量改进"
+          },
+          "body": {
+            "en": "Middle-click tab close, unified token display, workspace config override warnings, and many layout and permission fixes improve the daily experience.",
+            "zh": "中键关闭标签页、统一的 token 显示、工作区配置覆盖警告以及众多布局和权限修复改善了日常体验。"
+          },
+          "refs": [
+            4330,
+            7404,
+            7413,
+            7362,
+            7437,
+            7430,
+            7317
+          ]
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Updater and recovery fixes",
+            "zh": "更新器与恢复修复"
+          },
+          "body": {
+            "en": "Orphaned macOS app backups are now recovered, and pending update debris no longer blocks future updates or forces safe mode.",
+            "zh": "孤立的 macOS 应用备份现在可恢复，残留的待处理更新不再阻塞后续更新或强制安全模式。"
+          },
+          "refs": [
+            7369,
+            7366
+          ]
+        }
+      ],
+      "changes": {
+        "new": [
+          {
+            "title": {
+              "en": "Embedded version-matched documentation",
+              "zh": "内置版本匹配文档"
+            },
+            "body": {
+              "en": "Access official product docs and release history directly in Reasonix with the /docs command.",
+              "zh": "使用 /docs 命令直接在 Reasonix 中访问官方产品文档和发布历史。"
+            },
+            "refs": [
+              7402
+            ]
+          },
+          {
+            "title": {
+              "en": "Transactional rewind and single-file revert",
+              "zh": "事务性回滚与单文件还原"
+            },
+            "body": {
+              "en": "Rewind operations now use durable transactions with SHA-256-verified blobs, crash recovery, and conflict detection.",
+              "zh": "回滚操作现在使用持久事务，具有 SHA-256 验证的 blob、崩溃恢复和冲突检测。"
+            },
+            "refs": [
+              7356
+            ]
+          },
+          {
+            "title": {
+              "en": "Middle-click tab close",
+              "zh": "中键关闭标签页"
+            },
+            "body": {
+              "en": "Close desktop tabs with a middle click, matching common browser behavior.",
+              "zh": "用中键点击标签页即可关闭，符合常见浏览器行为。"
+            },
+            "refs": [
+              4330
+            ]
+          },
+          {
+            "title": {
+              "en": "Unified token display format",
+              "zh": "统一的 token 显示格式"
+            },
+            "body": {
+              "en": "Token counts now use consistent K/M abbreviations across the composer and context panel.",
+              "zh": "token 计数现在在作曲器和上下文面板中使用一致的 K/M 缩写。"
+            },
+            "refs": [
+              7404
+            ]
+          },
+          {
+            "title": {
+              "en": "Streamlined creation welcome page",
+              "zh": "精简的创作欢迎页"
+            },
+            "body": {
+              "en": "The empty session welcome page now shows a centered hero input with model selection only.",
+              "zh": "空会话欢迎页现在显示居中的 hero 输入框，仅保留模型选择。"
+            },
+            "refs": [
+              7317
+            ]
+          }
+        ],
+        "improved": [
+          {
+            "title": {
+              "en": "Safer subagent cleanup",
+              "zh": "更安全的子代理清理"
+            },
+            "body": {
+              "en": "Subagent cleanup no longer causes false startup errors or blocks on corrupt metadata.",
+              "zh": "子代理清理不再导致误启动错误或因损坏的元数据而阻塞。"
+            },
+            "refs": [
+              7405,
+              7225
+            ]
+          },
+          {
+            "title": {
+              "en": "Workspace config override warning",
+              "zh": "工作区配置覆盖警告"
+            },
+            "body": {
+              "en": "The settings panel now warns when a workspace reasonix.toml overrides the user config.",
+              "zh": "设置面板现在会在工作区 reasonix.toml 覆盖用户配置时发出警告。"
+            },
+            "refs": [
+              7413
+            ]
+          },
+          {
+            "title": {
+              "en": "Responsive settings layout",
+              "zh": "响应式设置布局"
+            },
+            "body": {
+              "en": "Settings pages now wrap correctly on narrow windows, preventing overflow and misalignment.",
+              "zh": "设置页面现在在窄窗口下正确换行，防止溢出和错位。"
+            },
+            "refs": [
+              7362
+            ]
+          },
+          {
+            "title": {
+              "en": "Destructive git command classification",
+              "zh": "破坏性 git 命令分类"
+            },
+            "body": {
+              "en": "Commands like git restore and git stash drop now show danger warnings and require re-approval each time.",
+              "zh": "git restore 和 git stash drop 等命令现在显示危险警告，并每次都需要重新批准。"
+            },
+            "refs": [
+              7437
+            ]
+          },
+          {
+            "title": {
+              "en": "CLI /status shows active config file",
+              "zh": "CLI /status 显示活动配置文件"
+            },
+            "body": {
+              "en": "The /status command now reports which config file is in effect.",
+              "zh": "/status 命令现在报告当前生效的配置文件。"
+            },
+            "refs": [
+              7393
+            ]
+          },
+          {
+            "title": {
+              "en": "CLI word motion with Ctrl+arrows",
+              "zh": "CLI 中使用 Ctrl+箭头移动单词"
+            },
+            "body": {
+              "en": "Ctrl+Left/Right now move by word in the composer on Windows and Linux.",
+              "zh": "在 Windows 和 Linux 上，Ctrl+左/右箭头现在可在作曲器中按单词移动。"
+            },
+            "refs": [
+              7390
+            ]
+          },
+          {
+            "title": {
+              "en": "Windows console ANSI support",
+              "zh": "Windows 控制台 ANSI 支持"
+            },
+            "body": {
+              "en": "Legacy Windows consoles now display colored output correctly in setup and config commands.",
+              "zh": "旧版 Windows 控制台现在可在 setup 和 config 命令中正确显示彩色输出。"
+            },
+            "refs": [
+              7387
+            ]
+          },
+          {
+            "title": {
+              "en": "Recovery notices kept out of IM chats",
+              "zh": "恢复通知不再发送到 IM 聊天"
+            },
+            "body": {
+              "en": "Internal recovery notices are no longer forwarded to WeChat, QQ, or Feishu conversations.",
+              "zh": "内部恢复通知不再转发到微信、QQ 或飞书对话。"
+            },
+            "refs": [
+              7421
+            ]
+          },
+          {
+            "title": {
+              "en": "Subagent list shows start time",
+              "zh": "子代理列表显示开始时间"
+            },
+            "body": {
+              "en": "Subagent CreatedAt now reflects the actual spawn time instead of completion time.",
+              "zh": "子代理的 CreatedAt 现在反映实际生成时间而非完成时间。"
+            },
+            "refs": [
+              7309
+            ]
+          },
+          {
+            "title": {
+              "en": "CLI recovery session grouping",
+              "zh": "CLI 恢复会话分组"
+            },
+            "body": {
+              "en": "Conflict-recovery copies are now grouped with their source session and labeled with a short parent ID.",
+              "zh": "冲突恢复副本现在与其源会话分组，并标有简短的父 ID。"
+            },
+            "refs": [
+              7344
+            ]
+          },
+          {
+            "title": {
+              "en": "Build outputs excluded from @ completion",
+              "zh": "构建输出从 @ 补全中排除"
+            },
+            "body": {
+              "en": "Generated directories like target, __pycache__, and venv no longer appear in file completion.",
+              "zh": "target、__pycache__、venv 等生成目录不再出现在文件补全中。"
+            },
+            "refs": [
+              7401
+            ]
+          },
+          {
+            "title": {
+              "en": "Project provider_access no longer hides user providers",
+              "zh": "项目 provider_access 不再隐藏用户提供者"
+            },
+            "body": {
+              "en": "A project-only provider_access list no longer hides account-level providers in the model switcher.",
+              "zh": "仅项目级别的 provider_access 列表不再在模型切换器中隐藏账户级提供者。"
+            },
+            "refs": [
+              7395
+            ]
+          },
+          {
+            "title": {
+              "en": "Planner model degradation on unresolvable provider",
+              "zh": "无法解析提供者时规划器模型降级"
+            },
+            "body": {
+              "en": "When planner_model names an unknown provider, the desktop now warns and continues with the executor alone.",
+              "zh": "当 planner_model 指定未知提供者时，桌面现在会发出警告并仅使用执行器继续运行。"
+            },
+            "refs": [
+              7434
+            ]
+          },
+          {
+            "title": {
+              "en": "Deleted workspace folder no longer recreated",
+              "zh": "已删除的工作区文件夹不再重新创建"
+            },
+            "body": {
+              "en": "Deleting a workspace folder in Explorer no longer causes Reasonix to recreate it on startup.",
+              "zh": "在资源管理器中删除工作区文件夹不再导致 Reasonix 在启动时重新创建它。"
+            },
+            "refs": [
+              7432
+            ]
+          },
+          {
+            "title": {
+              "en": "Global hooks migration",
+              "zh": "全局钩子迁移"
+            },
+            "body": {
+              "en": "Global hooks in settings.json are now migrated to the new config home.",
+              "zh": "settings.json 中的全局钩子现在迁移到新的配置目录。"
+            },
+            "refs": [
+              7445
+            ]
+          },
+          {
+            "title": {
+              "en": "TUI long approval command display",
+              "zh": "TUI 长批准命令显示"
+            },
+            "body": {
+              "en": "Long commands awaiting approval now wrap in the TUI instead of being clipped.",
+              "zh": "等待批准的长命令现在在 TUI 中换行显示，而不是被截断。"
+            },
+            "refs": [
+              7447
+            ]
+          }
+        ],
+        "fixed": [
+          {
+            "title": {
+              "en": "Orphaned macOS updater backup recovery",
+              "zh": "孤立的 macOS 更新器备份恢复"
+            },
+            "body": {
+              "en": "Interrupted updates no longer leave a permanent backup that blocks future updates.",
+              "zh": "中断的更新不再留下永久备份阻塞后续更新。"
+            },
+            "refs": [
+              7369
+            ]
+          },
+          {
+            "title": {
+              "en": "Pending update debris recovery",
+              "zh": "待处理更新残留恢复"
+            },
+            "body": {
+              "en": "Invalid pending update markers are now cleaned up instead of forcing safe mode.",
+              "zh": "无效的待处理更新标记现在会被清理，而不是强制安全模式。"
+            },
+            "refs": [
+              7366
+            ]
+          },
+          {
+            "title": {
+              "en": "npm dependency security advisories resolved",
+              "zh": "npm 依赖安全告警已解决"
+            },
+            "body": {
+              "en": "All 24 open Dependabot alerts across desktop and worker dependencies have been resolved.",
+              "zh": "桌面和 worker 依赖中所有 24 个开放的 Dependabot 告警已解决。"
+            },
+            "refs": [
+              7446
+            ]
+          },
+          {
+            "title": {
+              "en": "CLI upgrade GitHub authentication",
+              "zh": "CLI 升级 GitHub 认证"
+            },
+            "body": {
+              "en": "reasonix upgrade now uses GITHUB_TOKEN for authenticated GitHub API requests, avoiding rate limits.",
+              "zh": "reasonix upgrade 现在使用 GITHUB_TOKEN 进行认证的 GitHub API 请求，避免速率限制。"
+            },
+            "refs": [
+              7418
+            ]
+          },
+          {
+            "title": {
+              "en": "ACP session/set_config_option documentation",
+              "zh": "ACP session/set_config_option 文档"
+            },
+            "body": {
+              "en": "The ACP documentation now correctly documents the configId parameter.",
+              "zh": "ACP 文档现在正确记录了 configId 参数。"
+            },
+            "refs": [
+              7359
+            ]
+          }
+        ]
+      },
+      "upgrade": [],
+      "risks": [],
+      "contributors": [
+        "SivanCola",
+        "esengine",
+        "zdjmrq",
+        "Li-Charles-One",
+        "Lxiny-zy",
+        "skyzhao1223",
+        "HaoyueQin",
+        "HBLADEH",
+        "tic-top"
+      ],
+      "links": {
+        "github": "https://github.com/esengine/DeepSeek-Reasonix/releases/tag/desktop-v1.19.6",
+        "compare": "https://github.com/esengine/DeepSeek-Reasonix/compare/desktop-v1.19.5...desktop-v1.19.6",
+        "download": "https://reasonix.io/?download=desktop&channel=stable#start"
+      },
+      "releaseId": "1.19.6",
+      "baseVersion": "1.19.6",
+      "status": "reviewed",
+      "previousRelease": "1.19.5",
+      "builds": {
+        "cli": "v1.19.6",
+        "desktop": "v1.19.6",
+        "npm": "1.19.6"
+      }
+    },
+    {
       "version": "1.19.5",
       "date": "2026-08-03",
       "channel": "stable",
