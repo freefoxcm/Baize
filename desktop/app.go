@@ -35,6 +35,7 @@ import (
 	"reasonix/internal/billing"
 	"reasonix/internal/boot"
 	"reasonix/internal/botruntime"
+	"reasonix/internal/checkpoint"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
@@ -2590,16 +2591,58 @@ func removeDesktopSessionArtifacts(path string) error {
 }
 
 // CheckpointMeta summarises one rewind point (a user turn) for the desktop.
+// Optional v2 fields use omitempty so older frontends keep reading the rest.
 type CheckpointMeta struct {
-	Turn            int      `json:"turn"`
-	Prompt          string   `json:"prompt"`
-	Files           []string `json:"files"`     // stable preview of cumulative files RestoreCode would affect from this turn
-	FileCount       int      `json:"fileCount"` // full cumulative file count, including entries omitted from Files
-	FilesTruncated  bool     `json:"filesTruncated,omitempty"`
-	TurnFileCount   int      `json:"turnFileCount"` // files changed during this turn only
-	Time            int64    `json:"time"`          // unix milliseconds
-	CanCode         bool     `json:"canCode"`
-	CanConversation bool     `json:"canConversation"`
+	Turn               int      `json:"turn"`
+	Prompt             string   `json:"prompt"`
+	Files              []string `json:"files"`     // stable preview of cumulative files RestoreCode would affect from this turn
+	FileCount          int      `json:"fileCount"` // full cumulative file count, including entries omitted from Files
+	FilesTruncated     bool     `json:"filesTruncated,omitempty"`
+	TurnFileCount      int      `json:"turnFileCount"` // files changed during this turn only
+	Time               int64    `json:"time"`          // unix milliseconds
+	CanCode            bool     `json:"canCode"`
+	CanConversation    bool     `json:"canConversation"`
+	Coverage           string   `json:"coverage,omitempty"`
+	CoverageGaps       []string `json:"coverageGaps,omitempty"`
+	ExpiredFilePayload bool     `json:"expiredFilePayload,omitempty"`
+	ActiveWriters      int      `json:"activeWriters,omitempty"`
+	Legacy             bool     `json:"legacy,omitempty"`
+	CanUndoFiles       bool     `json:"canUndoFiles,omitempty"`
+	DisabledReason     string   `json:"disabledReason,omitempty"`
+}
+
+// RewindPlanView is the desktop-facing prepare result.
+type RewindPlanView struct {
+	PlanID             string   `json:"planId"`
+	Turn               int      `json:"turn"`
+	Scope              string   `json:"scope"`
+	Coverage           string   `json:"coverage,omitempty"`
+	CoverageGaps       []string `json:"coverageGaps,omitempty"`
+	Legacy             bool     `json:"legacy,omitempty"`
+	ExpiredFilePayload bool     `json:"expiredFilePayload,omitempty"`
+	CanFiles           bool     `json:"canFiles"`
+	CanConversation    bool     `json:"canConversation"`
+	DisabledReason     string   `json:"disabledReason,omitempty"`
+	Conflicts          []string `json:"conflicts,omitempty"`
+	Files              []string `json:"files,omitempty"`
+	FileCount          int      `json:"fileCount"`
+	ActiveWriters      int      `json:"activeWriters,omitempty"`
+	Path               string   `json:"path,omitempty"`
+	OK                 bool     `json:"ok"`
+	Error              string   `json:"error,omitempty"`
+}
+
+// RewindResultView is the desktop-facing commit/undo result.
+type RewindResultView struct {
+	OK             bool     `json:"ok"`
+	TransactionID  string   `json:"transactionId,omitempty"`
+	UndoAvailable  bool     `json:"undoAvailable"`
+	Written        []string `json:"written,omitempty"`
+	Deleted        []string `json:"deleted,omitempty"`
+	ConversationOK bool     `json:"conversationOk,omitempty"`
+	Error          string   `json:"error,omitempty"`
+	Conflicts      []string `json:"conflicts,omitempty"`
+	Coverage       string   `json:"coverage,omitempty"`
 }
 
 const checkpointFilePreviewLimit = 60
@@ -2625,15 +2668,32 @@ func (a *App) CheckpointsForTab(tabID string) []CheckpointMeta {
 	metas := ctrl.Checkpoints()
 	out := make([]CheckpointMeta, 0, len(metas))
 	for _, m := range metas {
-		out = append(out, CheckpointMeta{
-			Turn:            m.Turn,
-			Prompt:          m.Prompt,
-			Files:           m.Paths,
-			TurnFileCount:   len(m.Paths),
-			Time:            m.Time.UnixMilli(),
-			CanCode:         len(m.Paths) > 0,
-			CanConversation: ctrl.CheckpointHasBoundary(m.Turn),
-		})
+		gaps := make([]string, 0, len(m.CoverageGaps))
+		for _, g := range m.CoverageGaps {
+			if g.Detail != "" {
+				gaps = append(gaps, g.Reason+": "+g.Detail)
+			} else {
+				gaps = append(gaps, g.Reason)
+			}
+		}
+		cov := string(m.Coverage)
+		meta := CheckpointMeta{
+			Turn:               m.Turn,
+			Prompt:             m.Prompt,
+			Files:              m.Paths,
+			TurnFileCount:      len(m.Paths),
+			Time:               m.Time.UnixMilli(),
+			CanCode:            len(m.Paths) > 0 && m.CanUndoFiles,
+			CanConversation:    ctrl.CheckpointHasBoundary(m.Turn),
+			Coverage:           cov,
+			CoverageGaps:       gaps,
+			ExpiredFilePayload: m.ExpiredFilePayload,
+			ActiveWriters:      len(m.ActiveWriters),
+			Legacy:             m.Legacy,
+			CanUndoFiles:       m.CanUndoFiles,
+			DisabledReason:     m.DisabledReason,
+		}
+		out = append(out, meta)
 	}
 	// RestoreCode(turn) reverts every file touched in this turn or any later one, so
 	// a turn can rewind code even when it changed no files itself — as long as a
@@ -2641,11 +2701,15 @@ func (a *App) CheckpointsForTab(tabID string) []CheckpointMeta {
 	// Also propagate the cumulative unique file count so the UI shows how many
 	// files RestoreCode would actually affect from this turn.
 	hasCodeAfter := false
+	canCodeAfter := true
 	codeFileSet := make(map[string]bool, len(metas)*2)
 	codeFilePreview := []string{}
 	for i := len(out) - 1; i >= 0; i-- {
 		if len(out[i].Files) > 0 {
 			hasCodeAfter = true
+			if !out[i].CanUndoFiles {
+				canCodeAfter = false
+			}
 		}
 		for _, f := range out[i].Files {
 			if codeFileSet[f] {
@@ -2654,7 +2718,7 @@ func (a *App) CheckpointsForTab(tabID string) []CheckpointMeta {
 			codeFileSet[f] = true
 			codeFilePreview = insertCheckpointFilePreview(codeFilePreview, f, checkpointFilePreviewLimit)
 		}
-		out[i].CanCode = hasCodeAfter
+		out[i].CanCode = hasCodeAfter && canCodeAfter
 		out[i].FileCount = len(codeFileSet)
 		out[i].Files = append([]string{}, codeFilePreview...)
 		out[i].FilesTruncated = out[i].FileCount > len(out[i].Files)
@@ -2742,6 +2806,8 @@ func (a *App) Rewind(turn int, scope string) error {
 
 // RewindForTab rewinds the requested tab instead of resolving the active tab at
 // execution time, which may have changed after frontend confirmation.
+// Compatibility wrapper over the transactional path when available; falls back
+// to Controller.Rewind which prechecks conversation before files for both scope.
 func (a *App) RewindForTab(tabID string, turn int, scope string) error {
 	if cli, _, _, remoteTabID, ok := a.activeRemoteWorkbench(); ok {
 		remoteScope := protocol.RewindBoth
@@ -2774,6 +2840,247 @@ func (a *App) RewindForTab(tabID string, turn int, scope string) error {
 		s = control.RewindConversation
 	}
 	return ctrl.Rewind(turn, s)
+}
+
+// PreviewRewindForTab returns a structured precheck without mutating state.
+func (a *App) PreviewRewindForTab(tabID string, turn int, scope string) RewindPlanView {
+	if _, _, _, _, ok := a.activeRemoteWorkbench(); ok {
+		return RewindPlanView{
+			OK: false, Error: "remote host uses legacy rewind semantics",
+			DisabledReason: "remote host uses legacy rewind semantics",
+		}
+	}
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if a.tabIsReadOnly(tab) {
+		return RewindPlanView{OK: false, Error: readOnlyChannelErr().Error()}
+	}
+	if ctrl == nil {
+		return RewindPlanView{OK: false, Error: "no controller"}
+	}
+	s := control.RewindBoth
+	switch scope {
+	case "code":
+		s = control.RewindCode
+	case "conversation":
+		s = control.RewindConversation
+	}
+	plan, err := ctrl.PrepareRewind(turn, s)
+	view := rewindPlanToView(plan, scope)
+	if err != nil {
+		view.OK = false
+		view.Error = err.Error()
+		return view
+	}
+	view.OK = true
+	return view
+}
+
+// CommitRewindForTab executes prepare (if planID empty) then commit immediately.
+func (a *App) CommitRewindForTab(tabID, planID string, turn int, scope string) RewindResultView {
+	if cli, _, _, remoteTabID, ok := a.activeRemoteWorkbench(); ok {
+		// Remote keeps old protocol.
+		remoteScope := protocol.RewindBoth
+		switch scope {
+		case "code":
+			remoteScope = protocol.RewindCode
+		case "conversation":
+			remoteScope = protocol.RewindConversation
+		}
+		_, err := a.workbenchRequest(protocol.MethodSessionRewind, protocol.SessionRewindParams{
+			CheckpointID: protocol.CheckpointID(fmt.Sprintf("checkpoint_%d", turn)), Scope: remoteScope,
+		})
+		if err != nil {
+			return RewindResultView{OK: false, Error: err.Error()}
+		}
+		a.workbenchRefreshSnapshot(cli.Generation(), remoteTabID)
+		return RewindResultView{OK: true}
+	}
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if a.tabIsReadOnly(tab) {
+		return RewindResultView{OK: false, Error: readOnlyChannelErr().Error()}
+	}
+	if ctrl == nil {
+		return RewindResultView{OK: false, Error: "no controller"}
+	}
+	s := control.RewindBoth
+	switch scope {
+	case "code":
+		s = control.RewindCode
+	case "conversation":
+		s = control.RewindConversation
+	}
+	if planID == "" {
+		plan, err := ctrl.PrepareRewind(turn, s)
+		if err != nil {
+			return RewindResultView{OK: false, Error: err.Error()}
+		}
+		// Conversation-only is allowed when its boundary is valid. File scopes
+		// never fall back to the legacy force-restore path.
+		if s == control.RewindConversation {
+			if !plan.CanConversation {
+				return RewindResultView{OK: false, Error: nonEmptyStr(plan.DisabledReason, "conversation rewind unavailable")}
+			}
+		} else if !plan.CanFiles {
+			return RewindResultView{OK: false, Error: nonEmptyStr(plan.DisabledReason, "file rewind unavailable"), Conflicts: conflictStrings(plan), Coverage: string(plan.Coverage)}
+		}
+		planID = plan.PlanID
+	}
+	result, err := ctrl.CommitRewind(planID)
+	view := rewindResultToView(result)
+	if err != nil {
+		view.OK = false
+		if view.Error == "" {
+			view.Error = err.Error()
+		}
+	}
+	return view
+}
+
+// UndoRewindForTab undoes the last successful rewind on the tab when available.
+func (a *App) UndoRewindForTab(tabID, transactionID string) RewindResultView {
+	if _, _, _, _, ok := a.activeRemoteWorkbench(); ok {
+		return RewindResultView{OK: false, Error: "remote host uses legacy rewind semantics"}
+	}
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if a.tabIsReadOnly(tab) {
+		return RewindResultView{OK: false, Error: readOnlyChannelErr().Error()}
+	}
+	if ctrl == nil {
+		return RewindResultView{OK: false, Error: "no controller"}
+	}
+	result, err := ctrl.UndoRewind(transactionID)
+	view := rewindResultToView(result)
+	if err != nil {
+		view.OK = false
+		if view.Error == "" {
+			view.Error = err.Error()
+		}
+	}
+	return view
+}
+
+// PreviewWorkspaceFileRevertForTab prepares a single-file session-owned revert.
+func (a *App) PreviewWorkspaceFileRevertForTab(tabID, path string) RewindPlanView {
+	if _, _, _, _, ok := a.activeRemoteWorkbench(); ok {
+		return RewindPlanView{OK: false, Error: "remote host uses legacy rewind semantics", Path: path}
+	}
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if a.tabIsReadOnly(tab) {
+		return RewindPlanView{OK: false, Error: readOnlyChannelErr().Error(), Path: path}
+	}
+	if ctrl == nil {
+		return RewindPlanView{OK: false, Error: "no controller", Path: path}
+	}
+	plan, err := ctrl.PrepareFileRevert(path)
+	view := rewindPlanToView(plan, "code")
+	view.Path = path
+	if err != nil {
+		view.OK = false
+		view.Error = err.Error()
+		return view
+	}
+	view.OK = plan.CanFiles || len(plan.Conflicts) > 0
+	return view
+}
+
+// CommitWorkspaceFileRevertForTab commits a single-file revert.
+// resolution is "keep_current" or "overwrite_checkpoint".
+func (a *App) CommitWorkspaceFileRevertForTab(tabID, planID, resolution string) RewindResultView {
+	if _, _, _, _, ok := a.activeRemoteWorkbench(); ok {
+		return RewindResultView{OK: false, Error: "remote host uses legacy rewind semantics"}
+	}
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if a.tabIsReadOnly(tab) {
+		return RewindResultView{OK: false, Error: readOnlyChannelErr().Error()}
+	}
+	if ctrl == nil {
+		return RewindResultView{OK: false, Error: "no controller"}
+	}
+	res := checkpoint.ConflictResolution("")
+	switch resolution {
+	case "keep_current":
+		res = checkpoint.ResolveKeepCurrent
+	case "overwrite_checkpoint":
+		res = checkpoint.ResolveOverwriteCheckpoint
+	}
+	result, err := ctrl.CommitFileRevert(planID, res)
+	view := rewindResultToView(result)
+	if err != nil {
+		view.OK = false
+		if view.Error == "" {
+			view.Error = err.Error()
+		}
+	}
+	return view
+}
+
+func rewindPlanToView(plan checkpoint.RewindPlan, scope string) RewindPlanView {
+	gaps := make([]string, 0, len(plan.CoverageGaps))
+	for _, g := range plan.CoverageGaps {
+		if g.Detail != "" {
+			gaps = append(gaps, g.Reason+": "+g.Detail)
+		} else {
+			gaps = append(gaps, g.Reason)
+		}
+	}
+	return RewindPlanView{
+		PlanID:             plan.PlanID,
+		Turn:               plan.Turn,
+		Scope:              scope,
+		Coverage:           string(plan.Coverage),
+		CoverageGaps:       gaps,
+		Legacy:             plan.Legacy,
+		ExpiredFilePayload: plan.ExpiredFilePayload,
+		CanFiles:           plan.CanFiles,
+		CanConversation:    plan.CanConversation,
+		DisabledReason:     plan.DisabledReason,
+		Conflicts:          conflictStrings(plan),
+		Files:              plan.Files,
+		FileCount:          plan.FileCount,
+		ActiveWriters:      len(plan.ActiveWriters),
+		Path:               plan.Path,
+	}
+}
+
+func conflictStrings(plan checkpoint.RewindPlan) []string {
+	out := make([]string, 0, len(plan.Conflicts))
+	for _, c := range plan.Conflicts {
+		if c.Path != "" {
+			out = append(out, c.Path+": "+c.Reason)
+		} else {
+			out = append(out, c.Reason)
+		}
+	}
+	return out
+}
+
+func rewindResultToView(result checkpoint.RewindResult) RewindResultView {
+	conflicts := make([]string, 0, len(result.Conflicts))
+	for _, c := range result.Conflicts {
+		if c.Path != "" {
+			conflicts = append(conflicts, c.Path+": "+c.Reason)
+		} else {
+			conflicts = append(conflicts, c.Reason)
+		}
+	}
+	return RewindResultView{
+		OK:             result.OK,
+		TransactionID:  result.TransactionID,
+		UndoAvailable:  result.UndoAvailable,
+		Written:        result.Written,
+		Deleted:        result.Deleted,
+		ConversationOK: result.ConversationOK,
+		Error:          result.Error,
+		Conflicts:      conflicts,
+		Coverage:       string(result.Coverage),
+	}
+}
+
+func nonEmptyStr(s, fallback string) string {
+	if s != "" {
+		return s
+	}
+	return fallback
 }
 
 // Fork branches the conversation at the start of turn into a new session tab
@@ -10368,13 +10675,14 @@ type FilePreview struct {
 }
 
 type WorkspaceChangeView struct {
-	Path         string   `json:"path"`
-	OldPath      string   `json:"oldPath,omitempty"`
-	Sources      []string `json:"sources"`
-	GitStatus    string   `json:"gitStatus,omitempty"`
-	Turns        []int    `json:"turns,omitempty"`
-	LatestPrompt string   `json:"latestPrompt,omitempty"`
-	LatestTime   int64    `json:"latestTime,omitempty"`
+	Path             string   `json:"path"`
+	OldPath          string   `json:"oldPath,omitempty"`
+	Sources          []string `json:"sources"`
+	GitStatus        string   `json:"gitStatus,omitempty"`
+	Turns            []int    `json:"turns,omitempty"`
+	LatestPrompt     string   `json:"latestPrompt,omitempty"`
+	LatestTime       int64    `json:"latestTime,omitempty"`
+	CanSessionRevert bool     `json:"canSessionRevert,omitempty"`
 }
 
 type WorkspaceChangesView struct {

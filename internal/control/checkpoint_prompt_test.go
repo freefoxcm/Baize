@@ -48,3 +48,24 @@ func TestCheckpointsReturnUserPromptWithoutComposedPrefixes(t *testing.T) {
 		t.Fatalf("checkpoint prompt still carries composed prefixes: %q", cps[0].Prompt)
 	}
 }
+
+func TestHeadlessRunOpensCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	sess := agent.NewSession("sys")
+	exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	c := New(Options{
+		Runner:      &fakeTurnRunner{},
+		Executor:    exec,
+		SessionDir:  dir,
+		SessionPath: filepath.Join(dir, "headless.jsonl"),
+		Label:       "test",
+	})
+
+	if err := c.Run(context.Background(), "headless edit"); err != nil {
+		t.Fatal(err)
+	}
+	checkpoints := c.Checkpoints()
+	if len(checkpoints) != 1 || checkpoints[0].Turn != 0 || checkpoints[0].Prompt != "headless edit" {
+		t.Fatalf("headless checkpoints = %+v, want one checkpoint for the submitted turn", checkpoints)
+	}
+}

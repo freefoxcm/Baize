@@ -145,6 +145,13 @@ func (a *App) WorkspaceChanges(tabID string) WorkspaceChangesView {
 	for _, acc := range changes {
 		if acc.hasSession {
 			acc.view.Sources = append(acc.view.Sources, "session")
+			// Session-owned files with a recorded preimage can one-click revert
+			// to the first Reasonix touch (not Git HEAD).
+			if ctrl != nil {
+				if state, ok := ctrl.CheckpointFileState(acc.view.Path); ok && state.Owned {
+					acc.view.CanSessionRevert = true
+				}
+			}
 		}
 		if acc.hasGit {
 			acc.view.Sources = append(acc.view.Sources, "git")

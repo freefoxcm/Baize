@@ -347,6 +347,10 @@ type Messages struct {
 	RewindPickHint            string
 	RewindRestoreTitleFmt     string
 	RewindApplyHint           string
+	RewindCoverageTitle       string
+	RewindCoverageWarningFmt  string
+	RewindConfirmHint         string
+	RewindUnavailableFmt      string
 	RewindEmpty               string
 
 	// skill picker overlay (/skills interactive panel in CLI TUI)

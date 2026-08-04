@@ -15,6 +15,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"reasonix/internal/capability"
+	"reasonix/internal/checkpoint"
 	"reasonix/internal/diff"
 	"reasonix/internal/event"
 	"reasonix/internal/evidence"
@@ -387,8 +388,14 @@ type Agent struct {
 	// just before it runs — the seam the checkpoint store uses to snapshot a
 	// file's pre-edit content. Only fires for non-ReadOnly tools that implement
 	// tool.Previewer (so bash, whose targets are unknowable, is never tracked).
-	// Set via SetPreEditHook.
+	// Set via SetPreEditHook. Prefer mutationObserver when both are set.
 	onPreEdit func(diff.Change)
+
+	// mutationObserver is the host-side unified file mutation observer. It
+	// captures preimages before tools run and after-fingerprints regardless of
+	// success/failure. Passed through Options to sub-agents; never changes
+	// provider-visible tool schemas or prompts.
+	mutationObserver *checkpoint.MutationObserver
 
 	// jobs, when non-nil, is the session's background-job manager. executeOne
 	// stamps it onto each tool call's context so the background tools (bash
@@ -725,7 +732,31 @@ func (a *Agent) SetMemoryQueue(q memory.Queue) { a.memQueue = q }
 
 // SetPreEditHook installs the pre-edit snapshot hook (see onPreEdit). The
 // controller wires it to its per-session checkpoint store; nil disables capture.
+// Prefer SetMutationObserver for v2 capture (before+after fingerprints).
 func (a *Agent) SetPreEditHook(fn func(diff.Change)) { a.onPreEdit = fn }
+
+// SetMutationObserver installs the unified mutation observer. When set, it
+// supersedes onPreEdit for capture and also records after-mutation fingerprints.
+// When a task tool is already registered it inherits the observer for sub-agents.
+func (a *Agent) SetMutationObserver(obs *checkpoint.MutationObserver) {
+	a.mutationObserver = obs
+	if a.tools == nil || obs == nil {
+		return
+	}
+	if t, ok := a.tools.Get("task"); ok {
+		if task, ok := t.(*TaskTool); ok {
+			task.WithMutationObserver(obs)
+		}
+	}
+}
+
+// MutationObserver returns the installed observer (may be nil).
+func (a *Agent) MutationObserver() *checkpoint.MutationObserver {
+	if a == nil {
+		return nil
+	}
+	return a.mutationObserver
+}
 
 // Session returns the agent's current conversation, useful for persistence
 // hooks that need to read the message log between turns. sessMu serialises this
@@ -1084,6 +1115,11 @@ type Options struct {
 	// depth 0; child subagents are depth 1. MaxSubagentDepth caps delegation.
 	SubagentDepth    int
 	MaxSubagentDepth int
+
+	// MutationObserver is the host-side file mutation observer shared with
+	// (or cloned for) sub-agents. nil disables v2 capture. Does not affect
+	// provider-visible tool schemas or prompts.
+	MutationObserver *checkpoint.MutationObserver
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1194,6 +1230,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		keepPolicy:                opts.KeepPolicy,
 		subagentDepth:             subagentDepth,
 		maxSubagentDepth:          maxSubagentDepth,
+		mutationObserver:          opts.MutationObserver,
 	}
 	a.SetResponseLanguage(opts.ResponseLanguage)
 	a.SetReasoningLanguage(opts.ReasoningLanguage)

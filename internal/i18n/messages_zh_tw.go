@@ -337,6 +337,10 @@ var ChineseTraditional = Messages{
 	RewindPickHint:            "↑/↓ 移動 · Enter 選擇 · Esc 關閉",
 	RewindRestoreTitleFmt:     "⟲ 恢復到第 %d 輪 ",
 	RewindApplyHint:           "↑/↓ · Enter 套用 · Esc 返回",
+	RewindCoverageTitle:       "⚠ 檔案覆蓋不完整",
+	RewindCoverageWarningFmt:  "偵測到 %d 個覆蓋缺口，部分檔案修改可能無法恢復。",
+	RewindConfirmHint:         "Enter/y 確認 · Esc 返回",
+	RewindUnavailableFmt:      "無法回滾：%s",
 	RewindEmpty:               "(空)",
 
 	SelectProvidersLabel:     "選擇要啟用的 provider",
