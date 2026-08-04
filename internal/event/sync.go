@@ -40,6 +40,14 @@ func (s *syncSink) RecordReadinessAudit(a evidence.ReadinessAudit) {
 	}
 }
 
+func (s *syncSink) RecordTurnCompletion() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ts, ok := s.inner.(TurnCompletionSink); ok {
+		ts.RecordTurnCompletion()
+	}
+}
+
 func (s *syncSink) RecordProtocolRecovery(a ProtocolRecoveryAudit) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

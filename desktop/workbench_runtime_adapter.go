@@ -97,6 +97,9 @@ func (a *App) workbenchClientCallbacks(generation uint64, tabID string) client.C
 				}
 			}
 			k.mu.Unlock()
+			if notification.Event.Kind == "turn_done" {
+				recordRemoteTurnCompletion()
+			}
 			if busyChanged {
 				k.targets.SetRemoteBusy(busy)
 			}

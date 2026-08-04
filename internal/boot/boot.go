@@ -47,6 +47,7 @@ import (
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
 	"reasonix/internal/skill"
+	"reasonix/internal/stats"
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
 	"reasonix/internal/tool/sessiontool"
@@ -112,6 +113,9 @@ type Options struct {
 	// applied to the in-memory config only and never turns Auto into a persisted
 	// CNY/USD choice.
 	AutoPricingCurrency string
+	// StatsSource labels this frontend's usage records (desktop/cli/serve).
+	// Empty disables usage recording for this controller.
+	StatsSource string
 	// ExtraPlugins are session-scoped MCP servers supplied by a host transport
 	// (for example ACP session/new). They are connected eagerly for this
 	// controller but are not persisted to reasonix.toml.
@@ -252,6 +256,14 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	// outlive a turn and are cancelled by Controller.Close.
 	sink := event.Sync(opts.Sink)
 
+	// Record billable usage for the "usage statistics" panel. Wrapping here —
+	// outside the per-agent sinks — covers every agent (executor, planner,
+	// sub-agents, guardian) with one recorder, and each record is labelled with
+	// this frontend's StatsSource so the panel can split totals by entry point.
+	if source := strings.TrimSpace(opts.StatsSource); source != "" {
+		sink = stats.NewRecorder(sink, config.StatsDir(), source)
+	}
+
 	if migErr != nil {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Config migration did not complete.", Detail: "config migration from ~/.reasonix failed: " + migErr.Error()})
 	} else if migrated != nil {
@@ -360,7 +372,14 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 
 	sysPrompt, err := cfg.ResolveSystemPromptForRoot(root)
 	if err != nil {
-		return nil, err
+		if !config.IsMissingSystemPromptFile(err) {
+			return nil, err
+		}
+		// A stale missing prompt file must not block startup: warn and fall back
+		// to the inline (or built-in default) system prompt. Other read failures
+		// stay fatal so Reasonix never runs without explicitly configured policy.
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: err.Error() + "; falling back to inline/default system prompt"})
+		sysPrompt = cfg.InlineSystemPrompt()
 	}
 	// Output style: fold the selected persona/tone block into the base prompt
 	// before language/memory/skills append, so a "replace" style (keep-coding
@@ -794,7 +813,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		return p, me.Price, me.ContextWindow, nil
 	}
 	subagentIdentity := func(modelRef, effort string) (string, string) {
-		return subagentEffectiveIdentity(cfg, modelName, entry, modelRef, effort)
+		return subagentEffectiveIdentity(cfg, opts.ProviderResolver, modelName, entry, modelRef, effort)
 	}
 	taskModel := firstNonEmpty(cfg.Agent.SubagentModels["task"], cfg.Agent.SubagentModel)
 	taskEffort := firstNonEmpty(cfg.Agent.SubagentEfforts["task"], cfg.Agent.SubagentEffort)
@@ -1026,6 +1045,8 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 			sysPrompt = agent.DefaultReadOnlyTaskSystemPrompt
 		}
 		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
+		runOptions.ModelRef = usageModelRef
 		// Delivery risk gates consume typed reports; outside Delivery a casual
 		// /review run may finish with prose only.
 		if runOptions.DeliveryProfile {
@@ -1145,6 +1166,8 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 			}
 		}
 		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
+		runOptions.ModelRef = usageModelRef
 		// Delivery risk gates consume typed reports; outside Delivery a casual
 		// /review run may finish with prose only.
 		if runOptions.DeliveryProfile {
@@ -1545,6 +1568,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		MaxStepsKey: opts.MaxStepsKey,
 		Temperature: cfg.Agent.Temperature,
 		Pricing:     entry.Price,
+		ModelRef:    modelRef,
 		Gate:        headlessGate,
 		Hooks:       hookRunner,
 		Jobs:        jm,
@@ -1605,6 +1629,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 			plannerOpts := agent.Options{
 				MaxSteps:                     0,
 				Gate:                         headlessGate,
+				ModelRef:                     modelRefFromEntry(pe),
 				ContextWindow:                pe.ContextWindow,
 				SoftCompactRatio:             cfg.Agent.SoftCompactRatio,
 				ToolResultSnipRatio:          cfg.Agent.ToolResultSnipRatio,
@@ -1700,7 +1725,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 				sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Guardian was disabled because it could not start.", Detail: fmt.Sprintf("guardian construction failed: %v — guardian disabled", err)})
 			} else {
 				guardianReg := agent.FilterReadOnlyRegistry(reg, agent.SubagentMetaTools()...)
-				ctrlOpts.Guardian = guardian.NewSession(pProv, guardianReg, guardian.PolicyPrompt(), guardianModel, cfg.Agent.GuardianTemperature, ge.Price, sink)
+				ctrlOpts.Guardian = guardian.NewSession(pProv, guardianReg, guardian.PolicyPrompt(), modelRefFromEntry(ge), cfg.Agent.GuardianTemperature, ge.Price, sink)
 				sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: fmt.Sprintf("guardian enabled · model=%s", ge.Model)})
 			}
 		}
@@ -1718,7 +1743,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		if recoveryModel != "" {
 			if re, ok := cfg.ResolveModel(recoveryModel); ok {
 				if rProv, err := NewProviderWithProxy(re, proxySpec); err == nil {
-					ctrlOpts.RecoveryReviewer = recovery.NewSessionWithSink(rProv, re.Price, sink)
+					ctrlOpts.RecoveryReviewer = recovery.NewSessionWithSink(rProv, re.Price, modelRefFromEntry(re), sink)
 				} else {
 					slog.Warn("recovery reviewer provider construction failed — rule-only recovery", "model", recoveryModel, "err", err)
 				}
@@ -1749,14 +1774,16 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		var router *capability.SemanticRouter
 		// Prefer agent.subagent_models["capability-router"] when configured.
 		if modelRef := strings.TrimSpace(cfg.Agent.SubagentModels["capability-router"]); modelRef != "" {
-			if p, price, _, err := resolveSubagentProvider(modelRef, strings.TrimSpace(cfg.Agent.SubagentEfforts["capability-router"])); err == nil && p != nil {
-				router = &capability.SemanticRouter{Provider: p, Sink: sink, Model: modelRef, Pricing: price, Audit: capAudit}
+			effortRef := strings.TrimSpace(cfg.Agent.SubagentEfforts["capability-router"])
+			if p, price, _, err := resolveSubagentProvider(modelRef, effortRef); err == nil && p != nil {
+				usageModelRef, _ := subagentIdentity(modelRef, effortRef)
+				router = &capability.SemanticRouter{Provider: p, Sink: sink, Model: usageModelRef, Pricing: price, Audit: capAudit}
 			}
 		}
 		if router == nil {
 			// Fallback to the executor's provider — and its pricing, so router
 			// usage events never display as zero-cost.
-			router = &capability.SemanticRouter{Provider: execProv, Sink: sink, Pricing: entry.Price, Audit: capAudit}
+			router = &capability.SemanticRouter{Provider: execProv, Sink: sink, Model: modelRef, Pricing: entry.Price, Audit: capAudit}
 		}
 		ctrl.WireCapabilityRouting(cfg.Plugins, capSpecs, router, capAudit)
 		ctrl.SetCapabilityProxyRouting(true)
@@ -2152,23 +2179,38 @@ func newSubagentStore(sessionDir string) (*agent.SubagentStore, error) {
 	return store, nil
 }
 
-func subagentEffectiveIdentity(cfg *config.Config, baseModelRef string, base *config.ProviderEntry, modelRef, effort string) (string, string) {
+func subagentEffectiveIdentity(cfg *config.Config, resolver provider.Resolver, baseModelRef string, base *config.ProviderEntry, modelRef, effort string) (string, string) {
 	var entry config.ProviderEntry
 	if base != nil {
 		entry = *base
 	}
 	ref := strings.TrimSpace(modelRef)
-	if ref == "" {
+	explicit := ref != ""
+	if !explicit {
 		ref = strings.TrimSpace(baseModelRef)
 	}
-	if cfg != nil && ref != "" {
+	if explicit && cfg != nil && ref != "" {
 		if resolved, ok := cfg.ResolveModel(ref); ok {
 			entry = *resolved
-		} else if strings.TrimSpace(modelRef) != "" {
+		} else if resolved := syntheticEntryFromResolver(resolver, ref); strings.TrimSpace(resolved.Name) != "" {
+			entry = *resolved
+		} else {
 			entry.Model = ref
 		}
-	} else if strings.TrimSpace(modelRef) != "" {
-		entry.Model = strings.TrimSpace(modelRef)
+	} else if explicit {
+		if resolved := syntheticEntryFromResolver(resolver, ref); strings.TrimSpace(resolved.Name) != "" {
+			entry = *resolved
+		} else {
+			entry.Model = ref
+		}
+	} else if base == nil && ref != "" {
+		if resolved := syntheticEntryFromResolver(resolver, ref); strings.TrimSpace(resolved.Name) != "" {
+			entry = *resolved
+		} else if cfg != nil {
+			if resolved, ok := cfg.ResolveModel(ref); ok {
+				entry = *resolved
+			}
+		}
 	}
 	if rawEffort := strings.TrimSpace(effort); rawEffort != "" {
 		if normalized, err := config.NormalizeEffort(&entry, rawEffort); err == nil {
@@ -2223,6 +2265,7 @@ func NewProviderWithProxy(e *config.ProviderEntry, proxy netclient.ProxySpec) (p
 			"vision":                config.EffectiveVision(e),
 			"vision_model_explicit": config.ExplicitModelVision(e),
 			"vision_detail":         e.VisionDetail,
+			"web_search":            e.WebSearch,
 			"mode":                  e.ResponsesMode,
 			// Keep nil as nil so the responses provider can vendor-detect its
 			// default instead of accidentally treating every endpoint as stateful.

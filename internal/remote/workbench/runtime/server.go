@@ -307,6 +307,10 @@ func (s *Server) ListenAndServe(ctx context.Context, socket string) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = ln.Close() }()
+	// Accept does not observe ctx directly, so close the listener to unblock it.
+	stopAccept := context.AfterFunc(ctx, func() { _ = ln.Close() })
+	defer stopAccept()
 	_ = os.Chmod(socket, 0o600)
 	s.mu.Lock()
 	s.ln, s.socket, s.lockPath = ln, socket, lockPath

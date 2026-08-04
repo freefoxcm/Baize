@@ -27,7 +27,7 @@ func TestStreamRetriesThenSucceeds(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hi there\"}}]}\n\ndata: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hi there\"}}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\ndata: [DONE]\n\n")
 	}))
 	defer srv.Close()
 
@@ -49,12 +49,16 @@ func TestStreamRetriesThenSucceeds(t *testing.T) {
 		t.Fatalf("Stream after retries: %v", err)
 	}
 	var got strings.Builder
+	var usage *provider.Usage
 	for chunk := range ch {
 		if chunk.Type == provider.ChunkError {
 			t.Fatalf("unexpected stream error: %v", chunk.Err)
 		}
 		if chunk.Type == provider.ChunkText {
 			got.WriteString(chunk.Text)
+		}
+		if chunk.Type == provider.ChunkUsage {
+			usage = chunk.Usage
 		}
 	}
 	if got.String() != "hi there" {
@@ -65,6 +69,23 @@ func TestStreamRetriesThenSucceeds(t *testing.T) {
 	}
 	if len(attempts) != 2 || attempts[0] != 1 || attempts[1] != 2 {
 		t.Errorf("retry-notify attempts = %v, want [1 2]", attempts)
+	}
+	if usage == nil || usage.RequestCount != 3 {
+		t.Errorf("usage request count = %+v, want 3", usage)
+	}
+}
+
+func TestMergeUsageCountsStreamsNotUsageChunks(t *testing.T) {
+	firstChunk := &provider.Usage{PromptTokens: 2, TotalTokens: 2, RequestCount: 2}
+	secondChunk := &provider.Usage{CompletionTokens: 1, TotalTokens: 1, RequestCount: 2}
+	oneStream := mergeUsage(firstChunk, secondChunk, false)
+	if oneStream.RequestCount != 2 {
+		t.Fatalf("same-stream request count = %d, want 2", oneStream.RequestCount)
+	}
+	nextStream := &provider.Usage{PromptTokens: 3, TotalTokens: 3, RequestCount: 1}
+	combined := mergeUsage(oneStream, nextStream, true)
+	if combined.RequestCount != 3 {
+		t.Fatalf("multi-stream request count = %d, want 3", combined.RequestCount)
 	}
 }
 
@@ -276,7 +297,7 @@ func TestStreamContinuesDeepSeekLengthWithAssistantPrefix(t *testing.T) {
 	if usageChunks != 1 || doneChunks != 1 || usage == nil {
 		t.Fatalf("usage chunks=%d done chunks=%d usage=%+v", usageChunks, doneChunks, usage)
 	}
-	if usage.PromptTokens != 30 || usage.CompletionTokens != 5 || usage.TotalTokens != 35 ||
+	if usage.PromptTokens != 30 || usage.CompletionTokens != 5 || usage.TotalTokens != 35 || usage.RequestCount != 2 ||
 		usage.CacheHitTokens != 26 || usage.CacheMissTokens != 4 || usage.ReasoningTokens != 2 || usage.FinishReason != "stop" {
 		t.Fatalf("merged usage = %+v", usage)
 	}
@@ -1546,6 +1567,21 @@ func TestBuildRequestDeepSeekDisabled(t *testing.T) {
 	}{
 		{name: "effort-disabled", extra: map[string]any{"effort": "disabled"}},
 		{name: "thinking-disabled", extra: map[string]any{"thinking": "disabled"}},
+		{
+			name: "effort-disabled-with-explicit-levels",
+			extra: map[string]any{
+				"effort":            "disabled",
+				"supported_efforts": []string{"disabled", "high", "max"},
+			},
+		},
+		{
+			name: "thinking-disabled-overrides-explicit-levels",
+			extra: map[string]any{
+				"thinking":          "disabled",
+				"effort":            "max",
+				"supported_efforts": []string{"high"},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := base

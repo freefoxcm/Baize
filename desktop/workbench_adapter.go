@@ -333,7 +333,13 @@ func (a *App) WorkbenchConnectRemote(hostID, workspace string) error {
 			if err != nil {
 				return nil, err
 			}
-			return openLocalProviderStream(ctx, current, ref, effort, req)
+			requestCtx := provider.WithRequestAttemptCounter(ctx)
+			stream, err := openLocalProviderStream(requestCtx, current, ref, effort, req)
+			if err != nil {
+				recordRemoteProviderUsage(requestCtx, remoteStatsRecorder(), ref, nil)
+				return nil, err
+			}
+			return recordRemoteProviderStream(requestCtx, ref, stream), nil
 		},
 	}
 	buildID := map[string]any{

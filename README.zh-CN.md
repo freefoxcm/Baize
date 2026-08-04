@@ -30,6 +30,10 @@
   <a href="https://discord.gg/XF78rEME2D"><img src="https://img.shields.io/badge/discord-join-5865F2.svg?style=flat-square&labelColor=161b22&logo=discord&logoColor=white" alt="Discord"/></a>
 </p>
 
+<p align="center">
+  <a href="https://trendshift.io/repositories/27020"><img src="https://trendshift.io/api/badge/trendshift/repositories/27020/daily" alt="#2 Repository Of The Day"/></a>
+</p>
+
 <br/>
 
 <h3 align="center">面向终端的 DeepSeek 原生 AI coding agent。</h3>

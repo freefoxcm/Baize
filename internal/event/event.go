@@ -317,6 +317,7 @@ const (
 type Event struct {
 	Kind             Kind
 	Text             string                    // Reasoning / Text / Message / Notice / Phase
+	ModelRef         string                    // Usage: canonical "provider/model" ref that produced this usage
 	Detail           string                    // Notice: optional diagnostic text for expandable details
 	Code             string                    // Notice: stable id for frontend localization; empty = unmapped
 	Reasoning        string                    // Message: the full reasoning chain
@@ -350,6 +351,25 @@ type Event struct {
 // about readiness audit receipts can implement only Sink and will ignore them.
 type ReadinessAuditSink interface {
 	RecordReadinessAudit(evidence.ReadinessAudit)
+}
+
+// TurnCompletionSink is an optional sink capability for synchronous controller
+// entry points that do not publish a TurnDone UI event. It keeps accounting
+// independent from frontend event lifecycles without synthesizing an event that
+// transports may mistake for an interactive completion.
+type TurnCompletionSink interface {
+	RecordTurnCompletion()
+}
+
+// RecordTurnCompletion records one successfully admitted top-level controller
+// run on sinks that opt into completion accounting.
+func RecordTurnCompletion(s Sink) {
+	if nilutil.IsNil(s) {
+		return
+	}
+	if ts, ok := s.(TurnCompletionSink); ok {
+		ts.RecordTurnCompletion()
+	}
 }
 
 // RecordReadinessAudit forwards a readiness audit receipt to sinks that opt in.

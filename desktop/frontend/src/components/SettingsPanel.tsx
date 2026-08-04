@@ -1,6 +1,5 @@
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from "react";
 import { Bot as BotIcon, Check, CheckCircle2, ChevronDown, ChevronUp, Clipboard, ExternalLink, GripVertical, KeyRound, Loader2, MessageCircle, Play, QrCode, RefreshCw, Send } from "lucide-react";
-import "./CompactRatioSettings.css";
 import { asArray } from "../lib/array";
 import { useDeferredClose } from "../lib/useMountTransition";
 import { app, openExternal } from "../lib/bridge";
@@ -17,6 +16,13 @@ import {
   type Theme,
   type ThemeStyle,
 } from "../lib/theme";
+import {
+  applyTerminalThemePreference,
+  createTerminalThemeSaveQueue,
+  getTerminalThemePreference,
+  normalizeTerminalThemePreference,
+  type TerminalThemePreference,
+} from "../lib/terminalTheme";
 import {
   applyConversationWidth,
   getCachedConversationWidth,
@@ -79,6 +85,7 @@ const PluginsSettingsPage = lazy(() => import("./CapabilitiesPanel").then((modul
 const MemorySettingsPage = lazy(() => import("./MemoryPanel").then((module) => ({ default: module.MemorySettingsPage })));
 const SubagentsSettingsPage = lazy(() => import("./SubagentsPanel").then((module) => ({ default: module.SubagentsSettingsPage })));
 const DiagnosticsSettingsPage = lazy(() => import("./DiagnosticsSettingsPage").then((module) => ({ default: module.DiagnosticsSettingsPage })));
+const UsageStatsPanel = lazy(() => import("./UsageStatsPanel").then((module) => ({ default: module.UsageStatsPanel })));
 const QRCodeSVG = lazy(() => import("qrcode.react").then((module) => ({ default: module.QRCodeSVG })));
 
 // SettingsPanel is the desktop settings centre — a centred modal with left
@@ -110,6 +117,7 @@ export function SettingsPanel({
   const [warning, setWarning] = useState<string | null>(null);
   const [theme, setThemeState] = useState<Theme>(getTheme());
   const [themeStyle, setThemeStyleState] = useState<ThemeStyle>(() => getThemeStyle(getTheme()));
+  const [terminalTheme, setTerminalThemeState] = useState<TerminalThemePreference>(getTerminalThemePreference());
   const [conversationWidth, setConversationWidth] = useState<ConversationWidth>(() => getCachedConversationWidth());
   const [textSize, setTextSizeState] = useState<TextSize>(getTextSize());
   const [zoomPct, setZoomPct] = useState<number>(zoomToPercent(getRestartZoom()));
@@ -128,6 +136,12 @@ export function SettingsPanel({
     if (command) onUseSubagent(command);
   }, 240);
   const zoomSaveSeq = useRef(0);
+  const terminalThemeSaveSeq = useRef(0);
+  const terminalThemeSavePending = useRef(false);
+  const terminalThemeSaveQueue = useRef<ReturnType<typeof createTerminalThemeSaveQueue> | null>(null);
+  if (!terminalThemeSaveQueue.current) {
+    terminalThemeSaveQueue.current = createTerminalThemeSaveQueue((next) => app.SetDesktopTerminalTheme(next));
+  }
 
   const reload = useCallback(async () => {
     setLoadingSettings(true);
@@ -154,8 +168,11 @@ export function SettingsPanel({
     const nextStyle = normalizeThemeStyleForTheme(s.desktopThemeStyle, nextTheme);
     setThemeState(nextTheme);
     setThemeStyleState(nextStyle);
+    if (!terminalThemeSavePending.current) {
+      setTerminalThemeState(applyTerminalThemePreference(s.desktopTerminalTheme));
+    }
     setConversationWidth(applyConversationWidth(s.conversationWidth));
-  }, [s?.conversationWidth, s?.desktopTheme, s?.desktopThemeStyle]);
+  }, [s?.conversationWidth, s?.desktopTheme, s?.desktopThemeStyle, s?.desktopTerminalTheme]);
   useEffect(() => {
     if (desktopPlatform !== "windows") return;
     let cancelled = false;
@@ -208,6 +225,35 @@ export function SettingsPanel({
       setErr(formatSettingsError(e, t));
     }
   }, [reload, onChanged, t]);
+  const setTerminalThemePreference = useCallback((next: TerminalThemePreference) => {
+    const seq = ++terminalThemeSaveSeq.current;
+    const previous = getTerminalThemePreference();
+    terminalThemeSavePending.current = true;
+    setErr(null);
+    setWarning(null);
+    applyTerminalThemePreference(next);
+    setTerminalThemeState(next);
+
+    void terminalThemeSaveQueue.current!(next)
+      .then(async () => {
+        if (seq !== terminalThemeSaveSeq.current) return;
+        const refreshed = await reload();
+        if (seq !== terminalThemeSaveSeq.current) return;
+        terminalThemeSavePending.current = false;
+        onChanged(refreshed);
+      })
+      .catch(async (error) => {
+        if (seq !== terminalThemeSaveSeq.current) return;
+        const refreshed = await reload();
+        if (seq !== terminalThemeSaveSeq.current) return;
+        const restored = normalizeTerminalThemePreference(refreshed?.desktopTerminalTheme ?? previous);
+        applyTerminalThemePreference(restored);
+        setTerminalThemeState(restored);
+        terminalThemeSavePending.current = false;
+        setErr(formatSettingsError(error, t));
+        onChanged(refreshed);
+      });
+  }, [onChanged, reload, t]);
   const setRestartZoom = useCallback(async (zoom: ZoomLevel) => {
     const snapped = snapZoom(zoom);
     const seq = ++zoomSaveSeq.current;
@@ -297,6 +343,7 @@ export function SettingsPanel({
                     <AppearanceOverview
                       theme={theme}
                       themeStyle={themeStyle}
+                      terminalTheme={terminalTheme}
                       conversationWidth={conversationWidth}
                       textSize={textSize}
                       showDisplayZoom={desktopPlatform === "windows"}
@@ -322,6 +369,7 @@ export function SettingsPanel({
                         setThemeStyleState(style);
                         setBaseAppearance(getTheme(), style);
                       }}
+                      onTerminalTheme={setTerminalThemePreference}
                       onTextSize={(size) => {
                         applyTextSize(size);
                         setTextSizeState(size);
@@ -1373,6 +1421,7 @@ function normalizeSettingsView(view: SettingsView | null | undefined): SettingsV
     desktopLayoutStyle: normalizeDesktopLayoutStyle(view.desktopLayoutStyle),
     desktopTheme: normalizeThemePreference(view.desktopTheme),
     desktopThemeStyle: normalizeThemeStyleForTheme(view.desktopThemeStyle, normalizeThemePreference(view.desktopTheme)),
+    desktopTerminalTheme: normalizeTerminalThemePreference(view.desktopTerminalTheme),
     closeBehavior: normalizeCloseBehavior(view.closeBehavior),
     displayMode: normalizeDisplayMode(view.displayMode),
     statusBarStyle: normalizeStatusBarStyle(view.statusBarStyle),
@@ -4035,7 +4084,7 @@ function botDraftWithDerivedGatewayState(draft: BotSettingsView): BotSettingsVie
 
 function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: ModelsSectionProps) {
   const t = useT();
-  const [subtab, setSubtab] = useState<"usage" | "access">(
+  const [subtab, setSubtab] = useState<"usage" | "access" | "stats">(
     initialFocus?.target === "model-access" ? "access" : "usage",
   );
   const autoRefreshKeyRef = useRef("");
@@ -4222,6 +4271,14 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
           onClick={() => setSubtab("access")}
         >
           {t("settings.modelTab.access")}
+        </button>
+        <button
+          type="button"
+          className={`settings-subtab${subtab === "stats" ? " settings-subtab--active" : ""}`}
+          aria-selected={subtab === "stats"}
+          onClick={() => setSubtab("stats")}
+        >
+          {t("settings.modelTab.stats")}
         </button>
       </div>
 
@@ -4446,8 +4503,12 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
             {agent.compactRatioRemote && <div className="provider-fetch-banner provider-fetch-banner--warn">{t("settings.compactRatioRemote")}</div>}
           </SettingsSection>
         </>
-      ) : (
+      ) : subtab === "access" ? (
         <ProvidersSection s={s} busy={busy} apply={apply} />
+      ) : (
+        <Suspense fallback={<div className="empty">{t("settings.loading")}</div>}>
+          <UsageStatsPanel />
+        </Suspense>
       )}
     </>
   );
@@ -6508,7 +6569,7 @@ function RuleList({
         {rules.length === 0 && <span className="mem-empty">{t("common.none")}</span>}
         {rules.map((r) => (
           <span className="set-rule" key={r}>
-            {r}
+            <span className="set-rule__text" title={r}>{r}</span>
             <Tooltip label={t("common.delete")}>
               <button className="set-rule__x" disabled={busy} onClick={() => void onRemove(r)}>
                 ✕
@@ -6988,7 +7049,7 @@ function UpdatesSection({
         : t("updater.installing")
     ) :
     status.kind === "relaunching" || status.kind === "done" ? t("updater.done") :
-    status.kind === "error" ? t("updater.failed", { msg: status.message }) :
+    status.kind === "error" ? "" :
     "";
   const updateStatusTone =
     status.kind === "error" ? "error" :
@@ -6996,9 +7057,24 @@ function UpdatesSection({
     status.kind === "upToDate" || status.kind === "done" || status.kind === "relaunching" ? "success" :
     status.kind === "checking" || updaterBusy ? "busy" :
     "neutral";
+  const updateErrorTitle = status.kind === "error"
+    ? status.disposition === "recovery"
+      ? t("updater.recoveryBlocked")
+      : status.disposition === "manual"
+        ? t("updater.manualUpdateRequired")
+        : t("updater.failed", { msg: status.message })
+    : "";
+  const updateErrorHint = status.kind === "error"
+    ? status.disposition === "recovery"
+      ? t("updater.recoveryHint")
+      : status.disposition === "manual"
+        ? t("updater.manualFallbackHint")
+        : ""
+    : "";
+  const downloadIsPrimary = status.kind === "error" && status.disposition !== "retryable";
 
   return (
-    <SettingsSection title={t("updater.title")}>
+    <SettingsSection>
       <SettingsField
         className="settings-field--wide-copy updates-control"
         label={
@@ -7032,8 +7108,29 @@ function UpdatesSection({
           </Tooltip>
         </div>
       </SettingsField>
-      <div className="updates-control__hint">
-        <div>{t("updater.officialReleaseHint")}</div>
+      <div
+        className="updates-control__hint"
+        style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 8px" }}
+      >
+        <span>{t("updater.officialReleaseHint")}</span>
+        <button
+          className="btn btn--small"
+          type="button"
+          onClick={openDownload}
+          style={{
+            height: "auto",
+            minHeight: 0,
+            padding: 0,
+            borderColor: "transparent",
+            background: "transparent",
+            color: "var(--fg-dim)",
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+          }}
+        >
+          {t("updater.officialDownload")}
+          <ExternalLink size={13} aria-hidden="true" />
+        </button>
       </div>
       {status.kind === "available" && (
         <div className="updates-control__action">
@@ -7049,66 +7146,37 @@ function UpdatesSection({
           </button>
         </div>
       )}
-      {status.kind === "error" && status.info && (
-        <div className="updates-control__action">
+      {status.kind === "error" && (
+        <div
+          className="banner banner--update banner--error"
+          role="alert"
+          style={{ alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}
+        >
+          <div style={{ flex: "1 1 360px", minWidth: 0 }}>
+            <div>{updateErrorTitle}</div>
+            {updateErrorHint && <div className="banner__hint">{updateErrorHint}</div>}
+            {status.disposition !== "retryable" && (
+              <div className="banner__hint" style={{ overflowWrap: "anywhere" }}>
+                {t("updater.errorDetails", { msg: status.message })}
+              </div>
+            )}
+          </div>
+          <span className="banner__spacer" />
+          {downloadIsPrimary && (
+            <button className="btn btn--primary btn--small" type="button" onClick={openDownload}>
+              {t("updater.officialDownload")}
+              <ExternalLink size={14} aria-hidden="true" />
+            </button>
+          )}
           <button
-            className="btn btn--primary btn--small"
+            className={`btn btn--small${downloadIsPrimary ? "" : " btn--primary"}`}
+            type="button"
             disabled={settingsBusy || updaterBusy}
-            onClick={() => applyUpdate(status.info!)}
+            onClick={() => status.info ? applyUpdate(status.info) : void check()}
           >
             {t("updater.retry")}
           </button>
         </div>
-      )}
-      <SettingsField
-        className="settings-field--wide-copy"
-        label={t("updater.autoCheckLabel")}
-        hint={t("updater.autoCheckHint")}
-      >
-        <ToggleSegment
-          value={checkUpdates}
-          disabled={settingsBusy}
-          onChange={(enabled) => void applySettings(() => app.SetDesktopCheckUpdates(enabled))}
-        />
-      </SettingsField>
-      <SettingsField
-        className="settings-field--wide-copy"
-        label={t("settings.telemetryLabel")}
-        hint={t("settings.telemetryHint")}
-      >
-        <ToggleSegment
-          value={telemetry}
-          disabled={settingsBusy}
-          onChange={(enabled) => void applySettings(() => app.SetDesktopTelemetry(enabled))}
-        />
-      </SettingsField>
-      <SettingsField
-        className="settings-field--wide-copy"
-        label={t("settings.metricsLabel")}
-        hint={t("settings.metricsHint")}
-      >
-        <ToggleSegment
-          value={metrics}
-          disabled={settingsBusy}
-          onChange={(enabled) => void applySettings(() => app.SetDesktopMetrics(enabled))}
-        />
-      </SettingsField>
-      {status.kind === "error" && (
-        <div className="banner banner--error">
-          {updateStatus}
-          {status.manualHint && (
-            <div className="mem-hint">
-              <button className="btn btn--small" onClick={openDownload}>
-                {t("updater.goToDownload")}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      {configPath && (
-        <Tooltip label={configPath} fill block className="mem-hint settings-config-path">
-          {t("settings.config", { path: configPath })}
-        </Tooltip>
       )}
       <SettingsField
         className="settings-field--wide-copy"
@@ -7120,6 +7188,86 @@ function UpdatesSection({
           <ExternalLink size={14} aria-hidden="true" />
         </button>
       </SettingsField>
+      <SettingsField
+        className="settings-field--wide-copy"
+        label={t("feedback.title")}
+        hint={t("feedback.subtitle")}
+      >
+        <div className="settings-inline-controls">
+          <button
+            className="btn btn--small"
+            onClick={() => void openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new/choose")}
+          >
+            {t("feedback.submitIssue")}
+            <ExternalLink size={14} aria-hidden="true" />
+          </button>
+          <button
+            className="btn btn--small"
+            onClick={() => void openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues")}
+          >
+            {t("feedback.viewIssues")}
+            <ExternalLink size={14} aria-hidden="true" />
+          </button>
+        </div>
+      </SettingsField>
+      <details
+        className="provider-editor-advanced"
+        style={{
+          marginTop: 0,
+          borderRight: 0,
+          borderBottom: 0,
+          borderLeft: 0,
+          borderRadius: 0,
+          background: "transparent",
+        }}
+      >
+        <summary style={{ padding: "0 2px" }}>
+          <span className="provider-editor-advanced__title">
+            <ChevronDown className="provider-editor-advanced__icon" size={16} aria-hidden="true" />
+            {t("updater.privacyAndUpdatePreferences")}
+          </span>
+        </summary>
+        <div className="provider-editor-advanced__body">
+          <SettingsField
+            className="settings-field--wide-copy"
+            label={t("updater.autoCheckLabel")}
+            hint={t("updater.autoCheckHint")}
+          >
+            <ToggleSegment
+              value={checkUpdates}
+              disabled={settingsBusy}
+              onChange={(enabled) => void applySettings(() => app.SetDesktopCheckUpdates(enabled))}
+            />
+          </SettingsField>
+          <SettingsField
+            className="settings-field--wide-copy"
+            label={t("settings.telemetryLabel")}
+            hint={t("settings.telemetryHint")}
+          >
+            <ToggleSegment
+              value={telemetry}
+              disabled={settingsBusy}
+              onChange={(enabled) => void applySettings(() => app.SetDesktopTelemetry(enabled))}
+            />
+          </SettingsField>
+          <SettingsField
+            className="settings-field--wide-copy"
+            label={t("settings.metricsLabel")}
+            hint={t("settings.metricsHint")}
+          >
+            <ToggleSegment
+              value={metrics}
+              disabled={settingsBusy}
+              onChange={(enabled) => void applySettings(() => app.SetDesktopMetrics(enabled))}
+            />
+          </SettingsField>
+          {configPath && (
+            <Tooltip label={configPath} fill block className="mem-hint settings-config-path">
+              {t("settings.config", { path: configPath })}
+            </Tooltip>
+          )}
+        </div>
+      </details>
     </SettingsSection>
   );
 }

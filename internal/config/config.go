@@ -5,7 +5,10 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/netip"
 	"net/url"
 	"os"
@@ -63,6 +66,7 @@ type Config struct {
 	Secrets          SecretsConfig       `toml:"secrets"`
 	Remote           RemoteConfig        `toml:"remote"`
 
+	systemPromptFileSource     promptFileSource
 	providerSources            map[string]providerSourceScope
 	shadowedProjectProviders   []ProviderEntry
 	ignoredProjectDefaultModel string
@@ -76,6 +80,44 @@ type Config struct {
 	// user/project files recovered via last-known-good or defaults). They never
 	// rewrite the original file; the UI may surface them for doctor repair.
 	loadWarnings []string
+}
+
+type promptFileSource uint8
+
+const (
+	promptFileSourceUnknown promptFileSource = iota
+	promptFileSourceUser
+	promptFileSourceProject
+)
+
+type systemPromptFileError struct {
+	configured string
+	candidates []string
+	errors     []error
+	allMissing bool
+}
+
+func (e *systemPromptFileError) Error() string {
+	detail := "could not be read from any configured location"
+	if e.allMissing {
+		detail = "not found at any configured location"
+	}
+	message := fmt.Sprintf("system_prompt_file %q %s: %s", e.configured, detail, strings.Join(e.candidates, ", "))
+	if !e.allMissing && len(e.errors) > 0 {
+		message += ": " + errors.Join(e.errors...).Error()
+	}
+	return message
+}
+
+func (e *systemPromptFileError) Unwrap() error { return errors.Join(e.errors...) }
+
+// IsMissingSystemPromptFile reports whether every allowed location for a
+// configured prompt file was absent. Permission, containment, and other I/O
+// failures deliberately return false so callers do not start without an
+// explicitly configured prompt.
+func IsMissingSystemPromptFile(err error) bool {
+	var target *systemPromptFileError
+	return errors.As(err, &target) && target.allMissing
 }
 
 // TelemetryConfig controls content-free CLI usage metrics. It is user-global:
@@ -214,6 +256,7 @@ type DesktopConfig struct {
 	LayoutStyle             string   `toml:"layout_style"`               // classic|workbench|creation; desktop layout style
 	Theme                   string   `toml:"theme"`                      // auto|dark|light; empty resolves to auto
 	ThemeStyle              string   `toml:"theme_style"`                // graphite|aurora|slate|carbon|nocturne|amber and legacy aliases
+	TerminalTheme           string   `toml:"terminal_theme"`             // auto|dark|light; auto follows the desktop app theme
 	ExternalOpener          string   `toml:"external_opener"`            // preferred installed app used by the desktop Open control
 	CloseBehavior           string   `toml:"close_behavior"`             // quit|background; desktop window close behavior
 	DisplayMode             string   `toml:"display_mode"`               // standard|compact (legacy "minimal" maps to compact); transcript display mode
@@ -388,6 +431,20 @@ func (c *Config) DesktopTheme() string {
 // chooses the default style for the resolved desktop theme.
 func (c *Config) DesktopThemeStyle() string {
 	return normalizeThemeStyle(c.Desktop.ThemeStyle)
+}
+
+// DesktopTerminalTheme normalizes the integrated terminal colour preference.
+// Auto deliberately follows the resolved desktop app theme, including OS theme
+// changes while desktop.theme is also auto.
+func (c *Config) DesktopTerminalTheme() string {
+	switch strings.ToLower(strings.TrimSpace(c.Desktop.TerminalTheme)) {
+	case "dark":
+		return "dark"
+	case "light":
+		return "light"
+	default:
+		return "auto"
+	}
 }
 
 // DesktopLayoutStyle normalizes the desktop layout style. New installs default
@@ -1292,6 +1349,13 @@ type ProviderEntry struct {
 	// (the field is omitted). "low" caps an image to a fixed ~85 tokens for cheap
 	// coarse reads; ignored by providers without the knob (e.g. anthropic).
 	VisionDetail string `toml:"vision_detail"`
+	// WebSearch enables the server-side web_search tool for the anthropic
+	// provider kind. When true, the provider includes {"type":"web_search"} in
+	// the tools array, and the API executes searches server-side, returning
+	// web_search_tool_result content blocks in the stream. This is the primary
+	// way to use DeepSeek's built-in search via its Anthropic-compatible
+	// endpoint (https://api.deepseek.com/anthropic). Off by default.
+	WebSearch bool `toml:"web_search"`
 	// ReasoningProtocol selects the request shape for OpenAI-compatible reasoning
 	// models. Empty/auto uses the model capability registry plus endpoint
 	// heuristics; glm selects GLM's thinking.type toggle; none disables automatic
@@ -2102,23 +2166,98 @@ func (c *Config) ResolveSystemPrompt() (string, error) {
 
 // ResolveSystemPromptForRoot is like ResolveSystemPrompt but resolves a relative
 // system_prompt_file against root. Desktop tabs pass their workspace root here so
-// prompt files are project-scoped even when the process cwd is elsewhere.
+// prompt files are project-scoped even when the process cwd is elsewhere. A path
+// inherited from user config may fall back to Reasonix home, while a path chosen
+// by project config is confined to the workspace and never probes user files.
 func (c *Config) ResolveSystemPromptForRoot(root string) (string, error) {
-	if c.Agent.SystemPromptFile != "" {
-		path := c.Agent.SystemPromptFile
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(resolveRoot(root), path)
+	path := c.Agent.SystemPromptFile
+	if path == "" {
+		return c.InlineSystemPrompt(), nil
+	}
+
+	if c.systemPromptFileSource == promptFileSourceProject {
+		if filepath.IsAbs(path) || !filepath.IsLocal(filepath.Clean(path)) {
+			return "", fmt.Errorf("project system_prompt_file %q must be a relative path within the workspace", path)
 		}
-		b, err := fileencoding.ReadFileUTF8(path)
+		candidate := filepath.Join(resolveRoot(root), path)
+		b, err := readProjectSystemPromptFile(root, path)
 		if err != nil {
-			return "", fmt.Errorf("system_prompt_file: %w", err)
+			return "", newSystemPromptFileError(path, []string{candidate}, []error{err})
 		}
 		return strings.TrimSpace(string(b)), nil
 	}
-	if strings.TrimSpace(c.Agent.SystemPrompt) == "" {
-		return DefaultSystemPrompt, nil
+
+	if filepath.IsAbs(path) {
+		b, err := fileencoding.ReadFileUTF8(path)
+		if err != nil {
+			return "", newSystemPromptFileError(path, []string{path}, []error{err})
+		}
+		return strings.TrimSpace(string(b)), nil
 	}
-	return c.Agent.SystemPrompt, nil
+
+	candidates := []string{filepath.Join(resolveRoot(root), path)}
+	if home := ReasonixHomeDir(); home != "" {
+		homeCandidate := filepath.Join(home, path)
+		if filepath.Clean(homeCandidate) != filepath.Clean(candidates[0]) {
+			candidates = append(candidates, homeCandidate)
+		}
+	}
+	readErrors := make([]error, 0, len(candidates))
+	for _, candidate := range candidates {
+		b, err := fileencoding.ReadFileUTF8(candidate)
+		if err == nil {
+			return strings.TrimSpace(string(b)), nil
+		}
+		readErrors = append(readErrors, fmt.Errorf("%s: %w", candidate, err))
+	}
+	return "", newSystemPromptFileError(path, candidates, readErrors)
+}
+
+func readProjectSystemPromptFile(root, path string) ([]byte, error) {
+	workspace, err := filepath.Abs(resolveRoot(root))
+	if err != nil {
+		return nil, fmt.Errorf("resolve workspace root: %w", err)
+	}
+	rootHandle, err := os.OpenRoot(workspace)
+	if err != nil {
+		return nil, fmt.Errorf("open workspace root %q: %w", workspace, err)
+	}
+	defer rootHandle.Close()
+	f, err := rootHandle.Open(filepath.Clean(path))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	return fileencoding.DecodeToUTF8(b), nil
+}
+
+func newSystemPromptFileError(configured string, candidates []string, readErrors []error) error {
+	allMissing := len(readErrors) > 0
+	for _, err := range readErrors {
+		if !errors.Is(err, fs.ErrNotExist) {
+			allMissing = false
+			break
+		}
+	}
+	return &systemPromptFileError{
+		configured: configured,
+		candidates: append([]string(nil), candidates...),
+		errors:     append([]error(nil), readErrors...),
+		allMissing: allMissing,
+	}
+}
+
+// InlineSystemPrompt returns the configured system_prompt, or DefaultSystemPrompt
+// when unset. It is the fallback when system_prompt_file cannot be read.
+func (c *Config) InlineSystemPrompt() string {
+	if strings.TrimSpace(c.Agent.SystemPrompt) == "" {
+		return DefaultSystemPrompt
+	}
+	return c.Agent.SystemPrompt
 }
 
 // Validate checks that the selected model's provider is usable.

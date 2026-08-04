@@ -18,7 +18,9 @@ export type UpdateStatus =
   | { kind: "installing"; info?: UpdateInfo }
   | { kind: "relaunching"; info?: UpdateInfo }
   | { kind: "done" }
-  | { kind: "error"; message: string; info?: UpdateInfo; manualHint?: boolean };
+  | { kind: "error"; message: string; info?: UpdateInfo; disposition: UpdateErrorDisposition };
+
+export type UpdateErrorDisposition = "retryable" | "recovery" | "manual";
 
 export interface Updater {
   status: UpdateStatus;
@@ -33,15 +35,19 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function offersManualFallback(message: string): boolean {
+export function classifyUpdateError(message: string): UpdateErrorDisposition {
   const low = message.toLowerCase();
-  return (
-    low.includes("authorization failed") ||
-    low.includes("manual update required") ||
-    low.includes("could not safely finish the previous update") ||
-    low.includes("pkexec") ||
-    low.includes("sudo apt install")
-  );
+  if (/pending update already exists|could not safely finish the previous update/.test(low)) {
+    return "recovery";
+  }
+  if (/authorization failed|manual update required|pkexec|sudo apt install/.test(low)) {
+    return "manual";
+  }
+  return "retryable";
+}
+
+function updateError(message: string, info?: UpdateInfo): UpdateStatus {
+  return { kind: "error", message, info, disposition: classifyUpdateError(message) };
 }
 
 const UpdaterContext = createContext<Updater | null>(null);
@@ -167,12 +173,7 @@ function useUpdaterInternal(): Updater {
           case "done":
             return { kind: "done" };
           case "error":
-            return {
-              kind: "error",
-              message: p.err ?? "update failed",
-              info,
-              manualHint: offersManualFallback(p.err ?? ""),
-            };
+            return updateError(p.err ?? "update failed", info);
           default:
             return cur;
         }
@@ -194,17 +195,14 @@ function useUpdaterInternal(): Updater {
       const responseChannel = normalizedChannel(info.channel);
       if (operation.channel && responseChannel !== operation.channel) {
         completeOperation(operation);
-        setStatus({
-          kind: "error",
-          message: `update check returned ${responseChannel} for requested ${operation.channel} channel`,
-        });
+        setStatus(updateError(`update check returned ${responseChannel} for requested ${operation.channel} channel`));
         return;
       }
       operation.channel = responseChannel;
       operation.expectedVersion = info.latest;
       operationRef.current = { ...operation, kind: "ready" };
       if (info.err) {
-        setStatus({ kind: "error", message: info.err, info });
+        setStatus(updateError(info.err, info));
         return;
       }
       if (!info.available) {
@@ -215,14 +213,14 @@ function useUpdaterInternal(): Updater {
     } catch (e) {
       if (!isCurrentOperation(operation)) return;
       completeOperation(operation);
-      setStatus({ kind: "error", message: errMsg(e) });
+      setStatus(updateError(errMsg(e)));
     }
   }, [beginOperation, completeOperation, isCurrentOperation]);
 
   const apply = useCallback((info: UpdateInfo) => {
     const selectedChannel = normalizedChannel(info.channel);
     if (selectedChannel !== "stable") {
-      setStatus({ kind: "error", message: "update check returned a retired release channel" });
+      setStatus(updateError("update check returned a retired release channel"));
       return;
     }
     const active = operationRef.current;
@@ -241,7 +239,7 @@ function useUpdaterInternal(): Updater {
       if (!isCurrentOperation(operation)) return;
       const message = errMsg(e);
       completeOperation(operation);
-      setStatus({ kind: "error", message, info, manualHint: offersManualFallback(message) });
+      setStatus(updateError(message, info));
     });
   }, [beginOperation, completeOperation, isCurrentOperation]);
 

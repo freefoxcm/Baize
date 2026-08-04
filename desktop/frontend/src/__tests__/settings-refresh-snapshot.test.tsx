@@ -134,6 +134,7 @@ function baseSettings(displayMode: "standard" | "compact" = "standard"): Setting
     desktopLayoutStyle: "workbench",
     desktopTheme: "auto",
     desktopThemeStyle: "graphite",
+    desktopTerminalTheme: "auto",
     closeBehavior: "background",
     displayMode,
     statusBarStyle: "text",

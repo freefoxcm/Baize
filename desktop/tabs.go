@@ -948,7 +948,11 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 	t.usageTelemetry.CacheHitTokens += cacheHitTokens
 	t.usageTelemetry.CacheMissTokens += cacheMissTokens
 	t.usageTelemetry.Estimated = t.usageTelemetry.Estimated || u.Estimated
-	t.usageTelemetry.RequestCount++
+	requestCount := u.RequestCount
+	if requestCount <= 0 {
+		requestCount = 1
+	}
+	t.usageTelemetry.RequestCount += requestCount
 	if source == event.UsageSourceExecutor {
 		t.usageTelemetry.LastUsedTokens = u.PromptTokens + u.CompletionTokens
 		t.usageTelemetry.LastPromptTokens = u.PromptTokens
@@ -969,7 +973,7 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 	src.CacheHitTokens += cacheHitTokens
 	src.CacheMissTokens += cacheMissTokens
 	src.Estimated = src.Estimated || u.Estimated
-	src.RequestCount++
+	src.RequestCount += requestCount
 	if e.Pricing != nil {
 		currency := e.Pricing.Symbol()
 		if existing := strings.TrimSpace(t.usageTelemetry.SessionCurrency); existing != "" && existing != currency {
@@ -3756,6 +3760,7 @@ func (a *App) buildTabControllerWithContextAdmissionHeld(tab *WorkspaceTab, load
 		Model:                    model,
 		RequireKey:               false,
 		AutoPricingCurrency:      a.desktopAutoPricingCurrency(),
+		StatsSource:              "desktop",
 		Sink:                     sink,
 		WorkspaceRoot:            root,
 		SessionDir:               sessionDir,
@@ -3832,21 +3837,55 @@ func (a *App) buildTabControllerWithContextAdmissionHeld(tab *WorkspaceTab, load
 		}
 		var path string
 		var resumeSession *agent.Session
+		var resumeLoadErr error
 		// Prefer the exact session file persisted for this tab. Topic lookup is a
 		// compatibility fallback for older desktop-tabs.json files that only stored
 		// topicId and could pick the wrong session when one topic had multiple files.
-		if loaded, pinnedPath, ok := loadPinnedTabSessionWithPreload(dir, tabSessionPath, loadedSession); ok {
+		if loaded, pinnedPath, ok, loadErr := loadPinnedTabSessionWithPreload(dir, tabSessionPath, loadedSession); loadErr != nil {
+			resumeLoadErr = loadErr
+		} else if ok {
 			path = pinnedPath
 			resumeSession = loaded
 		}
-		if path == "" && tabTopicID != "" {
+		if resumeLoadErr == nil && path == "" && tabTopicID != "" {
 			existingPath := findTopicSession(dir, tabTopicID)
 			if existingPath != "" {
 				if loaded, err := loadResumableSession(existingPath); err == nil {
 					path = existingPath
 					resumeSession = loaded
+				} else {
+					resumeLoadErr = err
 				}
 			}
+		}
+		if resumeLoadErr != nil {
+			resumeLoadErr = friendlySessionLoadError(resumeLoadErr)
+			leaseHeld := false
+			a.mu.Lock()
+			if a.tabBuildSupersededLocked(tab, buildGeneration) {
+				a.mu.Unlock()
+				a.abandonSupersededBuild(tab, ctrl, rootKey, "")
+				return
+			}
+			leaseHeld = setTabStartupError(tab, resumeLoadErr)
+			tab.Ready = false
+			if leaseHeld {
+				a.setSessionRuntimePhaseLocked(tab, sessionRuntimeLeaseBlocked, resumeLoadErr)
+			} else {
+				a.setSessionRuntimePhaseLocked(tab, sessionRuntimeFailed, resumeLoadErr)
+			}
+			hostKey := takeTabSharedHostKey(tab)
+			tab.releaseSessionLease()
+			a.mu.Unlock()
+			ctrl.Close()
+			if hostKey != "" {
+				a.releaseSharedHost(hostKey)
+			}
+			if leaseHeld {
+				a.scheduleDeferredStartupBuild(tab.ID)
+			}
+			a.emitReady(wailsCtx, tab.ID)
+			return
 		}
 		if path == "" {
 			path = agent.NewSessionPath(dir, ctrl.Label())
@@ -8545,46 +8584,46 @@ func globalTabWorkspaceRoot() string {
 	return root
 }
 
-func loadPinnedTabSession(dir, sessionPath string) (*agent.Session, string, bool) {
+func loadPinnedTabSession(dir, sessionPath string) (*agent.Session, string, bool, error) {
 	return loadPinnedTabSessionWithPreloadAndMigrationFallback(dir, sessionPath, loadedTabSession{}, true)
 }
 
-func loadPinnedTabSessionWithPreload(dir, sessionPath string, preloaded loadedTabSession) (*agent.Session, string, bool) {
+func loadPinnedTabSessionWithPreload(dir, sessionPath string, preloaded loadedTabSession) (*agent.Session, string, bool, error) {
 	return loadPinnedTabSessionWithPreloadAndMigrationFallback(dir, sessionPath, preloaded, false)
 }
 
-func loadPinnedTabSessionWithPreloadAndMigrationFallback(dir, sessionPath string, preloaded loadedTabSession, allowMigrationFallback bool) (*agent.Session, string, bool) {
+func loadPinnedTabSessionWithPreloadAndMigrationFallback(dir, sessionPath string, preloaded loadedTabSession, allowMigrationFallback bool) (*agent.Session, string, bool, error) {
 	path, ok := pinnedTabSessionPath(dir, sessionPath)
 	if !ok && allowMigrationFallback {
 		path, ok = migratedPinnedTabSessionPath(dir, sessionPath)
 	}
 	if !ok {
-		return nil, "", false
+		return nil, "", false, nil
 	}
 	if agent.IsCleanupPending(path) {
-		return nil, "", false
+		return nil, "", false, nil
 	}
 	if preloaded.matches(path) {
 		if preloaded.Session != nil && len(preloaded.Session.Snapshot()) == 0 {
-			return nil, path, true
+			return nil, path, true, nil
 		}
-		return preloaded.Session, path, true
+		return preloaded.Session, path, true, nil
 	}
 	loaded, err := agent.LoadSession(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, path, true
+			return nil, path, true, nil
 		}
-		return nil, "", false
+		return nil, path, true, err
 	}
 	// An empty file (0 messages) is a pre-created placeholder, not a real
 	// session to resume.  Treating it as valid would make ctrl.Resume replace
 	// the executor's live session (with system prompt) with the empty one,
 	// causing the saved transcript to lack the agent identity contract.
 	if len(loaded.Snapshot()) == 0 {
-		return nil, path, true
+		return nil, path, true, nil
 	}
-	return loaded, path, true
+	return loaded, path, true, nil
 }
 
 func migratedPinnedTabSessionPath(dir, sessionPath string) (string, bool) {

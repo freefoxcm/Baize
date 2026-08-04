@@ -128,6 +128,7 @@ func (f *acpFactory) NewSession(ctx context.Context, p acp.SessionParams) (*cont
 		TokenMode:                firstNonEmpty(p.RuntimeProfile, f.profile),
 		RequireKey:               true,
 		Sink:                     p.Sink,
+		StatsSource:              "cli",
 		EffortOverride:           p.EffortOverride,
 		Stderr:                   os.Stderr,
 		WorkspaceRoot:            root,

@@ -293,6 +293,7 @@ type SettingsView struct {
 	DesktopLayoutStyle      string               `json:"desktopLayoutStyle"`
 	DesktopTheme            string               `json:"desktopTheme"`
 	DesktopThemeStyle       string               `json:"desktopThemeStyle"`
+	DesktopTerminalTheme    string               `json:"desktopTerminalTheme,omitempty"`
 	CloseBehavior           string               `json:"closeBehavior"`
 	DisplayMode             string               `json:"displayMode"`
 	StatusBarStyle          string               `json:"statusBarStyle"`
@@ -322,17 +323,18 @@ type SettingsView struct {
 // frontend startup. It deliberately excludes providers and credential state so
 // slow keychain/env resolution stays off the first-render path.
 type DesktopStartupSettingsView struct {
-	Bot                BotSettingsView `json:"bot"`
-	DesktopLanguage    string          `json:"desktopLanguage"`
-	DesktopLayoutStyle string          `json:"desktopLayoutStyle"`
-	DesktopTheme       string          `json:"desktopTheme"`
-	DesktopThemeStyle  string          `json:"desktopThemeStyle"`
-	DisplayMode        string          `json:"displayMode"`
-	StatusBarStyle     string          `json:"statusBarStyle"`
-	StatusBarItems     []string        `json:"statusBarItems"`
-	CheckUpdates       bool            `json:"checkUpdates"`
-	UpdateChannel      string          `json:"updateChannel"`
-	ConversationWidth  string          `json:"conversationWidth,omitempty"`
+	Bot                  BotSettingsView `json:"bot"`
+	DesktopLanguage      string          `json:"desktopLanguage"`
+	DesktopLayoutStyle   string          `json:"desktopLayoutStyle"`
+	DesktopTheme         string          `json:"desktopTheme"`
+	DesktopThemeStyle    string          `json:"desktopThemeStyle"`
+	DesktopTerminalTheme string          `json:"desktopTerminalTheme,omitempty"`
+	DisplayMode          string          `json:"displayMode"`
+	StatusBarStyle       string          `json:"statusBarStyle"`
+	StatusBarItems       []string        `json:"statusBarItems"`
+	CheckUpdates         bool            `json:"checkUpdates"`
+	UpdateChannel        string          `json:"updateChannel"`
+	ConversationWidth    string          `json:"conversationWidth,omitempty"`
 	// ConfigWarnings are non-blocking notices when user/project config was
 	// recovered in memory (last-known-good or defaults) without rewriting files.
 	ConfigWarnings []string `json:"configWarnings,omitempty"`
@@ -860,32 +862,34 @@ func officialProviderAddedSet(cfg *config.Config) map[string]bool {
 func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettingsView {
 	if cfg == nil {
 		return DesktopStartupSettingsView{
-			Bot:                botSettingsView(config.BotConfig{}),
-			DesktopLayoutStyle: "workbench",
-			DesktopTheme:       "auto",
-			DesktopThemeStyle:  "graphite",
-			DisplayMode:        "standard",
-			StatusBarStyle:     "text",
-			StatusBarItems:     config.DefaultDesktopStatusBarItems(),
-			CheckUpdates:       true,
-			UpdateChannel:      "stable",
-			ConversationWidth:  "standard",
+			Bot:                  botSettingsView(config.BotConfig{}),
+			DesktopLayoutStyle:   "workbench",
+			DesktopTheme:         "auto",
+			DesktopThemeStyle:    "graphite",
+			DesktopTerminalTheme: "auto",
+			DisplayMode:          "standard",
+			StatusBarStyle:       "text",
+			StatusBarItems:       config.DefaultDesktopStatusBarItems(),
+			CheckUpdates:         true,
+			UpdateChannel:        "stable",
+			ConversationWidth:    "standard",
 		}
 	}
 	return DesktopStartupSettingsView{
-		Bot:                botSettingsView(cfg.Bot),
-		DesktopLanguage:    cfg.DesktopLanguage(),
-		DesktopLayoutStyle: cfg.DesktopLayoutStyle(),
-		DesktopTheme:       cfg.DesktopTheme(),
-		DesktopThemeStyle:  cfg.DesktopThemeStyle(),
-		DisplayMode:        cfg.DesktopDisplayMode(),
-		StatusBarStyle:     cfg.DesktopStatusBarStyle(),
-		StatusBarItems:     cfg.DesktopStatusBarItems(),
-		CheckUpdates:       cfg.DesktopCheckUpdates(),
-		UpdateChannel:      cfg.DesktopUpdateChannel(),
-		ConversationWidth:  cfg.DesktopConversationWidth(),
-		ConfigWarnings:     cfg.LoadWarnings(),
-		ConfigPath:         config.UserConfigPath(),
+		Bot:                  botSettingsView(cfg.Bot),
+		DesktopLanguage:      cfg.DesktopLanguage(),
+		DesktopLayoutStyle:   cfg.DesktopLayoutStyle(),
+		DesktopTheme:         cfg.DesktopTheme(),
+		DesktopThemeStyle:    cfg.DesktopThemeStyle(),
+		DesktopTerminalTheme: cfg.DesktopTerminalTheme(),
+		DisplayMode:          cfg.DesktopDisplayMode(),
+		StatusBarStyle:       cfg.DesktopStatusBarStyle(),
+		StatusBarItems:       cfg.DesktopStatusBarItems(),
+		CheckUpdates:         cfg.DesktopCheckUpdates(),
+		UpdateChannel:        cfg.DesktopUpdateChannel(),
+		ConversationWidth:    cfg.DesktopConversationWidth(),
+		ConfigWarnings:       cfg.LoadWarnings(),
+		ConfigPath:           config.UserConfigPath(),
 	}
 }
 
@@ -965,6 +969,7 @@ func (a *App) Settings() SettingsView {
 			DesktopLayoutStyle:      "workbench",
 			DesktopTheme:            "auto",
 			DesktopThemeStyle:       "graphite",
+			DesktopTerminalTheme:    "auto",
 			CloseBehavior:           "background",
 			DisplayMode:             "standard",
 			StatusBarStyle:          "text",
@@ -1043,6 +1048,7 @@ func (a *App) Settings() SettingsView {
 		DesktopLayoutStyle:      cfg.DesktopLayoutStyle(),
 		DesktopTheme:            cfg.DesktopTheme(),
 		DesktopThemeStyle:       cfg.DesktopThemeStyle(),
+		DesktopTerminalTheme:    cfg.DesktopTerminalTheme(),
 		CloseBehavior:           cfg.DesktopCloseBehavior(),
 		DisplayMode:             cfg.DesktopDisplayMode(),
 		StatusBarStyle:          cfg.DesktopStatusBarStyle(),
@@ -1800,6 +1806,7 @@ func (a *App) rebuildSettingTurnLocked(setting string, tab *WorkspaceTab, admiss
 	ctrl, err := boot.Build(a.bootContext(), boot.Options{
 		Model: model, RequireKey: false,
 		AutoPricingCurrency:      a.desktopAutoPricingCurrency(),
+		StatsSource:              "desktop",
 		Sink:                     snap.sink,
 		WorkspaceRoot:            snap.workspaceRoot,
 		SessionDir:               sessionDirForSnapshot(snap),
@@ -3465,6 +3472,12 @@ func (a *App) SetTrayLocale(locale string) error {
 // rebuild the active controller and must stay out of provider-visible requests.
 func (a *App) SetDesktopAppearance(theme, style string) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopAppearance(theme, style) })
+}
+
+// SetDesktopTerminalTheme updates only the integrated terminal colours. It is
+// applied live by the frontend and does not rebuild the active controller.
+func (a *App) SetDesktopTerminalTheme(theme string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopTerminalTheme(theme) })
 }
 
 // SetDesktopLayoutStyle updates only the desktop layout style. It does not

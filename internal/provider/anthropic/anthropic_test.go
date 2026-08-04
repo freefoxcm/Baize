@@ -770,7 +770,16 @@ func TestStreamSupportsBearerAuthHeaderAndCustomHeaders(t *testing.T) {
 		gotVersion = r.Header.Get("anthropic-version")
 		gotUserAgent = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+		_, _ = io.WriteString(w, `event: message_start
+data: {"type":"message_start","message":{"usage":{"input_tokens":2,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`)
 	}))
 	defer srv.Close()
 
@@ -798,7 +807,11 @@ func TestStreamSupportsBearerAuthHeaderAndCustomHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
-	for range ch {
+	var usage *provider.Usage
+	for chunk := range ch {
+		if chunk.Type == provider.ChunkUsage {
+			usage = chunk.Usage
+		}
 	}
 
 	if gotAuth != "Bearer sk-test" {
@@ -812,6 +825,9 @@ func TestStreamSupportsBearerAuthHeaderAndCustomHeaders(t *testing.T) {
 	}
 	if gotUserAgent != "Reasonix" {
 		t.Fatalf("User-Agent = %q, want Reasonix", gotUserAgent)
+	}
+	if usage == nil || usage.RequestCount != 1 {
+		t.Fatalf("usage request count = %+v, want 1", usage)
 	}
 }
 
