@@ -2295,6 +2295,22 @@ function buildToolCard(tool) {
   if(copy)copy.onclick=async e=>{e.stopPropagation();const ok=await copyText(body.textContent||card.dataset.toolArgs||'');copy.title=ok?__('tool_copied'):__('tool_copy');setTimeout(()=>{copy.title=__('tool_copy');},1200);};
   card.appendChild(head);card.appendChild(body);
   if(!tool.diff&&(tool.output||tool.err)){body.textContent=(tool.output||'')+(tool.err?('\n'+tool.err):'');}
+  // History rebuilds create cards for tools that already finished; render the
+  // result meta here the same way renderToolResult would for a live stream
+  // (live-stream dispatch keeps the "args" meta until tool_result arrives).
+  if (tool.status==='done' || tool.err) {
+    const meta = head.querySelector('.card-meta');
+    if (meta) {
+      const dur = tool.durationMs>0 ? fmtElapsed(tool.durationMs) : '';
+      if (tool.err) {
+        meta.textContent = dur;
+      } else if (tool.diff || card.dataset.hasDiff) {
+        if (dur) meta.textContent += ' · ' + dur;
+      } else {
+        meta.textContent = (dur?dur+' · ':'') + lineCount(String(tool.output||'')) + ' ' + __('tool_lines');
+      }
+    }
+  }
   return card;
 }
 function cardForTool(it, tool) {
@@ -3130,7 +3146,7 @@ function renderHistoryMessages(ms){
       (m.toolCalls||[]).forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
-        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false});
+        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0});
         if(tc.id)consumed.add(tc.id);
       });
       items.push(it);
@@ -3140,7 +3156,7 @@ function renderHistoryMessages(ms){
     if(m.role==='tool'){
       if(m.toolCallId&&consumed.has(m.toolCallId))return;
       const id=m.toolCallId||'hist-tool-'+(seq++);
-      const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:m.err||'',status:m.err?'failed':'done',dom:null,turn:histTurn||++histTurn};
+      const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:m.err||'',status:m.err?'failed':'done',durationMs:Number(m.durationMs||0),dom:null,turn:histTurn||++histTurn};
       items.push(it);
       const d=renderItem(it);if(d)appendItem(it,d);
     }

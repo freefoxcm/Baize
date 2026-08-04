@@ -616,11 +616,12 @@ func (a *Agent) handleToolRound(ctx context.Context, state *runLoopState, step i
 	results, images := batch.results, batch.images
 	for i, call := range calls {
 		a.session.Add(provider.Message{
-			Role:       provider.RoleTool,
-			Content:    results[i],
-			Images:     images[i],
-			ToolCallID: call.ID,
-			Name:       call.Name,
+			Role:           provider.RoleTool,
+			Content:        results[i],
+			Images:         images[i],
+			ToolCallID:     call.ID,
+			Name:           call.Name,
+			ToolDurationMs: batch.durations[i],
 		})
 	}
 	// If the context was cancelled during tool execution, return after storing

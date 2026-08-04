@@ -109,6 +109,52 @@ func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 	}
 }
 
+// TestHistoryMessagesCarriesToolDuration verifies /history serializes the
+// persisted tool-execution duration so the web UI can show it after a rebuild.
+func TestHistoryMessagesCarriesToolDuration(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleAssistant, Content: "plan", ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: "echo"}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "out", ToolDurationMs: 2500},
+	}
+	hm := historyMessages(msgs)
+	var toolMsg historyMessage
+	for _, m := range hm {
+		if m.Role == "tool" {
+			toolMsg = m
+		}
+	}
+	if toolMsg.ToolCallID != "c1" {
+		t.Fatalf("tool message missing: %+v", hm)
+	}
+	if toolMsg.DurationMs != 2500 {
+		t.Fatalf("durationMs = %d, want 2500", toolMsg.DurationMs)
+	}
+	b, err := json.Marshal(toolMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"durationMs":2500`) {
+		t.Fatalf("history JSON omits durationMs: %s", b)
+	}
+
+	// Zero duration (old sessions) is omitted from the wire form.
+	msgs[1].ToolDurationMs = 0
+	hm = historyMessages(msgs)
+	toolMsg = historyMessage{}
+	for _, m := range hm {
+		if m.Role == "tool" {
+			toolMsg = m
+		}
+	}
+	b, err = json.Marshal(toolMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "durationMs") {
+		t.Fatalf("zero duration should be omitted: %s", b)
+	}
+}
+
 func TestServeEndpoints(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc}) // no runner needed for these

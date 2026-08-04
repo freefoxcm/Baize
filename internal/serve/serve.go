@@ -1111,6 +1111,7 @@ type historyMessage struct {
 	ToolCalls  []historyToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string            `json:"toolCallId,omitempty"`
 	ToolName   string            `json:"toolName,omitempty"`
+	DurationMs int64             `json:"durationMs,omitempty"` // tool result wall-clock time
 }
 
 func historyMessages(msgs []provider.Message) []historyMessage {
@@ -1146,6 +1147,7 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 		if m.Role == provider.RoleTool {
 			hm.ToolCallID = m.ToolCallID
 			hm.ToolName = m.Name
+			hm.DurationMs = m.ToolDurationMs
 		}
 		out = append(out, hm)
 	}

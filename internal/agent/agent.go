@@ -2992,6 +2992,7 @@ func (a *Agent) systemPrompt() string {
 type batchExecution struct {
 	results            []string
 	images             [][]string
+	durations          []int64
 	recoveryStopTurn   bool
 	recoveryStopReason string
 }
@@ -3221,6 +3222,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) bat
 	return batchExecution{
 		results:            results,
 		images:             images,
+		durations:          durations,
 		recoveryStopTurn:   recoveryBatchStop,
 		recoveryStopReason: recoveryStopReason,
 	}
