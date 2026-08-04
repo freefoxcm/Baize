@@ -1414,7 +1414,10 @@ export function Composer({
     ],
     [includePastChatsItem, atMatches],
   );
-
+  const atMenuItemKey = useCallback(
+    (item: AtMenuItem) => item.kind === "pastChats" ? "past:chats" : (item.entry.isDir ? "d:" : "f:") + (item.entry.path || item.entry.name),
+    [],
+  );
 
   // --- which menu (if any) is open --- (slash command names win; then slash
   // arguments; then @-refs — they're rarely valid at once)
@@ -4079,7 +4082,7 @@ export function Composer({
           <VirtualMenu
             items={atMenuItems}
             activeIndex={active}
-            itemKey={(it) => (it.kind === "pastChats" ? "past:chats" : (it.entry.isDir ? "d:" : "f:") + (it.entry.path || it.entry.name))}
+            itemKey={atMenuItemKey}
             renderItem={(it, i) =>
               it.kind === "pastChats" ? (
                 <button

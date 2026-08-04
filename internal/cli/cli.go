@@ -169,6 +169,8 @@ func Run(args []string, version string) int {
 	case "version", "--version", "-v":
 		fmt.Println("reasonix", version)
 		return 0
+	case "docs-manifest":
+		return docsManifestCommand(rest, version)
 	case "help", "--help", "-h":
 		usage()
 		return 0
