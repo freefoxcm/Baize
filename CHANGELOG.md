@@ -7,6 +7,20 @@ branch.
 ## Unreleased
 
 ### Added
+
+- Welcome-page **Token activity** uses the Codex-style seven-row, week-column
+  heatmap with theme-derived activity levels and presets for this month, this
+  year, the last six months, and the last three months. Hover, focus, or tap a
+  day for a floating requests / turns / per-model breakdown without shifting
+  the welcome layout. The new `GET /usage/calendar?range=month|year|6m|3m`
+  endpoint aggregates existing `serve` stats rows, so historical usage needs
+  no new ledger. Long Windows and POSIX workspace paths now display their final
+  folder while keeping the complete path available as hover/accessibility text.
+  Model listing is unified: `/model` output de-duplicates identical model
+  names across provider aliases (deepseek / deepseek-flash / deepseek-pro),
+  matching the frontend catalog; and typing `/model ` in the composer opens an
+  argument palette (desktop ArgMenu) with the de-duplicated model refs — type
+  to filter, arrows + Enter or click to fill the ref, current model tagged.
 - Run-strip desktop parity: the ticker now counts NET work time (approval/ask
   waits are paused and excluded via `waitAccumMs`), waits freeze the ticker and
   show a stable status line, and retry shows only its own copy. The footer

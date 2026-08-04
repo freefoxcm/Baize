@@ -442,10 +442,42 @@ input,textarea{font:inherit;color:inherit}
 .welcome__logo{width:52px;height:52px;border-radius:13px;background:linear-gradient(135deg,var(--accent),var(--violet));display:flex;align-items:center;justify-content:center;font-family:var(--heading);font-weight:700;font-size:20px;color:oklch(99% 0 0);margin-bottom:16px;box-shadow:0 4px 18px oklch(68% .16 38/.2);position:relative}
 .welcome__title{font-family:var(--heading);font-size:24px;font-weight:700;letter-spacing:-.03em;position:relative}
 .welcome__tag{margin-top:6px;font-size:13.5px;color:var(--fg-2);position:relative}
-.welcome__meta{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px;max-width:680px;position:relative}
-.welcome__pill{display:inline-flex;align-items:center;gap:6px;max-width:320px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg-2);color:var(--fg-2);font-size:12px}
-.welcome__pill strong{font-weight:600;color:var(--fg)}
-.welcome__pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.welcome__calendar{width:100%;max-width:680px;margin:20px auto 0;padding:13px 15px 11px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--bg-2) 88%,transparent);position:relative;text-align:left}
+.welcome__calendar--loading .welcome__calendar-body{opacity:.5}
+.welcome__calendar-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}
+.welcome__calendar-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.welcome__calendar-title{font-size:12.5px;font-weight:600;color:var(--fg);letter-spacing:.01em;white-space:nowrap}
+.welcome__calendar-sum{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.welcome__calendar-ranges{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);border-radius:8px;background:var(--bg);flex:0 0 auto}
+.cal-range{height:25px;padding:0 8px;border-radius:6px;color:var(--muted);font-size:11px;white-space:nowrap;cursor:pointer;transition:background .14s ease,color .14s ease}
+.cal-range:hover{color:var(--fg);background:var(--panel)}
+.cal-range[aria-pressed="true"]{color:var(--fg);background:var(--panel-2);box-shadow:0 0 0 1px var(--border)}
+.welcome__calendar-body{overflow-x:auto;overflow-y:hidden;padding:2px 1px 5px;scrollbar-width:thin;transition:opacity .14s ease}
+.welcome__calendar-grid{--cal-cell:14px;display:grid;grid-template-rows:repeat(7,var(--cal-cell));grid-auto-columns:var(--cal-cell);gap:3px;width:max-content;margin:0 auto}
+.cal-cell{width:var(--cal-cell);height:var(--cal-cell);padding:0;border:0;border-radius:max(2px,calc(var(--cal-cell)*.22));background:color-mix(in srgb,var(--accent) 7%,var(--panel-2));cursor:pointer;transition:filter .12s ease,transform .12s ease;position:relative}
+.cal-cell:hover,.cal-cell:focus-visible{filter:brightness(1.18);transform:scale(1.08);z-index:1}
+.cal-cell:focus-visible{outline:1px solid var(--fg);outline-offset:1px}
+.cal-cell--1{background:color-mix(in srgb,var(--accent) 18%,var(--panel-2))}
+.cal-cell--2{background:color-mix(in srgb,var(--accent) 36%,var(--panel-2))}
+.cal-cell--3{background:color-mix(in srgb,var(--accent) 56%,var(--panel-2))}
+.cal-cell--4{background:color-mix(in srgb,var(--accent) 76%,var(--panel-2))}
+.cal-cell--5{background:var(--accent)}
+.cal-cell--today{box-shadow:0 0 0 1px var(--fg-2)}
+.cal-cell--active{box-shadow:0 0 0 2px var(--fg)}
+.welcome__calendar-tip{position:fixed;z-index:260;width:max-content;max-width:min(310px,calc(100vw - 20px));padding:9px 11px;border:1px solid var(--border-strong);border-radius:9px;background:var(--panel);box-shadow:var(--shadow-lg);color:var(--fg-2);font-size:11.5px;line-height:1.45;text-align:left;pointer-events:none;transform:translate(-50%,-100%)}
+.welcome__calendar-tip--below{transform:translate(-50%,0)}
+.welcome__calendar-tip b{color:var(--fg);font-weight:600}
+.welcome__calendar-tip .cal-models{display:flex;flex-direction:column;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.welcome__calendar-tip .cal-model{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:286px}
+.welcome__calendar-tip .cal-model span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.welcome__calendar-error{margin-top:3px;color:var(--danger);font-size:11.5px;text-align:center}
+.welcome__calendar-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:4px;font-size:10.5px;color:var(--muted)}
+.cal-legend{display:inline-flex;align-items:center;gap:4px}
+.cal-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.welcome__meta{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:680px;margin-top:14px;position:relative}
+.welcome__pill{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:min(320px,100%);height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg-2);color:var(--fg-2);font-size:12px}
+.welcome__pill strong{flex:0 0 auto;font-weight:600;color:var(--fg);white-space:nowrap}
+.welcome__pill span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .welcome__hints{display:flex;gap:18px;margin-top:20px;font-size:12px;color:var(--muted);position:relative}
 .welcome__hints span{display:inline-flex;align-items:center;gap:5px}
 .welcome__hints kbd{font-family:var(--mono);font-size:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--fg-2)}
@@ -492,6 +524,11 @@ input,textarea{font:inherit;color:inherit}
   .card-head{grid-template-columns:auto minmax(0,1fr) auto}
   .card-actions{grid-column:3}
   .card-badge{display:none}
+  .welcome__calendar{max-width:100%;padding:12px 11px 10px}
+  .welcome__calendar-head{align-items:stretch;flex-direction:column;gap:8px}
+  .welcome__calendar-ranges{width:100%;overflow-x:auto}
+  .cal-range{flex:0 0 auto}
+  .welcome__pill{max-width:calc(100vw - 32px)}
 }
 @media(min-width:769px){
   .menu-btn,.sidebar-overlay{display:none}
@@ -598,6 +635,29 @@ input,textarea{font:inherit;color:inherit}
     <div class="welcome" id="welcome">
       <div class="welcome__brand"><img src="/assets/logo-wordmark.svg" alt="Reasonix" class="brand-wordmark brand-wordmark--welcome" draggable="false"></div>
       <div class="welcome__tag">__('welcome_tag')</div>
+      <div class="welcome__calendar" id="welcome-calendar" style="display:none">
+        <div class="welcome__calendar-head">
+          <div class="welcome__calendar-info">
+            <span class="welcome__calendar-title">__('usage_calendar')</span>
+            <span class="welcome__calendar-sum" id="cal-sum"></span>
+          </div>
+          <div class="welcome__calendar-ranges" role="group" aria-label="__('cal_range_label')">
+            <button type="button" class="cal-range" data-cal-range="month" aria-pressed="true">__('cal_range_month')</button>
+            <button type="button" class="cal-range" data-cal-range="year" aria-pressed="false">__('cal_range_year')</button>
+            <button type="button" class="cal-range" data-cal-range="6m" aria-pressed="false">__('cal_range_6m')</button>
+            <button type="button" class="cal-range" data-cal-range="3m" aria-pressed="false">__('cal_range_3m')</button>
+          </div>
+        </div>
+        <div class="welcome__calendar-body" id="cal-body">
+          <div class="welcome__calendar-grid" id="cal-grid" role="grid" aria-label="__('usage_calendar')"></div>
+        </div>
+        <div class="welcome__calendar-tip" id="cal-tip" role="tooltip" aria-hidden="true" style="display:none"></div>
+        <div class="welcome__calendar-error" id="cal-error" role="status" style="display:none"></div>
+        <div class="welcome__calendar-foot">
+          <span class="cal-legend">__('cal_less') <i style="background:color-mix(in srgb,var(--accent) 7%,var(--panel-2))"></i></span>
+          <span class="cal-legend"><i style="background:color-mix(in srgb,var(--accent) 18%,var(--panel-2))"></i><i style="background:color-mix(in srgb,var(--accent) 36%,var(--panel-2))"></i><i style="background:color-mix(in srgb,var(--accent) 56%,var(--panel-2))"></i><i style="background:color-mix(in srgb,var(--accent) 76%,var(--panel-2))"></i><i style="background:var(--accent)"></i> __('cal_more')</span>
+        </div>
+      </div>
       <div class="welcome__meta">
         <div class="welcome__pill"><strong>__('model')</strong><span id="welcome-model">-</span></div>
         <div class="welcome__pill"><strong>__('workspace')</strong><span id="welcome-cwd">-</span></div>
@@ -924,6 +984,7 @@ const __T = {
     'cmd_group_agent': 'Agent',
     'cmd_group_help': 'Help',
     'command_palette': 'Command palette',
+    'current': 'current',
     'command_empty': 'No commands match',
     'command_nav': '↑↓ navigate · Enter insert · Esc close',
     'danger': 'Danger',
@@ -995,6 +1056,21 @@ const __T = {
     'scope_sumupto': 'Summarize up to here',
     'delete_confirm': 'Delete this session?',
     'welcome_tag': 'AI coding agent',
+    'usage_calendar': 'Token activity',
+    'cal_range_label': 'Token activity range',
+    'cal_range_month': 'This month',
+    'cal_range_year': 'This year',
+    'cal_range_6m': 'Last 6 months',
+    'cal_range_3m': 'Last 3 months',
+    'cal_less': 'less',
+    'cal_more': 'more',
+    'cal_total': '{t} tokens · {n} active days',
+    'cal_loading': 'Loading token activity…',
+    'cal_error': 'Token activity is temporarily unavailable.',
+    'cal_turn': 'turn',
+    'cal_turns': 'turns',
+    'cal_req': 'request',
+    'cal_reqs': 'requests',
     'hint_commands': '/ commands',
     'hint_mode': 'Plan',
     'hint_yolo': 'YOLO',
@@ -1100,6 +1176,7 @@ const __T = {
     'cmd_group_agent': '代理',
     'cmd_group_help': '帮助',
     'command_palette': '命令面板',
+    'current': '当前',
     'command_empty': '没有匹配的命令',
     'command_nav': '↑↓ 选择 · Enter 插入 · Esc 关闭',
     'danger': '危险',
@@ -1171,6 +1248,21 @@ const __T = {
     'scope_sumupto': '总结到此处',
     'delete_confirm': '删除此会话？',
     'welcome_tag': 'AI 编码助手',
+    'usage_calendar': 'Token活动',
+    'cal_range_label': 'Token活动范围',
+    'cal_range_month': '本月',
+    'cal_range_year': '全年',
+    'cal_range_6m': '近6个月',
+    'cal_range_3m': '近3个月',
+    'cal_less': '少',
+    'cal_more': '多',
+    'cal_total': '{t} tokens · {n} 个活跃日',
+    'cal_loading': '正在加载 Token活动…',
+    'cal_error': 'Token活动暂时无法加载。',
+    'cal_turn': '轮',
+    'cal_turns': '轮',
+    'cal_req': '请求',
+    'cal_reqs': '请求',
     'hint_commands': '/ 命令',
     'hint_mode': '计划',
     'hint_yolo': 'YOLO',
@@ -1304,13 +1396,102 @@ log.addEventListener('scroll',()=>{pinnedToBottom=atBottom();});
 log.addEventListener('wheel',e=>{if(e.deltaY<0&&log.scrollHeight>log.clientHeight)pinnedToBottom=false;},{passive:true});
 function scrollDown(force) { if(force)pinnedToBottom=true; if(!pinnedToBottom)return; requestAnimationFrame(()=>{if(force)pinnedToBottom=true; else if(!pinnedToBottom)return; log.scrollTo({top:log.scrollHeight,behavior:'instant'});});}
 function hideWelcome() { if(welcome) welcome.style.display='none';}
-function showWelcome() { if(welcome) welcome.style.display='';}
+function showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('month',true);}
+
+// ── welcome Token activity (Codex-style week-column heatmap) ──
+let calData=null, calRange='month', calSelected=null, calAbort=null, calGeneration=0, calWeeks=0;
+const CAL_RANGES=new Set(['month','year','6m','3m']);
+function fmtDayKey(dt){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+function parseDayKey(key){const p=String(key||'').split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);}
+function calLevel(toks,max){if(toks<=0)return 0;if(max<=0)return 1;return Math.max(1,Math.min(5,Math.ceil(toks/max*5)));}
+function updateCalRangeButtons(){$$('[data-cal-range]').forEach(btn=>btn.setAttribute('aria-pressed',btn.dataset.calRange===calRange?'true':'false'));}
+function setUsageCalendarRange(range,force){
+  if(!CAL_RANGES.has(range))return;
+  const changed=calRange!==range;calRange=range;updateCalRangeButtons();closeCalTip();
+  if(changed||force||!calData)loadUsageCalendar();
+}
+function sizeUsageCalendarGrid(){
+  const body=$('#cal-body'),grid=$('#cal-grid');if(!body||!grid||calWeeks<=0)return;
+  const gap=3,available=Math.max(1,body.clientWidth-2);
+  const size=Math.max(10,Math.min(14,Math.floor((available-Math.max(0,calWeeks-1)*gap)/calWeeks)));
+  grid.style.setProperty('--cal-cell',size+'px');
+}
+function renderUsageCalendar(d){
+  const grid=$('#cal-grid');if(!grid)return;grid.innerHTML='';
+  const days=Array.isArray(d.days)?d.days:[];
+  const first=days.length?parseDayKey(days[0].day):new Date();
+  const offset=(first.getDay()+6)%7; // Monday = row 0
+  calWeeks=Math.max(1,Math.ceil((days.length+offset)/7));
+  grid.style.gridTemplateColumns='repeat('+calWeeks+',var(--cal-cell))';
+  const todayKey=fmtDayKey(new Date());
+  days.forEach((entry,i)=>{
+    const dayKey=entry.day,toks=entry.tokens||0,turns=entry.turns||0;
+    const row=(offset+i)%7+1,col=Math.floor((offset+i)/7)+1,lvl=calLevel(toks,d.max||0);
+    const cell=el('button','cal-cell'+(lvl?' cal-cell--'+lvl:'')+(dayKey===todayKey?' cal-cell--today':''));
+    cell.type='button';cell.dataset.day=dayKey;cell.style.gridRow=String(row);cell.style.gridColumn=String(col);
+    cell.setAttribute('role','gridcell');cell.setAttribute('aria-expanded','false');
+    cell.setAttribute('aria-label',dayKey+' · '+fmtTok(toks)+' tok · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns')));
+    cell.onmouseenter=()=>showCalTip(cell,dayKey,entry,false);cell.onmouseleave=()=>hideCalTip(false);
+    cell.onfocus=()=>showCalTip(cell,dayKey,entry,false);cell.onblur=()=>hideCalTip(false);
+    cell.onclick=e=>{e.stopPropagation();toggleCalDay(cell,dayKey,entry);};grid.appendChild(cell);
+  });
+  const sum=$('#cal-sum');if(sum)sum.textContent=__('cal_total').replace('{t}',fmtTok(d.total||0)).replace('{n}',String(d.activeDays||0));
+  sizeUsageCalendarGrid();
+}
+function loadUsageCalendar(){
+  const cal=$('#welcome-calendar'),error=$('#cal-error'),sum=$('#cal-sum');if(!cal)return;
+  if(calAbort)calAbort.abort();const generation=++calGeneration;calAbort=new AbortController();
+  cal.classList.add('welcome__calendar--loading');cal.style.display='';
+  if(error)error.style.display='none';if(sum)sum.textContent=__('cal_loading');
+  fetch('/usage/calendar?range='+encodeURIComponent(calRange),{signal:calAbort.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(d=>{
+    if(generation!==calGeneration)return;calData=d;closeCalTip();renderUsageCalendar(d);
+  }).catch(err=>{
+    if(err&&err.name==='AbortError')return;if(generation!==calGeneration)return;calData=null;
+    const grid=$('#cal-grid');if(grid)grid.innerHTML='';if(sum)sum.textContent='';
+    if(error){error.textContent=__('cal_error');error.style.display='';}
+  }).finally(()=>{if(generation===calGeneration)cal.classList.remove('welcome__calendar--loading');});
+}
+function calTipHTML(dayKey,entry){
+  const e=entry||{},tokens=e.tokens||0,requests=e.requests||0,turns=e.turns||0;
+  let html='<div><b>'+escHtml(dayKey)+'</b> · '+fmtTok(tokens)+' tok · '+requests+' '+(requests===1?__('cal_req'):__('cal_reqs'))+' · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns'))+'</div>';
+  const models=Object.entries(e.byModel||{}).sort((a,b)=>b[1]-a[1]);
+  if(models.length)html+='<div class="cal-models">'+models.map(([m,t])=>'<div class="cal-model"><span>'+escHtml(m)+'</span><b>'+fmtTok(t)+'</b></div>').join('')+'</div>';
+  return html;
+}
+function positionCalTip(cell){
+  const tip=$('#cal-tip');if(!tip||tip.style.display==='none')return;
+  const rect=cell.getBoundingClientRect(),half=Math.max(80,tip.offsetWidth/2+6);
+  const left=Math.max(half,Math.min(window.innerWidth-half,rect.left+rect.width/2));
+  const below=rect.top-tip.offsetHeight-8<8;tip.classList.toggle('welcome__calendar-tip--below',below);
+  tip.style.left=left+'px';tip.style.top=(below?rect.bottom+8:rect.top-8)+'px';
+}
+function showCalTip(cell,dayKey,entry,sticky){
+  if(calSelected&&!sticky)return;const tip=$('#cal-tip');if(!tip)return;
+  tip.innerHTML=calTipHTML(dayKey,entry);tip.style.display='';tip.setAttribute('aria-hidden','false');tip.dataset.day=dayKey;
+  if(sticky){calSelected=dayKey;document.querySelectorAll('.cal-cell--active').forEach(c=>{c.classList.remove('cal-cell--active');c.setAttribute('aria-expanded','false');});cell.classList.add('cal-cell--active');cell.setAttribute('aria-expanded','true');}
+  positionCalTip(cell);
+}
+function hideCalTip(force){
+  if(calSelected&&!force)return;const tip=$('#cal-tip');if(!tip)return;
+  tip.style.display='none';tip.setAttribute('aria-hidden','true');tip.removeAttribute('data-day');
+}
+function closeCalTip(){calSelected=null;document.querySelectorAll('.cal-cell--active').forEach(c=>{c.classList.remove('cal-cell--active');c.setAttribute('aria-expanded','false');});hideCalTip(true);}
+function toggleCalDay(cell,dayKey,entry){if(calSelected===dayKey){closeCalTip();return;}showCalTip(cell,dayKey,entry,true);}
+$$('[data-cal-range]').forEach(btn=>btn.onclick=()=>setUsageCalendarRange(btn.dataset.calRange,false));
+document.addEventListener('pointerdown',e=>{if(calSelected&&!e.target.closest('.cal-cell'))closeCalTip();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&calSelected){e.preventDefault();e.stopImmediatePropagation();closeCalTip();}});
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(sizeUsageCalendarGrid).observe($('#cal-body'));
 // Global single-key shortcuts must stay dead while the user is typing (the
 // composer is autofocused, so this is the default state) and when a
 // browser/OS chord is held (Cmd+A must never resolve an approval).
 function isTextEntry(t) { return !!t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable); }
 function isPlainKey(e) { return !e.ctrlKey&&!e.metaKey&&!e.altKey&&!isTextEntry(e.target); }
 function fmtTok(n) { return n>=1000?(n/1000).toFixed(1).replace(/\.0$/,'')+'k':String(n);}
+function workspaceDisplayName(path){
+  const raw=String(path||'').trim();if(!raw)return '-';
+  const trimmed=raw.replace(/[\\/]+$/,'');if(!trimmed)return raw;
+  const parts=trimmed.split(/[\\/]/);return parts[parts.length-1]||raw;
+}
 function currencySymbol(c){const v=String(c||'¥').trim();if(/^(cny|rmb|yuan)$/i.test(v))return '¥';if(/^(usd|dollar)$/i.test(v))return '$';return v||'¥';}
 function fmtMoney(n,c){if(typeof n!=='number'||!isFinite(n))return '—';const s=currencySymbol(c);return s+(n<1?n.toFixed(4):n.toFixed(2));}
 function fmtElapsed(ms) { const s=Math.floor(ms/1000); return s<60?s+'s':Math.floor(s/60)+'m '+s%60+'s';}
@@ -2424,10 +2605,24 @@ document.addEventListener('keydown',e=>{
 },true);
 
 // ── slash menu ──
-let slashOpen=false, slashIndex=0, slashFiltered=[];
+let slashOpen=false, slashIndex=0, slashFiltered=[], slashArgMode=false, slashArgItems=[];
 function updateSlashMenu() {
   const v=input.value;
-  if(!v.startsWith('/')||v.includes(' ')){closeSlashMenu();return;}
+  if(!v.startsWith('/')){closeSlashMenu();return;}
+  const space=v.indexOf(' ');
+  if(space>=0){
+    // Argument completion (desktop ArgMenu): /model <ref>
+    if(v.slice(0,space)!=='/model'){closeSlashMenu();return;}
+    const q=v.slice(space+1).trim().toLowerCase();
+    ensureModelsLoaded().then(()=>{
+      slashArgItems=uniqueModelRefs().filter(r=>r.toLowerCase().includes(q));
+      if(slashArgItems.length===0){closeSlashMenu();return;}
+      slashOpen=true; slashIndex=0; slashArgMode=true;
+      renderSlashArgs(q);
+    });
+    return;
+  }
+  slashArgMode=false;
   const q=v.slice(1).toLowerCase();
   slashFiltered=SLASH_CMDS.filter(c=>{
     const hay=[c.cmd,c.sig,c.desc,slashGroupLabel(c.group)].join(' ').toLowerCase();
@@ -2464,8 +2659,52 @@ function renderSlashMenu() {
   const active=menu.querySelector('.slash-menu__item--active');
   if(active)active.scrollIntoView({block:'nearest'});
 }
+function renderSlashArgs(q) {
+  let menu=$('#slash-menu'); if(!menu){menu=el('div','slash-menu');menu.id='slash-menu';slashAnchor.appendChild(menu);}
+  menu.innerHTML='<div class="slash-menu__head"><span>'+escHtml(__('command_palette'))+'</span><span class="slash-menu__query">/model '+escHtml(q)+'</span></div><div class="slash-menu__list" id="slash-menu-list" role="listbox"></div><div class="slash-menu__foot"><span>'+escHtml(__('command_nav'))+'</span><span>'+slashArgItems.length+'</span></div>';
+  const list=$('#slash-menu-list');
+  slashArgItems.forEach((ref,i)=>{
+    const item=el('button','slash-menu__item'+(i===slashIndex?' slash-menu__item--active':''));
+    item.type='button';
+    item.setAttribute('role','option');
+    item.setAttribute('aria-selected',i===slashIndex?'true':'false');
+    const isCurrent=ref===currentModelRefLabel();
+    item.innerHTML='<span class="slash-menu__name" style="--slash-name:var(--fg)">'+escHtml(ref)+'</span><span class="slash-menu__desc">'+escHtml(ref.split('/')[0])+'</span><span class="slash-menu__pill'+(isCurrent?' slash-menu__pill--current':'')+'">'+escHtml(isCurrent?__('current'):'')+'</span><span class="slash-menu__sig"></span>';
+    item.onmouseenter=()=>{slashIndex=i;renderSlashArgs(q);};
+    item.onclick=()=>{input.value='/model '+ref;closeSlashMenu();input.focus();};
+    list.appendChild(item);
+  });
+  const active=menu.querySelector('.slash-menu__item--active');
+  if(active)active.scrollIntoView({block:'nearest'});
+}
 function closeSlashMenu(){slashOpen=false;const m=$('#slash-menu');if(m)m.remove();}
-function acceptSlash(){if(!slashOpen)return;const c=slashFiltered[slashIndex];if(c){input.value='/'+c.cmd+' ';}closeSlashMenu();input.focus();}
+function acceptSlash(){if(!slashOpen)return;
+  if(slashArgMode){
+    const it=slashArgItems[slashIndex];
+    if(it){input.value='/model '+it;}
+    closeSlashMenu();input.focus();return;
+  }
+  const c=slashFiltered[slashIndex];if(c){input.value='/'+c.cmd+' ';}closeSlashMenu();input.focus();}
+
+// ── slash argument completion helpers ──
+function ensureModelsLoaded() {
+  if(modelsCache.length>0)return Promise.resolve();
+  return fetch('/models').then(r=>r.json()).then(d=>{modelsCache=Array.isArray(d?.models)?d.models:[];}).catch(()=>{modelsCache=[];});
+}
+// Unique model refs matching /model text output semantics: same-named models
+// across provider aliases collapse to one ref (active/default entry wins).
+function uniqueModelRefs() {
+  const byModel=new Map();
+  for(const m of modelsCache){
+    const key=m.model||m.ref||'';
+    if(!key)continue;
+    const ex=byModel.get(key);
+    if(!ex)byModel.set(key,m);
+    else if((m.active||m.default)&&!(ex.active||ex.default))byModel.set(key,m);
+  }
+  return [...byModel.values()].map(m=>m.ref||m.model||'');
+}
+function currentModelRefLabel(){const c=modelsCache.find(m=>m.active);return c?(c.ref||c.model||''):'';}
 
 // ── SSE ──
 const es=new EventSource('/events');
@@ -2519,7 +2758,12 @@ function fetchStatus(){
     if(s.label)statusModel.textContent=s.label;
     if(welcomeModel)welcomeModel.textContent=s.label||'-';
     const cml=$('#composer-model-value');if(cml){const cur=modelsCache.find(m=>m.active);cml.textContent=(s.label||'-')+(cur&&cur.provider?' · '+providerLabel(cur.provider):'');}
-    if(welcomeCwd)welcomeCwd.textContent=(s.cwd||'-').replace(/^.*\//,'');
+    if(welcomeCwd){
+      const cwd=String(s.cwd||'-');
+      welcomeCwd.textContent=workspaceDisplayName(cwd);
+      welcomeCwd.title=cwd;
+      welcomeCwd.setAttribute('aria-label',__('workspace')+': '+cwd);
+    }
     // Re-sync running from the server: after a history rebuild the SSE guard
     // skips turn_started/turn_done, so the server is the source of truth here.
     if(typeof s.running==='boolean'&&s.running!==running)setRunning(s.running);
@@ -2843,8 +3087,8 @@ input.addEventListener('input',()=>{input.style.height='auto';input.style.height
 input.addEventListener('keydown',e=>{
   // slash menu nav
   if(slashOpen){
-    if(e.key==='ArrowDown'){e.preventDefault();slashIndex=Math.min(slashIndex+1,slashFiltered.length-1);renderSlashMenu();return;}
-    if(e.key==='ArrowUp'){e.preventDefault();slashIndex=Math.max(slashIndex-1,0);renderSlashMenu();return;}
+    if(e.key==='ArrowDown'){e.preventDefault();if(slashArgMode){slashIndex=Math.min(slashIndex+1,slashArgItems.length-1);renderSlashArgs(input.value.slice(input.value.indexOf(' ')+1));}else{slashIndex=Math.min(slashIndex+1,slashFiltered.length-1);renderSlashMenu();}return;}
+    if(e.key==='ArrowUp'){e.preventDefault();if(slashArgMode){slashIndex=Math.max(slashIndex-1,0);renderSlashArgs(input.value.slice(input.value.indexOf(' ')+1));}else{slashIndex=Math.max(slashIndex-1,0);renderSlashMenu();}return;}
     if(e.key==='Tab'||e.key==='Enter'){e.preventDefault();acceptSlash();return;}
     if(e.key==='Escape'){e.preventDefault();closeSlashMenu();return;}
   }
