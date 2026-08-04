@@ -410,6 +410,39 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	}
 }
 
+
+func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		`'usage_calendar': 'Token activity'`,
+		`'cal_range_month': 'This month'`,
+		`'cal_range_year': 'This year'`,
+		`'cal_range_6m': 'Last 6 months'`,
+		`'cal_range_3m': 'Last 3 months'`,
+		`aria-pressed="true"`,
+		`'usage_calendar': 'Token活动'`,
+		`data-cal-range="month"`,
+		`data-cal-range="year"`,
+		`data-cal-range="6m"`,
+		`data-cal-range="3m"`,
+		`fetch('/usage/calendar?range='+encodeURIComponent(calRange)`,
+		`grid.style.gridTemplateColumns='repeat('+calWeeks`,
+		`role="tooltip"`,
+		`cell.onfocus=()=>showCalTip`,
+		`if(e.key==='Escape'&&calSelected)`,
+		`const parts=trimmed.split(/[\\/]/);`,
+		`const trimmed=raw.replace(/[\\/]+$/,'');`,
+		`welcomeCwd.title=cwd;`,
+		`.welcome__pill strong{flex:0 0 auto;`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing Token activity/workspace support %q", want)
+		}
+	}
+	if strings.Contains(html, "CAL_DAYS = 120") || strings.Contains(html, "/usage/calendar?days=") {
+		t.Fatal("serve index still contains the fixed 120-day calendar contract")
+	}
+}
 func TestServeIndexReportsSessionDeleteFailures(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
@@ -971,5 +1004,210 @@ func TestServePlanApprovalPostureMatrix(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUsageCalendarRange(t *testing.T) {
+	loc := time.FixedZone("test", 8*60*60)
+	tests := []struct {
+		name, now, preset, wantKey, wantFrom, wantTo string
+		wantErr                                      bool
+	}{
+		{name: "default month", now: "2026-08-04", wantKey: "month", wantFrom: "2026-08-01", wantTo: "2026-08-04"},
+		{name: "month", now: "2026-08-04", preset: "month", wantKey: "month", wantFrom: "2026-08-01", wantTo: "2026-08-04"},
+		{name: "year", now: "2026-08-04", preset: "year", wantKey: "year", wantFrom: "2026-01-01", wantTo: "2026-08-04"},
+		{name: "three months", now: "2026-08-04", preset: "3m", wantKey: "3m", wantFrom: "2026-05-04", wantTo: "2026-08-04"},
+		{name: "six months crosses year", now: "2026-03-04", preset: "6m", wantKey: "6m", wantFrom: "2025-09-04", wantTo: "2026-03-04"},
+		{name: "month end clamps", now: "2025-05-31", preset: "3m", wantKey: "3m", wantFrom: "2025-02-28", wantTo: "2025-05-31"},
+		{name: "leap month end clamps", now: "2024-05-31", preset: "3m", wantKey: "3m", wantFrom: "2024-02-29", wantTo: "2024-05-31"},
+		{name: "invalid", now: "2026-08-04", preset: "90", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			now, err := time.ParseInLocation(usageCalendarDateLayout, tc.now, loc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			key, from, to, err := usageCalendarRange(now, tc.preset)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("usageCalendarRange error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key != tc.wantKey || from.Format(usageCalendarDateLayout) != tc.wantFrom || to.Format(usageCalendarDateLayout) != tc.wantTo {
+				t.Fatalf("range = %q %s..%s, want %q %s..%s", key, from.Format(usageCalendarDateLayout), to.Format(usageCalendarDateLayout), tc.wantKey, tc.wantFrom, tc.wantTo)
+			}
+		})
+	}
+}
+
+// TestServeUsageCalendar drives GET /usage/calendar against a temp stats dir
+// seeded with daily stats files (stats record JSONL). Usage/turn rows must
+// aggregate into the preset range contract, month boundaries must be honored,
+// and rows from other sources (desktop/cli) must be excluded.
+func TestServeUsageCalendar(t *testing.T) {
+	dir := t.TempDir()
+	dayLayout := "2006-01-02"
+	writeRow := func(day time.Time, model, source string, total int, turn bool) {
+		line := map[string]any{"ts": day.Format(time.RFC3339), "model": model, "source": source, "total": total}
+		if turn {
+			line = map[string]any{"ts": day.Format(time.RFC3339), "source": source, "turn": true}
+		}
+		b, err := json.Marshal(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, day.Format(dayLayout)+".jsonl")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write(append(b, '\n')); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	now := time.Date(2026, time.August, 4, 12, 0, 0, 0, time.FixedZone("test", 8*60*60))
+	writeRow(now, "deepseek/deepseek-v4-flash", "serve", 300, false)
+	writeRow(now, "deepseek/deepseek-v4-flash", "serve", 700, false)
+	writeRow(now, "", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -1), "opencode-go/glm-5.2", "serve", 500, false)
+	writeRow(now.AddDate(0, 0, -1), "opencode-go/glm-5.2", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -3), "deepseek/deepseek-v4-pro", "serve", 200, false)
+	writeRow(now.AddDate(0, 0, -3), "", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -3), "", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -1), "opencode-go/glm-5.2", "cli", 9999, false)             // other source: excluded
+	writeRow(now.AddDate(0, 0, -200), "deepseek/deepseek-v4-flash", "serve", 12345, false) // outside window
+
+	ctrl := control.New(control.Options{})
+	bc := NewBroadcaster()
+	srv := New(ctrl, bc, config.ServeConfig{})
+	srv.statsDir = func() string { return dir }
+	srv.now = func() time.Time { return now }
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	var got struct {
+		Days []struct {
+			Day      string           `json:"day"`
+			Tokens   int64            `json:"tokens"`
+			Requests int              `json:"requests"`
+			Turns    int              `json:"turns"`
+			ByModel  map[string]int64 `json:"byModel"`
+		} `json:"days"`
+		Range      string `json:"range"`
+		From       string `json:"from"`
+		To         string `json:"to"`
+		Max        int64  `json:"max"`
+		Total      int64  `json:"total"`
+		Turns      int64  `json:"turns"`
+		ActiveDays int    `json:"activeDays"`
+	}
+	resp, err := http.Get(ts.URL + "/usage/calendar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Range != "month" || got.From != "2026-08-01" || got.To != "2026-08-04" {
+		t.Fatalf("range = %q %s..%s, want month 2026-08-01..2026-08-04", got.Range, got.From, got.To)
+	}
+	if got.Total != 1000+500+200 {
+		t.Fatalf("total = %d, want 1700", got.Total)
+	}
+	if got.Max != 1000 {
+		t.Fatalf("max = %d, want 1000", got.Max)
+	}
+	if got.Turns != 1+1+2 {
+		t.Fatalf("turns = %d, want 4", got.Turns)
+	}
+	if got.ActiveDays != 3 {
+		t.Fatalf("activeDays = %d, want 3", got.ActiveDays)
+	}
+	type daySummary struct {
+		tokens          int64
+		requests, turns int
+		byModel         map[string]int64
+	}
+	byDay := map[string]daySummary{}
+	for _, d := range got.Days {
+		byDay[d.Day] = daySummary{tokens: d.Tokens, requests: d.Requests, turns: d.Turns, byModel: d.ByModel}
+	}
+	today := byDay[now.Format(dayLayout)]
+	if today.tokens != 1000 || today.requests != 2 || today.turns != 1 {
+		t.Fatalf("today = %+v, want 1000 tokens, 2 requests, 1 turn", today)
+	}
+	if today.byModel["deepseek/deepseek-v4-flash"] != 1000 {
+		t.Fatalf("today model split = %#v, want flash=1000", today.byModel)
+	}
+	yesterday := byDay[now.AddDate(0, 0, -1).Format(dayLayout)]
+	if yesterday.tokens != 500 || yesterday.requests != 1 || yesterday.turns != 1 {
+		t.Fatalf("yesterday = %+v, want 500 tokens, 1 request, 1 turn (cli row excluded)", yesterday)
+	}
+	if yesterday.byModel["opencode-go/glm-5.2"] != 500 {
+		t.Fatalf("yesterday model split = %#v, want glm=500", yesterday.byModel)
+	}
+	if _, ok := byDay[now.AddDate(0, 0, -200).Format(dayLayout)]; ok {
+		t.Fatal("out-of-window day leaked")
+	}
+	// Day ordering must be ascending and contiguous (Query contract).
+	if len(got.Days) != 4 {
+		t.Fatalf("days = %d, want 4 for August 1..4", len(got.Days))
+	}
+	for i := 1; i < len(got.Days); i++ {
+		if got.Days[i].Day <= got.Days[i-1].Day {
+			t.Fatalf("days not ascending at %d: %s <= %s", i, got.Days[i].Day, got.Days[i-1].Day)
+		}
+	}
+	for _, tc := range []struct {
+		rangeKey string
+		from     string
+		days     int
+	}{
+		{rangeKey: "year", from: "2026-01-01", days: 216},
+		{rangeKey: "6m", from: "2026-02-04", days: 182},
+		{rangeKey: "3m", from: "2026-05-04", days: 93},
+	} {
+		resp, err := http.Get(ts.URL + "/usage/calendar?range=" + tc.rangeKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ranged struct {
+			Range string            `json:"range"`
+			From  string            `json:"from"`
+			To    string            `json:"to"`
+			Days  []json.RawMessage `json:"days"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&ranged); err != nil {
+			resp.Body.Close()
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("range %q status = %d", tc.rangeKey, resp.StatusCode)
+		}
+		if ranged.Range != tc.rangeKey || ranged.From != tc.from || ranged.To != "2026-08-04" || len(ranged.Days) != tc.days {
+			t.Fatalf("range %q response = %+v (%d days)", tc.rangeKey, ranged, len(ranged.Days))
+		}
+	}
+	bad, err := http.Get(ts.URL + "/usage/calendar?range=bogus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid range status = %d, want 400", bad.StatusCode)
 	}
 }

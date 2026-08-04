@@ -72,6 +72,12 @@ type Server struct {
 	titleUsageSink  event.Sink
 	titles          *titleCache
 	auth            *authGate // nil when auth is disabled
+	// statsDir resolves the usage-stats directory for the token calendar.
+	// Defaults to config.StatsDir; tests inject a temp dir.
+	statsDir func() string
+	// now supplies the local calendar day for usage range resolution. Tests
+	// inject a fixed clock so month/year and month-end boundaries stay stable.
+	now func() time.Time
 	// leases guards the active session file against other runtimes (a desktop
 	// window, another CLI). Wired by the serve CLI command with the keeper that
 	// already holds the startup session's lease; nil (tests, embedded use)
@@ -83,10 +89,12 @@ type Server struct {
 // serveCfg controls authentication (none, token, or password).
 func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) *Server {
 	s := &Server{
-		ctrl:   ctrl,
-		bc:     bc,
-		titles: newTitleCache(ctrl.SessionDir()),
-		auth:   newAuthGate(serveCfg),
+		ctrl:     ctrl,
+		bc:       bc,
+		titles:   newTitleCache(ctrl.SessionDir()),
+		auth:     newAuthGate(serveCfg),
+		statsDir: config.StatsDir,
+		now:      time.Now,
 	}
 	s.tokenMode = boot.TokenModeFull
 	s.initTitleProvider()
@@ -567,6 +575,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
+	mux.HandleFunc("GET /usage/calendar", s.usageCalendar)
 	mux.HandleFunc("POST /submit", s.submit)
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
@@ -1687,6 +1696,88 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		out = []sessionEntry{}
 	}
 	writeJSON(w, out)
+}
+
+const usageCalendarDateLayout = "2006-01-02"
+
+// usageCalendarRange resolves the welcome-page presets into inclusive local
+// calendar boundaries. Rolling month presets clamp month-end dates (May 31
+// minus three months is February 28/29 rather than a normalized March date).
+func usageCalendarRange(now time.Time, preset string) (key string, from, to time.Time, err error) {
+	y, m, d := now.Date()
+	to = time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+	key = strings.TrimSpace(preset)
+	if key == "" {
+		key = "month"
+	}
+	switch key {
+	case "month":
+		from = time.Date(y, m, 1, 0, 0, 0, 0, now.Location())
+	case "year":
+		from = time.Date(y, time.January, 1, 0, 0, 0, 0, now.Location())
+	case "3m":
+		from = addCalendarMonthsClamped(to, -3)
+	case "6m":
+		from = addCalendarMonthsClamped(to, -6)
+	default:
+		return "", time.Time{}, time.Time{}, fmt.Errorf("invalid usage calendar range %q", key)
+	}
+	return key, from, to, nil
+}
+
+func addCalendarMonthsClamped(day time.Time, delta int) time.Time {
+	y, m, d := day.Date()
+	target := time.Date(y, m+time.Month(delta), 1, 0, 0, 0, 0, day.Location())
+	last := target.AddDate(0, 1, -1).Day()
+	if d > last {
+		d = last
+	}
+	return time.Date(target.Year(), target.Month(), d, 0, 0, 0, 0, day.Location())
+}
+
+// usageCalendar serves the welcome-page Token activity heatmap. Presets end
+// today and aggregate only rows labelled with this frontend's StatsSource
+// ("serve"). Per-day requests, turns and model detail ride in the response.
+func (s *Server) usageCalendar(w http.ResponseWriter, r *http.Request) {
+	key, from, to, err := usageCalendarRange(s.now(), r.URL.Query().Get("range"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rs, err := stats.NewWriter(s.statsDir()).Query(stats.SourceFilter{
+		Source: "serve",
+		From:   from,
+		To:     to,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type dayEntry struct {
+		Day      string           `json:"day"`
+		Tokens   int64            `json:"tokens"`
+		Requests int              `json:"requests"`
+		Turns    int              `json:"turns"`
+		ByModel  map[string]int64 `json:"byModel,omitempty"`
+	}
+	daysOut := make([]dayEntry, 0, len(rs.Daily))
+	var max int64
+	for _, d := range rs.Daily {
+		if int64(d.Total) > max {
+			max = int64(d.Total)
+		}
+		daysOut = append(daysOut, dayEntry{Day: d.Day, Tokens: int64(d.Total), Requests: d.Requests, Turns: d.Turns, ByModel: d.ByModel})
+	}
+	writeJSON(w, map[string]any{
+		"range":      key,
+		"from":       from.Format(usageCalendarDateLayout),
+		"to":         to.Format(usageCalendarDateLayout),
+		"days":       daysOut,
+		"max":        max,
+		"total":      rs.Tokens,
+		"turns":      rs.Turns,
+		"activeDays": rs.ActiveDays,
+	})
 }
 
 // deleteSession removes a saved session by the session name returned from /sessions.
