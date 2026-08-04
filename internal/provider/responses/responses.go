@@ -187,21 +187,22 @@ func (c *client) ResetContext() {
 }
 
 func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	body, usedPrevious, wireMessages := c.buildRequestBody(req)
-	resp, err := c.send(ctx, body)
+	resp, err := c.send(requestCtx, body)
 	if err != nil && usedPrevious && isStalePreviousResponseError(err) {
 		// A stateful response ID may expire server-side. Retrying once with full
 		// history is safe because no response body has started streaming.
 		c.ResetContext()
 		body, _, wireMessages = c.buildRequestBody(req)
-		resp, err = c.send(ctx, body)
+		resp, err = c.send(requestCtx, body)
 	}
 	if err != nil {
 		return nil, err
 	}
 	c.authed.Store(true)
 	out := make(chan provider.Chunk, 64)
-	go c.readStream(ctx, resp, out, wireMessages)
+	go c.readStream(requestCtx, resp, out, wireMessages)
 	return out, nil
 }
 
@@ -505,6 +506,7 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 					completedResponseID = event.Response.ID
 				}
 				usage := usageFromResponse(event.Response)
+				provider.ApplyRequestAttemptCount(ctx, usage)
 				if event.Type == "response.incomplete" {
 					switch event.Response.IncompleteDetails.Reason {
 					case "max_output_tokens":

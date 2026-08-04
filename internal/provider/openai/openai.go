@@ -15,7 +15,8 @@
 //   - official Kimi API + kimi-k3 preserves complete assistant messages and
 //     uses K3's fixed-sampling/max_completion_tokens request shape.
 //   - everything else (MiMo and other OpenAI-compatible gateways) uses the
-//     vanilla reasoning_effort scale (low/medium/high).
+//     vanilla reasoning_effort scale (low/medium/high), unless its config
+//     declares a custom supported_efforts validation contract.
 //
 // See docs/REASONING_PROVIDERS.md for the per-backend protocol reference.
 package openai
@@ -76,8 +77,9 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		effort = ""
 	}
 	supportedEfforts, _ := cfg.Extra["supported_efforts"].([]string)
-	explicitLowEffort := supportsEffort(supportedEfforts, "low")
-	explicitMaxEffort := supportsEffort(supportedEfforts, "max")
+	// A meaningful explicit list is the endpoint's declared effort vocabulary;
+	// auto remains implicit and is therefore ignored here.
+	hasExplicitEfforts := hasExplicitSupportedEfforts(supportedEfforts)
 	protocol, _ := cfg.Extra["reasoning_protocol"].(string)
 	protocol = normalizeReasoningProtocol(protocol)
 	chatURL, _ := cfg.Extra["chat_url"].(string)
@@ -128,17 +130,32 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		case "", "off": // "off" is a retired level (disabled thinking); fall back to the default depth
 			effort = "high"
 		case "disabled":
+			if hasExplicitEfforts && !supportsEffort(supportedEfforts, effort) {
+				return nil, fmt.Errorf("openai: provider %q: effort %q is not listed in supported_efforts: %v", name, effort, supportedEfforts)
+			}
 			// DeepSeek can turn thinking off too; route through thinking.type and
 			// drop the depth hint so the wire carries thinking.type=disabled only.
 			effort = ""
 			thinkingType = "disabled"
-		case "low":
-			if !deepseekV4Flash && !explicitLowEffort {
-				return nil, fmt.Errorf("openai: provider %q uses DeepSeek thinking; effort low requires deepseek-v4-flash or explicit supported_efforts", name)
-			}
-		case "high", "max":
 		default:
-			return nil, fmt.Errorf("openai: provider %q uses DeepSeek thinking; effort must be low, high, max, or disabled", name)
+			if hasExplicitEfforts {
+				// A provider that declares supported_efforts defines the endpoint's
+				// complete effort vocabulary. Honor that list for compatible DeepSeek
+				// request shapes instead of applying the built-in official scale.
+				if !supportsEffort(supportedEfforts, effort) {
+					return nil, fmt.Errorf("openai: provider %q: effort %q is not listed in supported_efforts: %v", name, effort, supportedEfforts)
+				}
+				break
+			}
+			switch effort {
+			case "low":
+				if !deepseekV4Flash {
+					return nil, fmt.Errorf("openai: provider %q uses DeepSeek thinking; effort low requires deepseek-v4-flash or explicit supported_efforts", name)
+				}
+			case "high", "max":
+			default:
+				return nil, fmt.Errorf("openai: provider %q uses DeepSeek thinking; effort must be low, high, max, or disabled", name)
+			}
 		}
 	case minimax:
 		// M3's knob is binary. The config effort layer normalises user input
@@ -187,15 +204,20 @@ func New(cfg provider.Config) (provider.Provider, error) {
 			return nil, fmt.Errorf("openai: provider %q uses Ollama Cloud thinking; effort must be none, low, medium, high, or max", name)
 		}
 	case effort != "":
+		if hasExplicitEfforts {
+			// Explicit endpoint metadata overrides the generic OpenAI enum and its
+			// legacy max-to-high compatibility clamp.
+			if !supportsEffort(supportedEfforts, effort) {
+				return nil, fmt.Errorf("openai: provider %q: effort %q is not listed in supported_efforts: %v", name, effort, supportedEfforts)
+			}
+			break
+		}
 		// Non-DeepSeek backends use OpenAI's reasoning_effort scale (low/medium/
-		// high) by default. Preserve max only when the resolved model explicitly
-		// advertises it (for example OpenCode Go's Kimi K3); otherwise max remains
+		// high) by default. Without an explicit provider vocabulary, max remains
 		// clamped to the OpenAI ceiling because MiMo and similar backends reject it.
 		switch effort {
 		case "max":
-			if !explicitMaxEffort {
-				effort = "high"
-			}
+			effort = "high"
 		case "low", "medium", "high":
 		default:
 			return nil, fmt.Errorf("openai: provider %q: effort must be low, medium, or high", name)
@@ -242,6 +264,16 @@ func supportsEffort(levels []string, want string) bool {
 	want = strings.ToLower(strings.TrimSpace(want))
 	for _, level := range levels {
 		if strings.ToLower(strings.TrimSpace(level)) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasExplicitSupportedEfforts(levels []string) bool {
+	for _, level := range levels {
+		level = strings.ToLower(strings.TrimSpace(level))
+		if level != "" && level != "auto" {
 			return true
 		}
 	}
@@ -458,6 +490,7 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 }
 
 func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatRequest, tools []provider.ToolSchema) (<-chan provider.Chunk, error) {
+	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	if err := json.NewEncoder(buf).Encode(wireReq); err != nil {
@@ -479,14 +512,14 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
 		applyCustomHeaders(httpReq.Header, c.headers)
 		return httpReq, nil
 	}
-	resp, err := provider.SendWithRetry(ctx, c.http, c.sendOpts(), newReq)
+	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
 	if err != nil {
 		return nil, provider.AnnotateToolSchemaError(err, tools)
 	}
 	c.authed.Store(true)
 
 	out := make(chan provider.Chunk)
-	go c.streamWithReconnect(ctx, resp, newReq, out)
+	go c.streamWithReconnect(requestCtx, resp, newReq, out)
 	return out, nil
 }
 
@@ -528,7 +561,7 @@ func (c *client) streamWithPrefixContinuation(ctx context.Context, req provider.
 					return
 				}
 			case provider.ChunkUsage:
-				currentUsage = mergeUsage(currentUsage, chunk.Usage)
+				currentUsage = mergeUsage(currentUsage, chunk.Usage, false)
 			case provider.ChunkDone:
 				// The wrapper emits one final Done after any continuation.
 			case provider.ChunkError:
@@ -548,7 +581,7 @@ func (c *client) streamWithPrefixContinuation(ctx context.Context, req provider.
 			}
 		}
 
-		totalUsage = mergeUsage(totalUsage, currentUsage)
+		totalUsage = mergeUsage(totalUsage, currentUsage, true)
 		if continuations >= maxPrefixContinuations ||
 			currentUsage == nil || currentUsage.FinishReason != "length" ||
 			currentHadTool ||
@@ -575,7 +608,10 @@ func emitUsageAndDone(ctx context.Context, out chan<- provider.Chunk, usage *pro
 	_ = sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkDone})
 }
 
-func mergeUsage(total, next *provider.Usage) *provider.Usage {
+// mergeUsage folds token counters. countRequests is false for multiple usage
+// chunks from one HTTP stream (keep its request count), and true when combining
+// distinct prefix-continuation requests (sum their request counts).
+func mergeUsage(total, next *provider.Usage, countRequests bool) *provider.Usage {
 	if next == nil {
 		return total
 	}
@@ -583,14 +619,30 @@ func mergeUsage(total, next *provider.Usage) *provider.Usage {
 		clone := *next
 		return &clone
 	}
+	totalRequests := usageRequestCount(total)
+	nextRequests := usageRequestCount(next)
 	total.PromptTokens += next.PromptTokens
 	total.CompletionTokens += next.CompletionTokens
 	total.TotalTokens += next.TotalTokens
 	total.CacheHitTokens += next.CacheHitTokens
 	total.CacheMissTokens += next.CacheMissTokens
 	total.ReasoningTokens += next.ReasoningTokens
+	if countRequests {
+		total.RequestCount = totalRequests + nextRequests
+	} else if nextRequests > totalRequests {
+		total.RequestCount = nextRequests
+	} else {
+		total.RequestCount = totalRequests
+	}
 	total.FinishReason = next.FinishReason
 	return total
+}
+
+func usageRequestCount(usage *provider.Usage) int {
+	if usage != nil && usage.RequestCount > 0 {
+		return usage.RequestCount
+	}
+	return 1
 }
 
 // maxStreamReconnects bounds how many times a mid-stream connection drop is
@@ -931,6 +983,7 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 		if sr.Usage != nil {
 			u := normaliseUsage(sr.Usage)
 			u.FinishReason = lastFinishReason
+			provider.ApplyRequestAttemptCount(ctx, u)
 			emitted = true
 			if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkUsage, Usage: u}) {
 				return emitted, ctx.Err()

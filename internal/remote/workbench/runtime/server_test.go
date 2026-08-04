@@ -102,6 +102,72 @@ func TestSocketPathStaysWithinPortableUnixLimitForLongHome(t *testing.T) {
 	}
 }
 
+func testRuntimeSocket(t *testing.T) string {
+	t.Helper()
+	socket := filepath.Join(t.TempDir(), "r.sock")
+	if len(socket) <= 100 {
+		return socket
+	}
+	tempBase := os.TempDir()
+	if goruntime.GOOS == "darwin" {
+		tempBase = "/tmp"
+	}
+	shortDir, err := os.MkdirTemp(tempBase, "rx-wb-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(shortDir) })
+	return filepath.Join(shortDir, "r.sock")
+}
+
+func TestListenAndServeReturnsWhenContextIsCanceled(t *testing.T) {
+	socket := testRuntimeSocket(t)
+	srv := New(Options{Workspace: t.TempDir(), Version: "test"})
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe(ctx, socket) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		srv.mu.Lock()
+		listening := srv.ln != nil
+		srv.mu.Unlock()
+		if listening {
+			break
+		}
+		select {
+		case err := <-errCh:
+			t.Fatalf("ListenAndServe returned before cancellation: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("runtime did not start listening")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := os.Stat(socket + ".lock"); err != nil {
+		t.Fatalf("runtime lock was not created: %v", err)
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ListenAndServe error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ListenAndServe did not return after context cancellation")
+	}
+
+	for _, path := range []string{socket, socket + ".lock"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("runtime path %q still exists after shutdown: %v", path, err)
+		}
+	}
+}
+
 type persistentFakeController struct {
 	*fakeController
 	sessionDir  string
@@ -667,20 +733,7 @@ func TestRuntimeSessionCreateAndFileList(t *testing.T) {
 	ws := t.TempDir()
 	sessionDir := filepath.Join(t.TempDir(), "sessions")
 	registryPath := filepath.Join(t.TempDir(), "remote-sessions.json")
-	// Short absolute socket path — macOS rejects long unix paths.
-	sock := filepath.Join(t.TempDir(), "r.sock")
-	if len(sock) > 100 {
-		tempBase := os.TempDir()
-		if goruntime.GOOS == "darwin" {
-			tempBase = "/tmp"
-		}
-		shortDir, err := os.MkdirTemp(tempBase, "rx-wb-")
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.RemoveAll(shortDir) })
-		sock = filepath.Join(shortDir, "r.sock")
-	}
+	sock := testRuntimeSocket(t)
 	srv := New(Options{Workspace: ws, Version: "test", SessionDir: sessionDir, RegistryPath: registryPath, BuildController: func(_ context.Context, model string, _ *string, _ event.Sink) (SessionController, error) {
 		return &persistentFakeController{fakeController: &fakeController{model: model}, sessionDir: sessionDir}, nil
 	}})

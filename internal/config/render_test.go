@@ -201,6 +201,7 @@ func TestRenderTOMLRoundTrips(t *testing.T) {
 	orig.Desktop.LayoutStyle = "workbench"
 	orig.Desktop.Theme = "dark"
 	orig.Desktop.ThemeStyle = "graphite"
+	orig.Desktop.TerminalTheme = "light"
 	orig.Desktop.CloseBehavior = "background"
 	orig.Desktop.DisplayMode = "compact"
 	orig.Desktop.StatusBarStyle = "text"
@@ -352,6 +353,9 @@ func TestRenderTOMLRoundTrips(t *testing.T) {
 	}
 	if got.Desktop.ThemeStyle != "graphite" {
 		t.Errorf("desktop.theme_style = %q, want graphite", got.Desktop.ThemeStyle)
+	}
+	if got.Desktop.TerminalTheme != "light" {
+		t.Errorf("desktop.terminal_theme = %q, want light", got.Desktop.TerminalTheme)
 	}
 	if got.Desktop.CloseBehavior != "background" {
 		t.Errorf("desktop.close_behavior = %q, want background", got.Desktop.CloseBehavior)
@@ -783,7 +787,7 @@ func TestScopedRenderSeparatesUserAndProjectConfig(t *testing.T) {
 	c.Agent.RecoveryTemperature = 0.2
 
 	user := RenderTOMLForScope(c, RenderScopeUser)
-	for _, want := range []string{"config_version = 5", "[desktop]", `currency = "CNY"`, `theme = "dark"`, `close_behavior = "background"`, `status_bar_style = "text"`, `default_tool_approval_mode = "auto"`, `check_updates = false`, `recovery_model = "deepseek-pro"`, "[notifications]", "[tools.shell]"} {
+	for _, want := range []string{"config_version = 5", "[desktop]", `currency = "CNY"`, `theme = "dark"`, `terminal_theme = "auto"`, `close_behavior = "background"`, `status_bar_style = "text"`, `default_tool_approval_mode = "auto"`, `check_updates = false`, `recovery_model = "deepseek-pro"`, "[notifications]", "[tools.shell]"} {
 		if !strings.Contains(user, want) {
 			t.Fatalf("user render missing %q:\n%s", want, user)
 		}

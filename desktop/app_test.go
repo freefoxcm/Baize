@@ -996,6 +996,9 @@ status_bar_items = ["cost", "balance"]
 	if err := userCfg.SetDesktopAppearance("dark", "graphite"); err != nil {
 		t.Fatalf("set desktop appearance: %v", err)
 	}
+	if err := userCfg.SetDesktopTerminalTheme("light"); err != nil {
+		t.Fatalf("set desktop terminal theme: %v", err)
+	}
 	if err := userCfg.SetDesktopCloseBehavior("background"); err != nil {
 		t.Fatalf("set desktop close behavior: %v", err)
 	}
@@ -1016,7 +1019,7 @@ status_bar_items = ["cost", "balance"]
 	}
 
 	got := NewApp().Settings()
-	if got.DesktopLanguage != "en" || got.DesktopLayoutStyle != "classic" || got.DesktopTheme != "dark" || got.DesktopThemeStyle != "graphite" || got.CloseBehavior != "background" || got.StatusBarStyle != "text" {
+	if got.DesktopLanguage != "en" || got.DesktopLayoutStyle != "classic" || got.DesktopTheme != "dark" || got.DesktopThemeStyle != "graphite" || got.DesktopTerminalTheme != "light" || got.CloseBehavior != "background" || got.StatusBarStyle != "text" {
 		t.Fatalf("desktop settings = lang:%q layout:%q theme:%q style:%q close:%q status:%q, want user-level desktop prefs", got.DesktopLanguage, got.DesktopLayoutStyle, got.DesktopTheme, got.DesktopThemeStyle, got.CloseBehavior, got.StatusBarStyle)
 	}
 	if want := []string{"model", "balance", "cache"}; !reflect.DeepEqual(got.StatusBarItems, want) {
@@ -1036,6 +1039,9 @@ func TestDesktopStartupSettingsUsesUserDesktopPreferencesWithoutFullSettingsPayl
 	}
 	if err := userCfg.SetDesktopAppearance("dark", "graphite"); err != nil {
 		t.Fatalf("set desktop appearance: %v", err)
+	}
+	if err := userCfg.SetDesktopTerminalTheme("light"); err != nil {
+		t.Fatalf("set desktop terminal theme: %v", err)
 	}
 	if err := userCfg.SetDesktopStatusBarStyle("icon"); err != nil {
 		t.Fatalf("set desktop status bar style: %v", err)
@@ -1057,7 +1063,7 @@ func TestDesktopStartupSettingsUsesUserDesktopPreferencesWithoutFullSettingsPayl
 	}
 
 	got := NewApp().DesktopStartupSettings()
-	if got.DesktopLanguage != "en" || got.DesktopLayoutStyle != "classic" || got.DesktopTheme != "dark" || got.DesktopThemeStyle != "graphite" || got.DisplayMode != "standard" || got.StatusBarStyle != "icon" || got.CheckUpdates || got.UpdateChannel != "stable" {
+	if got.DesktopLanguage != "en" || got.DesktopLayoutStyle != "classic" || got.DesktopTheme != "dark" || got.DesktopThemeStyle != "graphite" || got.DesktopTerminalTheme != "light" || got.DisplayMode != "standard" || got.StatusBarStyle != "icon" || got.CheckUpdates || got.UpdateChannel != "stable" {
 		t.Fatalf("DesktopStartupSettings desktop prefs = %+v, want user-level startup prefs", got)
 	}
 	if want := []string{"workspace", "git_branch", "model"}; !reflect.DeepEqual(got.StatusBarItems, want) {

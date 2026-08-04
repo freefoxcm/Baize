@@ -134,6 +134,9 @@ func TestDesktopPreferencesAreSeparateFromCLI(t *testing.T) {
 	if err := c.SetDesktopAppearance("dark", "graphite"); err != nil {
 		t.Fatalf("SetDesktopAppearance: %v", err)
 	}
+	if err := c.SetDesktopTerminalTheme("light"); err != nil {
+		t.Fatalf("SetDesktopTerminalTheme: %v", err)
+	}
 	if err := c.SetDesktopLayoutStyle("workbench"); err != nil {
 		t.Fatalf("SetDesktopLayoutStyle: %v", err)
 	}
@@ -162,6 +165,9 @@ func TestDesktopPreferencesAreSeparateFromCLI(t *testing.T) {
 	if got := c.DesktopThemeStyle(); got != "graphite" {
 		t.Fatalf("desktop theme style = %q, want graphite", got)
 	}
+	if got := c.DesktopTerminalTheme(); got != "light" {
+		t.Fatalf("desktop terminal theme = %q, want light", got)
+	}
 	if got := c.DesktopLayoutStyle(); got != "workbench" {
 		t.Fatalf("desktop layout style = %q, want workbench", got)
 	}
@@ -170,6 +176,21 @@ func TestDesktopPreferencesAreSeparateFromCLI(t *testing.T) {
 	}
 	if got, want := c.DesktopStatusBarItems(), []string{"model", "balance", "cache"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("desktop status bar items = %v, want %v", got, want)
+	}
+}
+
+func TestSetDesktopTerminalThemeValidatesPreference(t *testing.T) {
+	c := Default()
+	for _, theme := range []string{"auto", "dark", "light"} {
+		if err := c.SetDesktopTerminalTheme(theme); err != nil {
+			t.Fatalf("SetDesktopTerminalTheme(%q): %v", theme, err)
+		}
+		if got := c.DesktopTerminalTheme(); got != theme {
+			t.Fatalf("DesktopTerminalTheme() = %q, want %q", got, theme)
+		}
+	}
+	if err := c.SetDesktopTerminalTheme("sepia"); err == nil {
+		t.Fatal("SetDesktopTerminalTheme(sepia) succeeded, want validation error")
 	}
 }
 

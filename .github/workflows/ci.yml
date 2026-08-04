@@ -265,6 +265,9 @@ jobs:
       - name: Test integrated terminal frontend
         run: pnpm --dir frontend test:terminal
 
+      - name: Test usage statistics frontend
+        run: pnpm --dir frontend test:usage-stats
+
       - name: vet
         run: go vet ./...
 

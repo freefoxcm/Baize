@@ -5,7 +5,7 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { __emitMockUpdater, type AppBindings } from "../lib/bridge";
-import { UpdaterProvider, useUpdater } from "../lib/useUpdater";
+import { classifyUpdateError, UpdaterProvider, useUpdater } from "../lib/useUpdater";
 
 let passed = 0;
 let failed = 0;
@@ -26,7 +26,7 @@ function Consumer({ id, checking = false }: { id: string; checking?: boolean }) 
     <section>
       <output id={`${id}-status`}>{updater.status.kind}</output>
       <output id={`${id}-manual`}>
-        {updater.status.kind === "error" && updater.status.manualHint ? "manual" : ""}
+        {updater.status.kind === "error" ? updater.status.disposition : ""}
       </output>
       <output id={`${id}-received`}>
         {updater.status.kind === "downloading" ? updater.status.received : ""}
@@ -68,6 +68,9 @@ await act(async () => {
 
 ok(document.getElementById("banner-status")?.textContent === "idle", "banner starts idle");
 ok(document.getElementById("settings-status")?.textContent === "idle", "settings starts idle");
+ok(classifyUpdateError("prepare update: a pending update already exists") === "recovery", "pending update errors require recovery fallback");
+ok(classifyUpdateError("update: manual update required") === "manual", "manual-only errors prefer the official download");
+ok(classifyUpdateError("connection reset by peer") === "retryable", "transient errors remain retryable");
 
 await act(async () => {
   (document.getElementById("banner-check-update") as HTMLButtonElement).click();

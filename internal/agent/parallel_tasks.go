@@ -182,6 +182,7 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 			defer releaseSlot()
 
 			modelRef, effortRef := p.taskTool.effectiveProfile(t.Model, t.Effort)
+			usageModelRef := p.taskTool.usageModelRef(modelRef, effortRef)
 			childDepth, depthErr := p.taskTool.nextSubagentDepth(ctx)
 			if depthErr != nil {
 				sink.Emit(event.Event{
@@ -209,6 +210,7 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 			// default system prompt — profile-aware batches use fleet instead.
 			sess := NewSession(DefaultReadOnlyTaskSystemPrompt)
 			opts := p.taskTool.subagentOptions(ctx, max, pricing, ctxWin, childDepth, "subagent:"+subID)
+			opts.ModelRef = usageModelRef
 			// Same contract as runSubSession: capture the pristine task before
 			// host framing is prepended so delivery intent classification judges
 			// the task, not the wrapper.

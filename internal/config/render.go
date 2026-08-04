@@ -104,6 +104,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		}
 		fmt.Fprintf(&b, "layout_style = %q   # desktop layout: classic|workbench|creation\n", c.DesktopLayoutStyle())
 		fmt.Fprintf(&b, "theme = %q   # desktop only: auto|dark|light\n", c.DesktopTheme())
+		fmt.Fprintf(&b, "terminal_theme = %q   # integrated terminal: auto|dark|light; auto follows the desktop app\n", c.DesktopTerminalTheme())
 		if style := c.DesktopThemeStyle(); style != "" {
 			fmt.Fprintf(&b, "theme_style = %q   # desktop accent palette\n", style)
 		} else {
@@ -212,7 +213,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c.Agent.SystemPromptFile != "" {
 		fmt.Fprintf(&b, "system_prompt_file = %q\n", c.Agent.SystemPromptFile)
 	} else {
-		b.WriteString("# system_prompt_file = \"prompts/system.md\"   # overrides system_prompt when set\n")
+		b.WriteString("# system_prompt_file = \"prompts/system.md\"   # project paths stay in <workspace>; user paths may fall back to <reasonix home>\n")
 	}
 	fmt.Fprintf(&b, "temperature       = %s\n", formatFloat(c.Agent.Temperature))
 	if strings.TrimSpace(c.Agent.RecoveryModel) != "" {
@@ -363,6 +364,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			}
 			if p.VisionDetail != "" {
 				fmt.Fprintf(&b, "vision_detail = %q   # openai image detail hint: low|high; empty = auto\n", p.VisionDetail)
+			}
+			if p.WebSearch {
+				b.WriteString("web_search  = true   # enable server-side web_search tool (Anthropic/DeepSeek API)\n")
 			}
 			if p.ReasoningProtocol != "" {
 				fmt.Fprintf(&b, "reasoning_protocol = %q   # auto|deepseek|glm|openai|none; overrides model/endpoint reasoning detection\n", p.ReasoningProtocol)
@@ -1054,6 +1058,9 @@ func RenderTOMLProjectDelta(c *Config) string {
 			}
 			if p.VisionDetail != "" {
 				fmt.Fprintf(&b, "vision_detail = %q\n", p.VisionDetail)
+			}
+			if p.WebSearch {
+				b.WriteString("web_search  = true\n")
 			}
 			if p.ReasoningProtocol != "" {
 				fmt.Fprintf(&b, "reasoning_protocol = %q\n", p.ReasoningProtocol)

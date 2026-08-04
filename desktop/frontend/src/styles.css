@@ -2146,13 +2146,13 @@ a[href] {
    avoiding a 1px artifact line when the drawer is collapsed to 0px. */
 .layout--terminal-drawer-expanded .terminal-drawer {
   background: var(--terminal-bg, #111315);
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--terminal-border);
 }
 .layout--terminal-drawer-open .terminal-drawer .terminal-panel {
   height: 100%;
 }
 .layout--terminal-drawer-open .terminal-drawer .terminal-panel__header {
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--terminal-border);
 }
 /* When the terminal drawer is open, the sidebar and workspace panel span the
    full content height (rows 2–3) so only the chat pane is shortened. */
@@ -16832,26 +16832,44 @@ body > .mermaid-diagram--fullscreen {
 }
 .set-rule {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 5px;
+  max-width: 100%;
+  min-width: 0;
   font-family: var(--mono);
   font-size: 11px;
   padding: 3px 4px 3px 7px;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 6px;
+  /* Long permission commands must wrap inside the chip so the delete control
+     stays visible (Fixes #7315). Path rules already needed this; apply to all. */
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .set-rule--path {
   max-width: 100%;
   overflow-wrap: anywhere;
   white-space: normal;
 }
+.set-rule__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .set-rule__x {
+  flex: 0 0 auto;
+  align-self: flex-start;
   border: none;
   background: transparent;
   color: var(--fg-faint);
   padding: 0 2px;
   font-size: 11px;
+  line-height: 1.35;
+}
+.set-rule .tooltip-trigger {
+  flex: 0 0 auto;
 }
 .set-rule__x:hover {
   color: var(--err);
@@ -33500,25 +33518,15 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .app--windows-frameless.app--creation {
-  --windows-window-controls-height: 56px;
+  /* Match Creation topicbar / dock tools (40px) so caption buttons are not taller
+     than the title strip. classic/workbench keep their own heights. */
+  --windows-window-controls-height: 40px;
   /* Tighter caption buttons free horizontal room for dock tabs at narrow widths.
      classic/workbench keep the standard 46×3 = 138 strip. */
   --windows-window-control-width: 36px;
   --windows-window-controls-width: 108px;
   --windows-window-controls-gap: 8px;
   --windows-window-controls-safe: calc(var(--windows-window-controls-width) + var(--windows-window-controls-gap));
-}
-
-/* When workspace panel is open in creation mode, match the dock tools height
-   (40px) instead of the tall 56px default, so the window controls box does not
-   extend below the workbench-dock__tools. */
-.app--windows-frameless.app--creation .layout--workspace-open ~ .windows-window-controls,
-.app--windows-frameless.app--creation .layout--workspace-maximized ~ .windows-window-controls {
-  height: 40px;
-}
-:root[data-theme-style] .app--windows-frameless.app--creation .layout--workspace-open ~ .windows-window-controls,
-:root[data-theme-style] .app--windows-frameless.app--creation .layout--workspace-maximized ~ .windows-window-controls {
-  height: 40px;
 }
 
 .app--windows-frameless .app-chrome--native-tabs,
@@ -33657,22 +33665,27 @@ body > .mermaid-diagram--fullscreen {
    Windows + Creation: Vertical alignment for titlebar elements
    ========================================================================= */
 
-/* Align sidebar logo with Windows titlebar center line */
+/* Align sidebar logo with the shorter 40px Windows title strip center line */
 .app--windows.app--creation .sidebar__brand,
 :root[data-theme-style] .app--windows.app--creation .sidebar__brand {
-  margin-top: -29px !important;
+  margin-top: -32px !important;
 }
 
-/* Align topicbar (replaces app-chrome in Creation mode) with Windows controls */
-.app--windows.app--creation .topicbar {
+/* Align topicbar (replaces app-chrome in Creation mode) with Windows controls
+   without changing the shared macOS/Linux Creation geometry above. */
+.app--windows.app--creation .topicbar,
+:root[data-theme-style] .app--windows.app--creation .topicbar {
   position: relative;
   z-index: var(--z-app-chrome);
-  transform: translateY(-4px) !important;
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  transform: none !important;
 }
 
-/* Align topicbar identity (session title) with Windows controls */
-.app--windows.app--creation .topicbar__identity {
-  transform: translateY(-2px) !important;
+.app--windows.app--creation .topicbar__title-row,
+:root[data-theme-style] .app--windows.app--creation .topicbar__title-row {
+  transform: none;
 }
 
 /* Reduce session title font size and weight. The rename input replaces the h1
@@ -33684,29 +33697,22 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 520 !important;
 }
 
-/* Align action buttons (not chrome buttons) */
-.app--windows.app--creation .topicbar__action-btn:not(.topicbar__chrome-btn) {
-  transform: translateY(-2px) !important;
-  align-self: center !important;
-}
-
-/* Align ExternalOpener split control with the same Windows titlebar center line */
-.app--windows.app--creation .topicbar__actions .external-opener {
-  transform: translateY(-2px) !important;
-  align-self: center !important;
-}
-
-/* Align topicbar chrome buttons separately (they're also in actions container) */
+/* Keep action / chrome buttons on the same center line as Windows controls */
+.app--windows.app--creation .topicbar__action-btn:not(.topicbar__chrome-btn),
 .app--windows.app--creation .topicbar__chrome-btn {
-  transform: translateY(-2px) !important;
   align-self: center !important;
+  transform: translateY(0.5px) !important;
 }
 
-/* The alignment offset above owns the transform slot, which would otherwise
-   erase the .topicbar__chrome-btn--pressed { scale(0.94) } press feedback —
-   recombine both here. */
+/* Folder opener glyph sits a hair lower than line icons — nudge it up alone */
+.app--windows.app--creation .topicbar__actions .external-opener {
+  align-self: center !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Preserve press scale while keeping the Windows center-line nudge */
 .app--windows.app--creation .topicbar__chrome-btn.topicbar__chrome-btn--pressed {
-  transform: translateY(-2px) scale(0.94) !important;
+  transform: translateY(0.5px) scale(0.94) !important;
 }
 
 /* Windows 控制框在 Creation 下默认用 --bg-elev（近纯白），与右侧 workbench-dock
@@ -36717,42 +36723,77 @@ body > .mermaid-diagram--fullscreen {
 }
 
 /* Integrated terminal */
+:root {
+  --terminal-bg: var(--bg);
+  --terminal-fg: var(--fg);
+  --terminal-surface: var(--bg-elev);
+  --terminal-active: var(--bg-elev-2);
+  --terminal-border: var(--border-soft);
+  --terminal-muted: var(--fg-dim);
+  --terminal-faint: var(--fg-faint);
+  --terminal-cursor: var(--accent);
+  --terminal-selection: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+:root[data-terminal-theme="dark"] {
+  --terminal-bg: #111315;
+  --terminal-fg: #e8e5df;
+  --terminal-surface: #17191b;
+  --terminal-active: #22262a;
+  --terminal-border: #292d31;
+  --terminal-muted: #a7a19a;
+  --terminal-faint: #70777f;
+  --terminal-cursor: #e6a15c;
+  --terminal-selection: #344c68;
+}
+:root[data-terminal-theme="light"] {
+  --terminal-bg: #f7f8fa;
+  --terminal-fg: #25272a;
+  --terminal-surface: #eef0f3;
+  --terminal-active: #e1e5ea;
+  --terminal-border: #cfd4da;
+  --terminal-muted: #5f6670;
+  --terminal-faint: #8b929b;
+  --terminal-cursor: #9a4f00;
+  --terminal-selection: #b9d7ff;
+}
+:root[data-terminal-theme="dark"] .terminal-panel { color-scheme: dark; }
+:root[data-terminal-theme="light"] .terminal-panel { color-scheme: light; }
 .workbench-dock--terminal { min-width: 0; }
-.terminal-panel { display: flex; flex-direction: column; height: 100%; min-width: 0; background: #111315; color: #e8e5df; }
-.terminal-panel__header { display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 10px; border-bottom: 1px solid var(--border-soft); background: var(--bg-elev-1); }
+.terminal-panel { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--terminal-bg); color: var(--terminal-fg); }
+.terminal-panel__header { display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 10px; border-bottom: 1px solid var(--terminal-border); background: var(--terminal-surface); }
 .terminal-panel__identity, .terminal-panel__actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .terminal-panel__identity { flex: 1; overflow: hidden; }
 .terminal-panel__actions { flex: 0 1 auto; gap: 4px; }
 .terminal-panel__identity strong { font-size: var(--text-sm); font-weight: 650; }
-.terminal-panel__identity span { max-width: 180px; overflow: hidden; color: var(--fg-muted); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.terminal-shell-select { width: 132px; max-width: 30vw; min-width: 0; height: 28px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-elev-2); color: var(--fg); font: inherit; font-size: var(--text-xs); text-overflow: ellipsis; cursor: pointer; }
-.terminal-shell-select:hover, .terminal-shell-select:focus-visible { border-color: var(--accent); outline: none; }
+.terminal-panel__identity span { max-width: 180px; overflow: hidden; color: var(--terminal-muted); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-shell-select { width: 132px; max-width: 30vw; min-width: 0; height: 28px; padding: 0 24px 0 8px; border: 1px solid var(--terminal-border); border-radius: 5px; background: var(--terminal-active); color: var(--terminal-fg); font: inherit; font-size: var(--text-xs); text-overflow: ellipsis; cursor: pointer; }
+.terminal-shell-select:hover, .terminal-shell-select:focus-visible { border-color: var(--terminal-cursor); outline: none; }
 .terminal-shell-select:disabled { cursor: not-allowed; opacity: .45; }
-.terminal-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--fg-muted); cursor: pointer; }
-.terminal-icon-button:hover, .terminal-icon-button:focus-visible { border-color: var(--border); background: var(--bg-elev-2); color: var(--fg); outline: none; }
+.terminal-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--terminal-muted); cursor: pointer; }
+.terminal-icon-button:hover, .terminal-icon-button:focus-visible { border-color: var(--terminal-border); background: var(--terminal-active); color: var(--terminal-fg); outline: none; }
 .terminal-icon-button:disabled { cursor: not-allowed; opacity: .45; }
 .terminal-panel__body { display: flex; min-height: 0; flex: 1; flex-direction: column; }
-.terminal-error { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border-soft)); background: color-mix(in srgb, var(--danger) 10%, #17191b); color: var(--fg-dim); font-size: var(--text-xs); }
+.terminal-error { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, var(--terminal-border)); background: color-mix(in srgb, var(--danger) 10%, var(--terminal-surface)); color: var(--terminal-muted); font-size: var(--text-xs); }
 .terminal-error > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .terminal-error > svg { flex: 0 0 auto; color: var(--danger); }
-.terminal-session-rail { display: flex; min-width: 0; flex: 0 0 34px; align-items: center; border-bottom: 1px solid #292d31; background: #17191b; }
+.terminal-session-rail { display: flex; min-width: 0; flex: 0 0 34px; align-items: center; border-bottom: 1px solid var(--terminal-border); background: var(--terminal-surface); }
 .terminal-session-rail__list { display: flex; min-width: 0; flex: 1; overflow-x: auto; overflow-y: hidden; padding: 3px 5px; }
 .terminal-session { display: flex; min-width: 96px; max-width: 180px; flex: 0 1 180px; align-items: center; min-height: 28px; border-bottom: 2px solid transparent; }
-.terminal-session--active { border-bottom-color: var(--accent); background: #22262a; }
-.terminal-session__select { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; height: 30px; padding: 0 7px; border: 0; background: transparent; color: var(--fg-muted); font: inherit; font-size: var(--text-xs); text-align: left; cursor: pointer; }
-.terminal-session--active .terminal-session__select { color: var(--fg); }
+.terminal-session--active { border-bottom-color: var(--terminal-cursor); background: var(--terminal-active); }
+.terminal-session__select { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; height: 30px; padding: 0 7px; border: 0; background: transparent; color: var(--terminal-muted); font: inherit; font-size: var(--text-xs); text-align: left; cursor: pointer; }
+.terminal-session--active .terminal-session__select { color: var(--terminal-fg); }
 .terminal-session__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.terminal-session__status { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--fg-faint); }
+.terminal-session__status { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--terminal-faint); }
 .terminal-session__status--running { background: var(--ok); }
-.terminal-session__close { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; margin-right: 2px; padding: 0; border: 0; background: transparent; color: var(--fg-faint); cursor: pointer; }
+.terminal-session__close { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; margin-right: 2px; padding: 0; border: 0; background: transparent; color: var(--terminal-faint); cursor: pointer; }
 .terminal-session__close:hover, .terminal-session__close:focus-visible { color: var(--danger); outline: none; }
-.terminal-panel__content { min-width: 0; min-height: 0; flex: 1; background: #111315; }
-.terminal-view { width: 100%; height: 100%; padding: 8px 4px 4px 8px; }
-.terminal-empty { display: flex; align-items: center; justify-content: center; gap: 9px; height: 100%; padding: 24px; color: #a7a19a; text-align: center; }
+.terminal-panel__content { min-width: 0; min-height: 0; flex: 1; background: var(--terminal-bg); }
+.terminal-view { width: 100%; height: 100%; padding: 8px 4px 4px 8px; background: var(--terminal-bg); color: var(--terminal-fg); }
+.terminal-empty { display: flex; align-items: center; justify-content: center; gap: 9px; height: 100%; padding: 24px; color: var(--terminal-muted); text-align: center; }
 .terminal-empty--action { flex-direction: column; }
 .terminal-empty--error strong { max-width: min(100%, 560px); overflow-wrap: anywhere; }
 .terminal-empty p { margin: 0; }
-.terminal-empty__spinner { width: 14px; height: 14px; border: 2px solid #454b51; border-top-color: var(--accent); border-radius: 50%; animation: terminal-spin .8s linear infinite; }
+.terminal-empty__spinner { width: 14px; height: 14px; border: 2px solid var(--terminal-border); border-top-color: var(--terminal-cursor); border-radius: 50%; animation: terminal-spin .8s linear infinite; }
 @keyframes terminal-spin { to { transform: rotate(360deg); } }
 @media (max-width: 760px) {
   .settings-center {

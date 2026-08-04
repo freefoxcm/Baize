@@ -368,6 +368,7 @@ func TestRunRoutesBareInteractiveFlagsToSession(t *testing.T) {
 	for _, args := range [][]string{
 		{"--continue"},
 		{"--continue=true"},
+		{"-c"},
 		{"-c=true"},
 		{"--resume=true"},
 		{"-r=true"},

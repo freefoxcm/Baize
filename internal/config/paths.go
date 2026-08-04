@@ -433,6 +433,19 @@ func SessionDir() string {
 	return filepath.Join(dir, "sessions")
 }
 
+// StatsDir is where usage statistics are persisted (one .jsonl per day, e.g.
+// stats/2026-08-02.jsonl). It lives under the user state root — not the install
+// directory, which is typically read-only and replaced on upgrade — so usage
+// records survive app updates. Empty if the user state dir can't be resolved,
+// in which case usage accounting is skipped.
+func StatsDir() string {
+	dir := userSupportDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "stats")
+}
+
 // ProjectSessionDir is the per-workspace session directory the desktop sidebar
 // lists: <state root>/projects/<slug>/sessions. Empty when either the state root
 // or workspaceRoot doesn't resolve.

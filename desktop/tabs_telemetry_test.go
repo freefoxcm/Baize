@@ -49,7 +49,7 @@ func TestWorkspaceTabAggregatesSessionUsageTelemetry(t *testing.T) {
 	start := time.Now().Add(-2 * time.Second).UnixMilli()
 	tab.recordTurnStarted(start)
 	tab.recordUsage(event.Event{
-		Usage:       &provider.Usage{PromptTokens: 100, CompletionTokens: 40, TotalTokens: 140, CacheHitTokens: 70, CacheMissTokens: 30, ReasoningTokens: 10, Estimated: true},
+		Usage:       &provider.Usage{PromptTokens: 100, CompletionTokens: 40, TotalTokens: 140, CacheHitTokens: 70, CacheMissTokens: 30, ReasoningTokens: 10, RequestCount: 3, Estimated: true},
 		UsageSource: event.UsageSourceSubagent,
 		SessionHit:  70,
 		SessionMiss: 30,
@@ -58,7 +58,7 @@ func TestWorkspaceTabAggregatesSessionUsageTelemetry(t *testing.T) {
 	tab.recordTurnDone(start + 1500)
 
 	got := tab.telemetrySnapshot().Usage
-	if got.RequestCount != 1 || got.PromptTokens != 100 || got.CompletionTokens != 40 || got.TotalTokens != 140 || got.ReasoningTokens != 10 {
+	if got.RequestCount != 3 || got.PromptTokens != 100 || got.CompletionTokens != 40 || got.TotalTokens != 140 || got.ReasoningTokens != 10 {
 		t.Fatalf("usage tokens = %+v", got)
 	}
 	if !got.Estimated || got.LastEstimated {
@@ -73,8 +73,8 @@ func TestWorkspaceTabAggregatesSessionUsageTelemetry(t *testing.T) {
 	if got.SessionCost <= 0 || got.SessionCurrency != "¥" {
 		t.Fatalf("cost = %f %q, want positive ¥", got.SessionCost, got.SessionCurrency)
 	}
-	if got.Sources[event.UsageSourceSubagent].SessionCost <= 0 || got.Sources[event.UsageSourceSubagent].RequestCount != 1 {
-		t.Fatalf("subagent source stats = %+v, want one costed request", got.Sources[event.UsageSourceSubagent])
+	if got.Sources[event.UsageSourceSubagent].SessionCost <= 0 || got.Sources[event.UsageSourceSubagent].RequestCount != 3 {
+		t.Fatalf("subagent source stats = %+v, want three costed requests", got.Sources[event.UsageSourceSubagent])
 	}
 	if !got.Sources[event.UsageSourceSubagent].Estimated {
 		t.Fatalf("subagent source lost estimated marker: %+v", got.Sources[event.UsageSourceSubagent])

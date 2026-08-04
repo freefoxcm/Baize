@@ -227,7 +227,7 @@ func TestStreamDoesNotDuplicateDoneText(t *testing.T) {
 	if text != "hello" {
 		t.Fatalf("streamed text = %q, want one copy", text)
 	}
-	if usage == nil || usage.CacheHitTokens != 2 || usage.CacheMissTokens != 1 || usage.ReasoningTokens != 1 {
+	if usage == nil || usage.CacheHitTokens != 2 || usage.CacheMissTokens != 1 || usage.ReasoningTokens != 1 || usage.RequestCount != 1 {
 		t.Fatalf("usage = %+v", usage)
 	}
 	if chunks[len(chunks)-1].Type != provider.ChunkDone {
@@ -363,7 +363,7 @@ func TestExpiredPreviousResponseRetriesOnceWithFullHistory(t *testing.T) {
 	defer server.Close()
 	p := New(Config{Name: "stateful", APIKey: "key", BaseURL: server.URL, Model: "m", Mode: "stateful"})
 	collect(t, p, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "one"}}})
-	collect(t, p, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "one"}, {Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "two"}}})
+	chunks := collect(t, p, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "one"}, {Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "two"}}})
 	if len(bodies) != 3 {
 		t.Fatalf("request count = %d, want initial + stale + retry", len(bodies))
 	}
@@ -375,6 +375,15 @@ func TestExpiredPreviousResponseRetriesOnceWithFullHistory(t *testing.T) {
 	}
 	if _, ok := bodies[2]["input"].([]any); !ok {
 		t.Fatalf("retry input = %#v, want full array", bodies[2]["input"])
+	}
+	var usage *provider.Usage
+	for _, chunk := range chunks {
+		if chunk.Type == provider.ChunkUsage {
+			usage = chunk.Usage
+		}
+	}
+	if usage == nil || usage.RequestCount != 2 {
+		t.Fatalf("retry usage = %+v, want request count 2", usage)
 	}
 }
 

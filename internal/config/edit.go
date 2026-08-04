@@ -272,6 +272,22 @@ func (c *Config) SetDesktopAppearance(theme, style string) error {
 	return nil
 }
 
+// SetDesktopTerminalTheme sets the integrated terminal colour preference.
+// This is desktop-only UI state and never rebuilds or changes model requests.
+func (c *Config) SetDesktopTerminalTheme(theme string) error {
+	switch strings.ToLower(strings.TrimSpace(theme)) {
+	case "", "auto":
+		c.Desktop.TerminalTheme = "auto"
+	case "dark":
+		c.Desktop.TerminalTheme = "dark"
+	case "light":
+		c.Desktop.TerminalTheme = "light"
+	default:
+		return fmt.Errorf("desktop terminal theme %q: must be auto|dark|light", theme)
+	}
+	return nil
+}
+
 // SetDesktopLayoutStyle sets the desktop layout style. UI-only; it must not
 // affect CLI output or provider-visible request data.
 func (c *Config) SetDesktopLayoutStyle(style string) error {

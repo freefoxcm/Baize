@@ -79,20 +79,25 @@ export function UpdateBanner({
     case "done":
       return <div className="banner banner--update">{t("updater.done")}</div>;
     case "error": {
-      const failedMessage = t("updater.failed", { msg: status.message });
+      const failedMessage = status.disposition === "recovery"
+        ? t("updater.recoveryBlocked")
+        : status.disposition === "manual"
+          ? t("updater.manualUpdateRequired")
+          : t("updater.failed", { msg: status.message });
+      const downloadFirst = status.disposition !== "retryable";
       return (
         <div className="banner banner--update banner--error banner--actionable">
           <span className="banner__msg" title={failedMessage}>
             {failedMessage}
           </span>
           <span className="banner__spacer" />
-          {status.manualHint && (
-            <button className="btn btn--small" onClick={openDownload}>
-              {t("updater.goToDownload")}
+          {downloadFirst && (
+            <button className="btn btn--small btn--primary" onClick={openDownload}>
+              {t("updater.officialDownload")}
             </button>
           )}
           <button
-            className="btn btn--small btn--primary"
+            className={`btn btn--small${downloadFirst ? "" : " btn--primary"}`}
             onClick={() => {
               if (status.info) apply(status.info);
               else void check();

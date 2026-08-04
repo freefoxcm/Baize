@@ -601,6 +601,10 @@ type Usage struct {
 	ReasoningTokens  int    // subset of CompletionTokens spent on chain-of-thought
 	FinishReason     string // "stop", "tool_calls", "length", "content_filter", "repetition_truncation", …
 	Estimated        bool
+	// RequestCount is the number of provider requests represented by this
+	// aggregate. Zero means one request for backward compatibility. Recovery
+	// paths that merge multiple attempts set the exact count.
+	RequestCount int
 }
 
 // Pricing is a provider's per-1M-token rates, used to estimate spend. Currency

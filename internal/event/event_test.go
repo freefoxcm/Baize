@@ -65,6 +65,7 @@ func TestSyncTreatsTypedNilSinkAsDiscard(t *testing.T) {
 type readinessAuditRecorder struct {
 	events   []evidence.ReadinessAudit
 	recovery []ProtocolRecoveryAudit
+	turns    int
 }
 
 func (r *readinessAuditRecorder) Emit(Event) {}
@@ -75,6 +76,16 @@ func (r *readinessAuditRecorder) RecordReadinessAudit(a evidence.ReadinessAudit)
 
 func (r *readinessAuditRecorder) RecordProtocolRecovery(a ProtocolRecoveryAudit) {
 	r.recovery = append(r.recovery, a)
+}
+
+func (r *readinessAuditRecorder) RecordTurnCompletion() { r.turns++ }
+
+func TestSyncForwardsTurnCompletion(t *testing.T) {
+	rec := &readinessAuditRecorder{}
+	RecordTurnCompletion(Sync(rec))
+	if rec.turns != 1 {
+		t.Fatalf("turn completions = %d, want 1", rec.turns)
+	}
 }
 
 func TestSyncForwardsReadinessAuditReceipts(t *testing.T) {
