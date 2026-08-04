@@ -931,6 +931,12 @@ func securePathJoin(root, raw string) (string, error) {
 		p = filepath.Join(rootAbs, filepath.FromSlash(p))
 	}
 	clean := filepath.Clean(p)
+	// Resolve the candidate's own symlinks too (macOS /var → /private/var):
+	// an absolute raw path may come in unresolved and must still compare
+	// against the normalized root in the same space.
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		clean = resolved
+	}
 	if clean != rootAbs && !strings.HasPrefix(clean, rootAbs+string(os.PathSeparator)) {
 		return "", errors.New("outside workspace")
 	}
