@@ -20,6 +20,13 @@ branch.
   Connection state now lives solely in the sidebar dot (with a tooltip), the
   approval slot sits directly above the composer card, and the duplicate
   `#approval-slot` element was removed.
+  Approval-mode parity with desktop: the ask/auto/yolo modebar stays usable
+  while a turn is running (only a decision surface — an approval/ask card —
+  disables it), and plan approvals (`exit_plan_mode`, a fresh human decision)
+  render as a dedicated card ("Approve plan" / deny, no session/persist
+  grants) with a matching run-strip "Waiting for plan approval…" line.
+  `TestServePlanApprovalPostureMatrix` proves the plan card surfaces over HTTP
+  in ask, auto, and yolo alike.
 
 - Added a **Remote SSH** module (VS Code Remote-SSH style): a user-global
   `[remote]` host config, `reasonix remote` CLI (add/list/remove/import/test/

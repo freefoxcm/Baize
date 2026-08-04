@@ -864,6 +864,11 @@ const __T = {
     'retrying_status': 'Retrying ({attempt}/{max})...',
     'run_waiting_approval': 'Waiting for approval of {tool}',
     'run_waiting_ask': 'Waiting for your answer',
+    'run_waiting_plan': 'Waiting for plan approval…',
+    'approval_plan_badge': 'Plan',
+    'approval_plan_title': 'Approve plan execution',
+    'approval_plan_approve': 'Approve plan',
+    'approval_plan_approve_desc': 'Run the approved plan',
     'run_announce_running': 'Thinking…',
     'modebar_title': 'Tool approval mode',
     'mode_ask': 'Ask',
@@ -1040,6 +1045,11 @@ const __T = {
     'retrying_status': '正在重试 ({attempt}/{max})...',
     'run_waiting_approval': '等待审批:{tool}',
     'run_waiting_ask': '等待你的回答',
+    'run_waiting_plan': '等待批准计划…',
+    'approval_plan_badge': '计划',
+    'approval_plan_title': '批准计划执行',
+    'approval_plan_approve': '批准计划',
+    'approval_plan_approve_desc': '按计划执行',
     'run_announce_running': '思考中…',
     'modebar_title': '工具审批模式',
     'mode_ask': '询问',
@@ -1240,6 +1250,7 @@ const $$ = s => document.querySelectorAll(s);
 const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('#btn-stop');
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
+const modebar = $('#modebar');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
 const welcome = $('#welcome');
@@ -1361,12 +1372,15 @@ function updateRunStrip() {
   const on = running || waitingPrompt !== null || retryStatus !== null;
   runStrip.style.display = on ? '' : 'none';
   runStrip.className = 'composer-run-strip' + (waitingPrompt !== null ? ' composer-run-strip--waiting' : '');
+  // Desktop parity: the approval modebar stays usable while running, but is
+  // disabled while a decision surface (approval/ask card) owns the footer.
+  modebar.classList.toggle('composer-modebar--disabled', waitingPrompt !== null);
   if (!on) { runStripText.textContent = ''; runStripAnnounce.textContent = ''; return; }
   let stable = null;
   if (retryStatus) {
     stable = __('retrying_status').replace('{attempt}', retryStatus.attempt).replace('{max}', retryStatus.max);
   } else if (waitingPrompt === 'approval') {
-    stable = __('run_waiting_approval').replace('{tool}', pendingApprovalLabel);
+    stable = pendingApprovalLabel === 'exit_plan_mode' ? __('run_waiting_plan') : __('run_waiting_approval').replace('{tool}', pendingApprovalLabel);
   } else if (waitingPrompt === 'ask') {
     stable = __('run_waiting_ask');
   }
@@ -2175,6 +2189,10 @@ function showApproval(a) {
   updateRunStrip();
   const d = el('div', 'approval');
   d.tabIndex = -1;
+  // Plan approvals (exit_plan_mode) are fresh human decisions: a dedicated
+  // card like the desktop ApprovalModal's isPlanApproval branch — approve the
+  // plan execution or deny it. No session/persist grants apply.
+  const isPlan = a.tool === 'exit_plan_mode';
   const prefix = a.tool === 'bash' ? bashCommandPrefix(a.subject) : '';
   const hasPrefix = prefix !== '';
   const prefixRule = hasPrefix ? 'Bash(' + prefix + ')' : '';
@@ -2183,23 +2201,30 @@ function showApproval(a) {
   // shows the full command). The rule (e.g. Bash(prefix)) is kept on the
   // button's title tooltip. Payloads keep the session/persist semantics the
   // controller expects.
-  const actions = [
-    { label: __('allow_once'), desc: __('allow_once_desc'), payload: { allow: true, session: false }, danger: false, rule: '' },
-  ];
-  if (hasPrefix) {
-    actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true, scope: 'prefix' }, danger: false, rule: prefixRule });
-    actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true, scope: 'prefix' }, danger: false, rule: prefixRule });
-  } else {
-    actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true }, danger: false, rule: '' });
-    actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true }, danger: false, rule: '' });
+  const actions = isPlan
+    ? [
+        { label: __('approval_plan_approve'), desc: __('approval_plan_approve_desc'), payload: { allow: true, session: false }, danger: false, rule: '' },
+        { label: __('deny'), desc: __('deny_desc'), payload: { allow: false, session: false }, danger: true, rule: '' },
+      ]
+    : [
+        { label: __('allow_once'), desc: __('allow_once_desc'), payload: { allow: true, session: false }, danger: false, rule: '' },
+      ];
+  if (!isPlan) {
+    if (hasPrefix) {
+      actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true, scope: 'prefix' }, danger: false, rule: prefixRule });
+      actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true, scope: 'prefix' }, danger: false, rule: prefixRule });
+    } else {
+      actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true }, danger: false, rule: '' });
+      actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true }, danger: false, rule: '' });
+    }
+    actions.push({ label: __('deny'), desc: __('deny_desc'), payload: { allow: false, session: false }, danger: true, rule: '' });
   }
-  actions.push({ label: __('deny'), desc: __('deny_desc'), payload: { allow: false, session: false }, danger: true, rule: '' });
 
   const card = el('div', 'approval__card');
   // Head: amber tool badge + title + optional Details toggle for long reasons.
   const head = el('div', 'approval__head');
-  head.appendChild(el('span', 'approval__badge', a.tool));
-  head.appendChild(el('span', 'approval__title', __('approval_title')));
+  head.appendChild(el('span', 'approval__badge', isPlan ? __('approval_plan_badge') : a.tool));
+  head.appendChild(el('span', 'approval__title', isPlan ? __('approval_plan_title') : __('approval_title')));
   const reason = a.reason ? String(a.reason) : '';
   const reasonLong = reason.length > 160;
   let reasonEl = null;
@@ -3010,7 +3035,7 @@ taskModeMenu.querySelectorAll('.task-mode__item').forEach(it=>{
 document.addEventListener('click',e=>{if(taskModeMenu.style.display!=='none'&&!e.target.closest('.task-mode'))taskModeMenu.style.display='none';});
 // approval modebar items
 $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
-  b.onclick=()=>{ if(running)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
+  b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
 $('#goal-chip').onclick=()=>toggleGoalMode();
 $('#btn-new').onclick=()=>{if(running)return;post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();});};
