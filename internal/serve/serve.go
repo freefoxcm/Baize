@@ -57,6 +57,11 @@ type Server struct {
 	bindMu sync.Mutex
 	ctrl   control.SessionAPI
 	bc     *Broadcaster
+	// profileMu guards tokenMode, which the /profile switch mutates (under
+	// bindMu) and GET /profile reads. build() reads it to pass TokenMode to
+	// boot.Build, mapping full/economy/delivery onto the runtime profile.
+	profileMu sync.RWMutex
+	tokenMode string
 	// buildController builds the replacement controller during a model switch.
 	// Nil in production (switchModel falls back to boot.Build); tests inject a
 	// fake so switchModel can be exercised without real provider IO.
@@ -83,6 +88,7 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		titles: newTitleCache(ctrl.SessionDir()),
 		auth:   newAuthGate(serveCfg),
 	}
+	s.tokenMode = boot.TokenModeFull
 	s.initTitleProvider()
 	return s
 }
@@ -294,16 +300,22 @@ func (s *Server) switchModel(ctx context.Context, ref string) error {
 }
 
 // build returns the replacement controller for a model switch, using the
-// injected builder in tests and boot.Build in production.
+// injected builder in tests and boot.Build in production. TokenMode is read
+// from the current /profile setting so a work-mode switch rebuilds the
+// controller under the target runtime profile's tool contract.
 func (s *Server) build(ctx context.Context, ref string) (*control.Controller, error) {
 	if s.buildController != nil {
 		return s.buildController(ctx, ref)
 	}
+	s.profileMu.RLock()
+	tokenMode := s.tokenMode
+	s.profileMu.RUnlock()
 	return boot.Build(ctx, boot.Options{
 		Model:       ref,
 		Sink:        s.bc,
 		Stderr:      os.Stderr,
 		StatsSource: "serve",
+		TokenMode:   tokenMode,
 	})
 }
 
@@ -351,6 +363,160 @@ func (s *Server) switchEffort(ctx context.Context, level string) error {
 		return err
 	}
 	return s.switchModel(ctx, entry.Name+"/"+entry.Model)
+}
+
+// effort reports the reasoning-effort capability of the active provider
+// (desktop EffortSwitcher data: supported / levels / current / default).
+func (s *Server) effort(w http.ResponseWriter, _ *http.Request) {
+	cfg, err := config.Load()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ref := currentModelRef(s.ctl())
+	entry, ok := cfg.ResolveModel(ref)
+	if !ok {
+		writeJSON(w, map[string]any{"supported": false, "levels": []string{}, "current": "", "default": ""})
+		return
+	}
+	cap := config.EffortCapabilityForEntry(entry)
+	current := entry.Effort
+	if current == "" {
+		current = cap.Default
+	}
+	writeJSON(w, map[string]any{
+		"supported": cap.Supported,
+		"levels":    cap.Levels,
+		"current":   current,
+		"default":   cap.Default,
+	})
+}
+
+// setEffort switches the reasoning-effort level of the active provider.
+func (s *Server) setEffort(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Level string `json:"level"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Level == "" {
+		http.Error(w, "missing level", http.StatusBadRequest)
+		return
+	}
+	if controllerHasActiveRuntimeWork(s.ctl()) {
+		http.Error(w, "cannot change effort while work is running", http.StatusConflict)
+		return
+	}
+	if err := s.switchEffort(r.Context(), req.Level); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// switchProfile rebuilds the controller under a new runtime profile (work
+// mode). It mirrors switchModel's Snapshot/Build/Adopt/Close skeleton so the
+// conversation, history, and session authorizations carry across the rebuild.
+func (s *Server) switchProfile(ctx context.Context, mode string) error {
+	s.bindMu.Lock()
+	defer s.bindMu.Unlock()
+
+	cur := s.ctl()
+	if controllerHasActiveRuntimeWork(cur) {
+		return fmt.Errorf("cannot switch work mode while active work or background jobs are running")
+	}
+	ref := currentModelRef(cur)
+	if err := cur.Snapshot(); err != nil {
+		slog.Warn("serve: snapshot before work-mode switch", "err", err)
+	}
+	prevPath := cur.SessionPath()
+	carried := cur.History()
+
+	s.profileMu.Lock()
+	s.tokenMode = mode
+	s.profileMu.Unlock()
+
+	newCtrl, err := s.build(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("switch work mode: %w", err)
+	}
+	newPath := agent.ContinueSessionPath(prevPath, newCtrl.SessionDir(), newCtrl.Label())
+	if fresh := newCtrl.History(); len(fresh) > 0 && fresh[0].Role == provider.RoleSystem {
+		if len(carried) > 0 && carried[0].Role == provider.RoleSystem {
+			carried[0] = fresh[0]
+		} else {
+			carried = append([]provider.Message{fresh[0]}, carried...)
+		}
+	}
+	newCtrl.AdoptHistory(carried, newPath)
+	if prev, ok := cur.(*control.Controller); ok {
+		newCtrl.RestoreSessionAuthorizations(prev.SessionAuthorizations())
+	}
+	if newPath != "" {
+		if err := newCtrl.Snapshot(); err != nil {
+			newCtrl.Close()
+			return fmt.Errorf("switch work mode: snapshot adopted history: %w", err)
+		}
+	}
+	activePath := newCtrl.SessionPath()
+	if err := s.rebindSessionLease(activePath); err != nil {
+		newCtrl.Close()
+		if errors.Is(err, agent.ErrSessionLeaseHeld) {
+			return fmt.Errorf("switch work mode: %s", sessionInUseError(err))
+		}
+		slog.Error("serve: bind replacement session lease", "err", err)
+		return fmt.Errorf("switch work mode: unable to secure replacement session")
+	}
+	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
+	s.mu.Lock()
+	if s.ctrl != cur {
+		s.mu.Unlock()
+		if restoreErr := s.rebindSessionLease(cur.SessionPath()); restoreErr != nil {
+			newCtrl.Close()
+			slog.Error("serve: restore outgoing session lease after aborted work-mode switch", "err", restoreErr)
+			return fmt.Errorf("switch work mode: session changed during switch")
+		}
+		newCtrl.Close()
+		return fmt.Errorf("switch work mode: session changed during switch")
+	}
+	s.ctrl = newCtrl
+	s.mu.Unlock()
+	cur.Close()
+	return nil
+}
+
+// profile reports the current work mode (runtime profile) as full/economy/delivery.
+func (s *Server) profile(w http.ResponseWriter, _ *http.Request) {
+	s.profileMu.RLock()
+	mode := s.tokenMode
+	s.profileMu.RUnlock()
+	writeJSON(w, map[string]any{"mode": mode})
+}
+
+// setProfile switches the work mode (runtime profile) for the active session.
+func (s *Server) setProfile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Mode == "" {
+		http.Error(w, "missing mode", http.StatusBadRequest)
+		return
+	}
+	raw := strings.ToLower(strings.TrimSpace(req.Mode))
+	switch raw {
+	case boot.TokenModeFull, boot.TokenModeEconomy, boot.TokenModeDelivery:
+	default:
+		http.Error(w, "invalid mode", http.StatusBadRequest)
+		return
+	}
+	mode := boot.NormalizeTokenMode(raw)
+	if controllerHasActiveRuntimeWork(s.ctl()) {
+		http.Error(w, "cannot switch work mode while work is running", http.StatusConflict)
+		return
+	}
+	if err := s.switchProfile(r.Context(), mode); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func controllerHasActiveRuntimeWork(ctrl control.SessionAPI) bool {
@@ -405,6 +571,10 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
 	mux.HandleFunc("POST /attach", s.attach)
+	mux.HandleFunc("GET /effort", s.effort)
+	mux.HandleFunc("POST /effort", s.setEffort)
+	mux.HandleFunc("GET /profile", s.profile)
+	mux.HandleFunc("POST /profile", s.setProfile)
 	mux.HandleFunc("POST /cancel", s.cancel)
 	mux.HandleFunc("POST /approve", s.approve)
 	mux.HandleFunc("POST /plan", s.plan)

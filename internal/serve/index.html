@@ -18,6 +18,7 @@
   --muted:oklch(63% .006 280);--muted-2:oklch(49% .006 280);
   --accent:oklch(68% .16 38);--accent-soft:oklch(68% .16 38/.15);--accent-strong:oklch(72% .18 36);
   --success:oklch(70% .14 145);--success-soft:oklch(70% .14 145/.14);
+  --ok:#1f9d57; /* auto-mode approval green, matches desktop dark theme (styles.css --ok) */
   --warning:oklch(78% .14 85);--warning-soft:oklch(78% .14 85/.16);
   --danger:oklch(66% .18 25);--danger-soft:oklch(66% .18 25/.16);
   --violet:oklch(72% .14 295);--violet-soft:oklch(72% .14 295/.16);
@@ -298,10 +299,11 @@ input,textarea{font:inherit;color:inherit}
 .slash-menu__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-top:1px solid var(--border);font-size:10.5px;color:var(--muted-2)}
 
 /* composer */
-.composer{display:flex;gap:7px;align-items:center;background:var(--card);border:1px solid var(--border-strong);border-radius:14px;padding:4px 4px 4px 12px;box-shadow:var(--shadow-md);transition:border-color .18s ease,box-shadow .18s ease;overflow:hidden}
-.composer:focus-within{border-color:var(--accent);box-shadow:var(--shadow-md),0 0 0 3px var(--accent-soft)}
-.composer__caret{color:var(--accent);font-family:var(--mono);font-weight:600;font-size:16px;flex-shrink:0}
-.composer__input{flex:1;border:none;background:none;color:var(--fg);font-size:14px;line-height:1.5;padding:9px 0;outline:none;resize:none;min-height:22px;max-height:140px;field-sizing:content}
+.composer-card{width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--card);border:1px solid var(--border-strong);border-radius:14px;box-shadow:var(--shadow-md);overflow:visible;transition:border-color .18s ease,box-shadow .18s ease}
+.composer-card:focus-within{border-color:var(--accent);box-shadow:var(--shadow-md),0 0 0 3px var(--accent-soft)}
+.composer{display:flex;gap:7px;align-items:flex-end;padding:10px 10px 10px 14px}
+.composer__caret{color:var(--accent);font-family:var(--mono);font-weight:600;font-size:16px;flex-shrink:0;line-height:38px}
+.composer__input{flex:1;border:none;background:none;color:var(--fg);font-size:14px;line-height:1.5;padding:9px 0;outline:none;resize:none;min-height:22px;max-height:220px;field-sizing:content}
 .composer__input::placeholder{color:var(--muted-2)}
 .composer__btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;flex-shrink:0;transition:background .18s ease,transform .15s ease}
 .composer__btn--send{background:var(--accent);color:oklch(99% 0 0)}
@@ -309,6 +311,93 @@ input,textarea{font:inherit;color:inherit}
 .composer__btn--send:disabled{background:var(--panel-2);color:var(--muted);cursor:default;transform:none}
 .composer__btn--stop{background:var(--panel-2);color:var(--danger)}
 .composer__btn--stop:hover{background:var(--danger-soft)}
+.composer__btn svg{width:17px;height:17px}
+/* run strip — desktop composer-run-strip */
+.composer-run-strip{display:flex;align-items:center;gap:8px;min-height:24px;padding:4px 14px 0;font-size:12px;color:var(--accent)}
+.composer-run-strip__dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;animation:composer-pulse 1.2s ease-in-out infinite}
+.composer-run-strip--waiting{color:color-mix(in srgb,var(--warning) 74%,var(--fg))}
+.composer-run-strip--waiting .composer-run-strip__dot{animation:none}
+.composer-run-strip__text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+@keyframes composer-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* composer meta bar — desktop composer-meta */
+.composer-meta{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--bg) 30%,transparent);flex-wrap:wrap;border-radius:0 0 13px 13px}
+.composer-meta__divider{width:1px;height:18px;background:var(--border);flex-shrink:0}
+/* work mode trigger — desktop composer-profile-trigger */
+.workmode{position:relative}
+.workmode__trigger{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--fg-2);font-size:11.5px;font-weight:600;cursor:pointer;transition:border-color .15s ease,background .15s ease,color .15s ease}
+.workmode__trigger:hover{border-color:var(--accent);background:var(--accent-soft)}
+.workmode__trigger svg{flex-shrink:0;color:var(--muted)}
+.workmode__menu{position:absolute;bottom:calc(100% + 6px);left:0;z-index:60;min-width:160px;padding:4px;border:1px solid var(--border-strong);border-radius:10px;background:var(--card);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:1px}
+.workmode__item{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:none;border-radius:7px;background:none;color:var(--fg-2);font-size:12.5px;font-weight:500;cursor:pointer;text-align:left;transition:background .12s ease,color .12s ease}
+.workmode__item:hover{background:var(--panel-2)}
+.workmode__item.is-active{color:var(--fg)}
+.workmode__item svg{flex-shrink:0;color:var(--muted)}
+.workmode__item.is-active svg{color:var(--accent)}
+.workmode__item .workmode__check{opacity:0;margin-left:auto;color:var(--accent)}
+.workmode__item.is-active .workmode__check{opacity:1}
+.composer-meta__control--profile{flex-shrink:0}
+/* task mode trigger — desktop composer-task-mode-trigger */
+.task-mode{position:relative}
+.task-mode__trigger{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--fg-2);font-size:11.5px;font-weight:600;cursor:pointer;transition:border-color .15s ease,background .15s ease,color .15s ease}
+.task-mode__trigger:hover{border-color:var(--accent);background:var(--accent-soft)}
+.task-mode__trigger--goal{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:var(--accent-soft)}
+.task-mode__trigger svg{flex-shrink:0;color:var(--muted)}
+.task-mode__trigger--goal svg{color:var(--accent)}
+.task-mode__menu{position:absolute;bottom:calc(100% + 6px);left:0;z-index:60;min-width:170px;padding:4px;border:1px solid var(--border-strong);border-radius:10px;background:var(--card);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:1px}
+.task-mode__item{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:none;border-radius:7px;background:none;color:var(--fg-2);font-size:12.5px;font-weight:500;cursor:pointer;text-align:left;transition:background .12s ease,color .12s ease}
+.task-mode__item:hover{background:var(--panel-2)}
+.task-mode__item.is-active{color:var(--fg)}
+.task-mode__item svg{flex-shrink:0;color:var(--muted)}
+.task-mode__item.is-active svg{color:var(--accent)}
+.task-mode__item .task-mode__check{opacity:0;margin-left:auto;color:var(--accent)}
+.task-mode__item.is-active .task-mode__check{opacity:1}
+/* composer meta controls */
+.composer-meta__control--mode{flex-shrink:0}
+/* approval modebar — desktop composer-modebar */
+.composer-modebar{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;flex:0 0 238px;max-width:238px;height:32px;padding:2px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);overflow:hidden;box-shadow:var(--shadow-sm);--modebar-active-bg:#2f5fa8;--modebar-active-border:#386dbb;--modebar-active-fg:#fff} /* ask = approval blue, matches desktop dark theme --mode-auto-* */
+.composer-modebar[data-mode="auto"]{--modebar-active-bg:color-mix(in srgb,var(--ok) 58%,#0b3d24);--modebar-active-border:color-mix(in srgb,var(--ok) 76%,#0b3d24);--modebar-active-fg:#fff}
+.composer-modebar[data-mode="yolo"]{--modebar-active-bg:#e5484d;--modebar-active-border:#ed5d62;--modebar-active-fg:#fff}
+.composer-modebar__thumb{position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px)/3);border:1px solid var(--modebar-active-border,var(--border));border-radius:999px;background:var(--modebar-active-bg,var(--card-hover));box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 18%,transparent),0 1px 3px color-mix(in srgb,#000 28%,transparent);transition:transform .16s ease-out,border-color .16s,background .16s;pointer-events:none;z-index:1}
+.composer-modebar[data-mode="auto"] .composer-modebar__thumb{transform:translateX(100%)}
+.composer-modebar[data-mode="yolo"] .composer-modebar__thumb{transform:translateX(200%)}
+.composer-modebar__item{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;gap:4px;height:26px;padding:0 6px;border:none;background:none;color:var(--fg-2);font-size:11.5px;font-weight:620;cursor:pointer;transition:color .12s ease;white-space:nowrap}
+.composer-modebar__item svg{flex-shrink:0}
+.composer-modebar__item:hover{color:var(--fg-2)}
+.composer-modebar__item--ask.is-active{color:var(--modebar-active-fg)}
+.composer-modebar[data-mode="auto"] .composer-modebar__item--auto{color:var(--modebar-active-fg)}
+.composer-modebar[data-mode="yolo"] .composer-modebar__item--yolo{color:var(--modebar-active-fg)}
+.composer-modebar--disabled{opacity:.55;pointer-events:none}
+/* model switcher popover — desktop modelsw */
+.modelsw{position:relative}
+.modelsw__menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:60;width:min(90vw,360px);max-height:min(60vh,420px);display:flex;flex-direction:column;border:1px solid var(--border-strong);border-radius:10px;background:var(--card);box-shadow:var(--shadow-lg);overflow:hidden}
+.modelsw__search{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border)}
+.modelsw__search svg{color:var(--muted);flex-shrink:0}
+.modelsw__search-input{flex:1;border:none;background:none;outline:none;color:var(--fg);font-size:12.5px}
+.modelsw__list{overflow-y:auto;padding:4px}
+.modelsw__group-label{display:flex;align-items:center;gap:5px;padding:6px 8px 3px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.modelsw__item{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:30px;padding:0 10px;border:none;border-radius:7px;background:none;color:var(--fg-2);font-size:12.5px;font-family:var(--mono);cursor:pointer;text-align:left}
+.modelsw__item:hover{background:var(--panel-2)}
+.modelsw__item--current{color:var(--fg)}
+.modelsw__check{color:var(--accent);flex-shrink:0}
+.modelsw__empty{padding:14px;text-align:center;color:var(--muted);font-size:12px}
+/* effort switcher — desktop effortsw */
+.effortsw{position:relative}
+.effortsw__trigger{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--fg-2);font-size:11.5px;font-weight:500;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.effortsw__trigger:hover{border-color:var(--accent);background:var(--accent-soft)}
+.effortsw__trigger--explicit{border-color:color-mix(in srgb,var(--accent) 50%,var(--border));color:var(--accent);background:var(--accent-soft)}
+.effortsw__trigger svg{flex-shrink:0;color:var(--muted)}
+.effortsw__trigger--explicit svg{color:var(--accent)}
+.effortsw__menu{position:absolute;bottom:calc(100% + 6px);left:0;z-index:60;min-width:150px;padding:4px;border:1px solid var(--border-strong);border-radius:10px;background:var(--card);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:1px}
+.effortsw__item{display:flex;align-items:center;justify-content:space-between;gap:8px;height:30px;padding:0 10px;border:none;border-radius:7px;background:none;color:var(--fg-2);font-size:12.5px;cursor:pointer;text-align:left}
+.effortsw__item:hover{background:var(--panel-2)}
+.effortsw__item.is-active{color:var(--fg)}
+.effortsw__check{color:var(--accent);flex-shrink:0}
+/* model trigger — desktop ModelSwitcher */
+.composer-model-trigger{display:inline-flex;align-items:center;gap:6px;max-width:240px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--fg-2);font-size:12px;font-weight:500;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.composer-model-trigger:hover{border-color:var(--accent);background:var(--accent-soft)}
+.composer-model-trigger__value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:11.5px}
+.composer-model-trigger svg{flex-shrink:0;color:var(--muted)}
 /* goal chip */
 .goal-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;background:var(--accent-soft);border:1px solid var(--accent);font-size:12px;color:var(--accent);font-weight:500;cursor:pointer;transition:all .18s ease;max-width:320px;overflow:hidden}
 .goal-chip:hover{background:oklch(68% .16 38/.25)}
@@ -338,19 +427,9 @@ input,textarea{font:inherit;color:inherit}
 .todos__item--in_progress .todos__text{color:var(--fg);font-weight:500}
 .todos__dismiss{flex-shrink:0;padding:2px 6px;color:var(--muted-2);font-size:14px;line-height:1;cursor:pointer;border-radius:4px}
 .todos__dismiss:hover{color:var(--danger);background:var(--danger-soft)}
-.composer__btn svg{width:17px;height:17px}
 
-/* toolbar */
-.toolbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.toolbar__btn{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);color:var(--muted);font-size:11.5px;transition:all .18s ease}
-.toolbar__btn:hover{background:var(--panel);color:var(--fg);border-color:var(--border-strong)}
-.toolbar__btn--active{background:var(--accent-soft);color:var(--accent);border-color:transparent}
-.toolbar__btn--ok{background:var(--success-soft);color:var(--success);border-color:transparent}
-.toolbar__btn--danger{background:var(--danger-soft);color:var(--danger);border-color:transparent}
-.toolbar__btn--goal{background:var(--violet-soft);color:var(--violet);border-color:transparent}
-.toolbar__btn--goal-active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
-.toolbar__sep{width:1px;height:16px;background:var(--border)}
-.toolbar__spacer{flex:1}
+/* sidebar status (dot + model) — connection state lives here since the
+   footer toolbar was removed (desktop parity) */
 .status{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .status__dot{width:5px;height:5px;border-radius:50%;background:var(--muted-2);flex-shrink:0}
 .status__dot--busy{background:var(--accent);animation:pulse 1.2s ease-in-out infinite}
@@ -557,41 +636,114 @@ input,textarea{font:inherit;color:inherit}
       <ul class="todos__list" id="todos-list"></ul>
     </div>
     <div class="approval-slot" id="approval-slot"></div>
-    <div class="toolbar">
-      <button class="toolbar__btn toolbar__btn--ok" id="btn-auto" title="__('auto_mode')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>
-        __('auto')
-      </button>
-      <button class="toolbar__btn" id="btn-plan" title="__('plan_mode')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        __('plan')
-      </button>
-      <button class="toolbar__btn" id="btn-bypass" title="__('yolo_mode')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        __('yolo')
-      </button>
-      <button class="toolbar__btn" id="btn-goal" title="__('goal_mode_desc')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>
-        __('goal_btn')
-      </button>
-      <div class="toolbar__sep"></div>
-      <div class="status">
-        <span class="status__dot" id="status-dot-footer"></span>
-        <span id="status-text">__('ready')</span>
+    <div class="composer-card">
+      <div class="composer-run-strip" id="run-strip" style="display:none">
+        <span class="composer-run-strip__dot" aria-hidden="true"></span>
+        <span class="composer-run-strip__text" id="run-strip-text" aria-hidden="true"></span>
+        <span class="sr-only" id="run-strip-announce" role="status"></span>
       </div>
-      <div class="toolbar__spacer"></div>
-      <div class="status" id="turn-info"></div>
-      <div class="status" id="balance-info"></div>
-    </div>
-    <div class="approval-slot" id="approval-slot"></div>
-    <div class="composer">
-      <span class="composer__caret">&#8250;</span>      <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
-      <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-      </button>
-      <button class="composer__btn composer__btn--stop" id="btn-stop" title="__('cancel')" style="display:none">
-        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-      </button>
+      <div class="composer" id="composer">
+        <span class="composer__caret">&#8250;</span>
+        <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
+        <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+        </button>
+        <button class="composer__btn composer__btn--stop" id="btn-stop" title="__('cancel')" style="display:none">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+      </div>
+      <div class="composer-meta" id="composer-meta">
+        <div class="composer-meta__control composer-meta__control--mode">
+          <div class="task-mode">
+            <button type="button" class="task-mode__trigger" id="btn-task-mode" title="__('task_mode_title')">
+              <svg id="task-mode-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+              <span id="task-mode-label">__('task_mode_direct')</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="task-mode__menu" id="task-mode-menu" style="display:none" role="listbox">
+              <button type="button" class="task-mode__item" data-mode="direct" role="option">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                <span>__('task_mode_direct')</span>
+                <svg class="task-mode__check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5 9-10"/></svg>
+              </button>
+              <button type="button" class="task-mode__item" data-mode="plan" role="option">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                <span>__('task_mode_plan')</span>
+                <svg class="task-mode__check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5 9-10"/></svg>
+              </button>
+              <button type="button" class="task-mode__item" data-mode="goal" role="option">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+                <span>__('task_mode_goal')</span>
+                <svg class="task-mode__check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5 9-10"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="composer-meta__control composer-meta__control--profile">
+          <div class="workmode">
+            <button type="button" class="workmode__trigger" id="btn-workmode" title="__('work_mode_title')">
+              <svg id="workmode-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/></svg>
+              <span id="workmode-label">__('work_mode_balanced')</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="workmode__menu" id="workmode-menu" style="display:none" role="listbox">
+              <button type="button" class="workmode__item" data-mode="full" role="option">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/></svg>
+                <span>__('work_mode_balanced')</span>
+                <svg class="workmode__check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5 9-10"/></svg>
+              </button>
+              <button type="button" class="workmode__item" data-mode="economy" role="option">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+                <span>__('work_mode_lightweight')</span>
+                <svg class="workmode__check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5 9-10"/></svg>
+              </button>
+              <button type="button" class="workmode__item" data-mode="delivery" role="option">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                <span>__('work_mode_delivery')</span>
+                <svg class="workmode__check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5 9-10"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="composer-modebar" id="modebar" data-mode="ask" title="__('modebar_title')">
+          <span class="composer-modebar__thumb" aria-hidden="true"></span>
+          <button type="button" class="composer-modebar__item composer-modebar__item--ask is-active" data-mode="ask" title="__('mode_ask_title')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>__('mode_ask')</span>
+          </button>
+          <button type="button" class="composer-modebar__item composer-modebar__item--auto" data-mode="auto" title="__('mode_auto_title')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span>__('mode_auto')</span>
+          </button>
+          <button type="button" class="composer-modebar__item composer-modebar__item--yolo" data-mode="yolo" title="__('mode_yolo_title')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+            <span>__('mode_yolo')</span>
+          </button>
+        </div>
+        <span class="composer-meta__divider" aria-hidden="true"></span>
+        <div class="modelsw">
+          <button type="button" class="composer-model-trigger" id="btn-composer-model" title="__('models')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4c0 .8-.2 1.5-.6 2.1.5.3.9.8 1.1 1.4 1.3.3 2.5.9 3.4 1.9-1.1.6-2.4.9-3.7.9h-1.7a4.5 4.5 0 0 1-4.5 4.5A4.5 4.5 0 0 1 5.5 13.3c-.9.3-1.9.5-2.9.5a8.5 8.5 0 0 1 2.9-2.5 4 4 0 0 1-.5-2 4 4 0 0 1 4-4c.6 0 1.1.1 1.6.3.5-.7 1.3-1.1 2.2-1.1.5 0 .9.1 1.2.3.3-.2.7-.3 1-.3z"/><path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>
+            <span class="composer-model-trigger__value" id="composer-model-value">-</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="modelsw__menu" id="modelsw-menu" style="display:none">
+            <div class="modelsw__search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" class="modelsw__search-input" id="modelsw-search" placeholder="__('model_search')">
+            </div>
+            <div class="modelsw__list" id="modelsw-list"></div>
+          </div>
+        </div>
+        <div class="effortsw" id="effortsw" style="display:none">
+          <button type="button" class="effortsw__trigger" id="btn-effort" title="__('effort_title')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+            <span id="effort-value">auto</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="effortsw__menu" id="effort-menu" style="display:none"></div>
+        </div>
+      </div>
     </div>
   </footer>
 </div>
@@ -710,6 +862,28 @@ const __T = {
     'thinking': 'Thinking...',
     'thinking_done': 'Thinking done',
     'retrying_status': 'Retrying ({attempt}/{max})...',
+    'run_waiting_approval': 'Waiting for approval of {tool}',
+    'run_waiting_ask': 'Waiting for your answer',
+    'run_announce_running': 'Thinking…',
+    'modebar_title': 'Tool approval mode',
+    'mode_ask': 'Ask',
+    'mode_auto': 'Auto',
+    'mode_yolo': 'YOLO',
+    'mode_ask_title': 'Ask before each tool',
+    'mode_auto_title': 'Auto-approve safe tools',
+    'mode_yolo_title': 'Approve everything (YOLO)',
+    'task_mode_title': 'Execution mode',
+    'task_mode_direct': 'Standard',
+    'task_mode_plan': 'Plan',
+    'task_mode_goal': 'Goal',
+    'work_mode_title': 'Work mode',
+    'work_mode_balanced': 'Balanced',
+    'work_mode_lightweight': 'Lightweight',
+    'work_mode_delivery': 'Delivery',
+    'model_search': 'Search models',
+    'provider_label_deepseek': 'DeepSeek Official',
+    'model_no_match': 'No matching models',
+    'effort_title': 'Reasoning effort',
     'recovery_paused': 'Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
     'stats': 'Stats',
     'statistics': 'Statistics',
@@ -864,6 +1038,28 @@ const __T = {
     'thinking': '思考中...',
     'thinking_done': '思考完成',
     'retrying_status': '正在重试 ({attempt}/{max})...',
+    'run_waiting_approval': '等待审批:{tool}',
+    'run_waiting_ask': '等待你的回答',
+    'run_announce_running': '思考中…',
+    'modebar_title': '工具审批模式',
+    'mode_ask': '询问',
+    'mode_auto': '自动',
+    'mode_yolo': 'YOLO',
+    'mode_ask_title': '每个工具执行前询问',
+    'mode_auto_title': '自动批准安全工具',
+    'mode_yolo_title': '全部批准 (YOLO)',
+    'task_mode_title': '执行方式',
+    'task_mode_direct': '常规',
+    'task_mode_plan': '计划',
+    'task_mode_goal': '目标',
+    'work_mode_title': '工作模式',
+    'work_mode_balanced': '均衡',
+    'work_mode_lightweight': '轻量',
+    'work_mode_delivery': '交付',
+    'model_search': '搜索模型',
+    'provider_label_deepseek': 'DeepSeek 官方',
+    'model_no_match': '没有匹配的模型',
+    'effort_title': '思考长度',
     'recovery_paused': '已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
     'stats': '统计',
     'statistics': '统计',
@@ -1042,11 +1238,10 @@ document.addEventListener('DOMContentLoaded', () => {
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('#btn-stop');
+const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
-const statusDot = $('#status-dot-footer'), statusText = $('#status-text');
-const turnInfo = $('#turn-info'), balanceInfo = $('#balance-info');
-const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
+const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
 const welcome = $('#welcome');
 const welcomeModel = $('#welcome-model'), welcomeCwd = $('#welcome-cwd');
 const slashAnchor = $('#slash-menu-anchor');
@@ -1055,6 +1250,11 @@ const slashAnchor = $('#slash-menu-anchor');
 let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask';
 let goalMode = false, goalActive = false, goalText = '';
 let turnStartAt = 0, turnTokens = 0, tickTimer = null, retryStatus = null;
+let waitingPrompt = null, pendingApprovalLabel = '';
+let waitAccumMs = 0, waitStartedAt = 0; // desktop parity: ticker counts NET work time, waits (approval/ask) are excluded
+function waitPause() { if (waitStartedAt === 0) waitStartedAt = Date.now(); }
+function waitResume() { if (waitStartedAt !== 0) { waitAccumMs += Date.now() - waitStartedAt; waitStartedAt = 0; } }
+let modelsCache = [];
 let escTimer = null;
 let hasVisibleHistory = false, checkpointCount = 0;
 let sessionsCache = [], sessionFilter = '', pendingDeleteSession = null;
@@ -1145,44 +1345,72 @@ function updateActionAvailability() {
   setActionDisabled('btn-rewind', running || checkpointCount === 0, running ? __('thinking') : __('no_checkpoints'));
 }
 
+// ── run strip (desktop composer-run-strip) ──
+const SPINNER_WORDS = {
+  en: ['Frolicking','Pondering','Noodling','Brewing','Conjuring','Cogitating','Percolating','Ruminating','Simmering','Synthesizing','Tinkering','Marinating','Crunching','Hatching','Mulling','Whirring','Forging','Spelunking','Puttering','Vibing'],
+  zh: ['嬉游中','沉思中','鼓捣中','酝酿中','施法中','苦思中','渗滤中','反刍中','文火慢炖','合成中','修补中','腌制入味','嘎吱运算','孵化中','盘算中','嗡嗡运转','锻造中','探洞中','摆弄中','来感觉了'],
+};
+function tickerText() {
+  const words = SPINNER_WORDS[__LANG] || SPINNER_WORDS.en;
+  const ms = Math.max(0, Date.now() - turnStartAt - waitAccumMs - (waitStartedAt ? Date.now() - waitStartedAt : 0));
+  const word = words[Math.floor(ms / 3000) % words.length];
+  const tok = turnTokens > 0 ? ' · ↓ ' + fmtTok(turnTokens) + ' tok' : '';
+  return word + '… ' + fmtElapsed(ms) + tok;
+}
+function updateRunStrip() {
+  const on = running || waitingPrompt !== null || retryStatus !== null;
+  runStrip.style.display = on ? '' : 'none';
+  runStrip.className = 'composer-run-strip' + (waitingPrompt !== null ? ' composer-run-strip--waiting' : '');
+  if (!on) { runStripText.textContent = ''; runStripAnnounce.textContent = ''; return; }
+  let stable = null;
+  if (retryStatus) {
+    stable = __('retrying_status').replace('{attempt}', retryStatus.attempt).replace('{max}', retryStatus.max);
+  } else if (waitingPrompt === 'approval') {
+    stable = __('run_waiting_approval').replace('{tool}', pendingApprovalLabel);
+  } else if (waitingPrompt === 'ask') {
+    stable = __('run_waiting_ask');
+  }
+  if (stable !== null) {
+    runStripText.textContent = stable;
+    runStripText.removeAttribute('aria-hidden');
+    runStripAnnounce.textContent = stable;
+  } else {
+    runStripText.textContent = tickerText();
+    runStripText.setAttribute('aria-hidden', 'true');
+    runStripAnnounce.textContent = __('run_announce_running');
+  }
+}
+
 function setRunning(on) {
   running=on;
   retryStatus=null;
   btnSend.style.display=on?'none':'';
   btnStop.style.display=on?'':'none';
-  statusDot.className=on?'status__dot status__dot--busy':'status__dot';
-  statusDotSidebar.className=statusDot.className;
-  statusText.textContent=on?(goalActive?__('goal_active')+' · ':'')+__('thinking'):__('ready');
+  statusDotSidebar.className=on?'status__dot status__dot--busy':'status__dot';
   updateActionAvailability();
-  if(on){turnStartAt=Date.now();turnTokens=0;tickTimer=setInterval(()=>{
-    const ms=Date.now()-turnStartAt; const tok=turnTokens>0?' · ↓ '+fmtTok(turnTokens)+' tok':'';
-    turnInfo.textContent=fmtElapsed(ms)+tok;
-  },1000);} else {clearInterval(tickTimer);turnInfo.textContent='';}
+  if(on){turnStartAt=Date.now();turnTokens=0;waitAccumMs=0;waitStartedAt=0;tickTimer=setInterval(updateRunStrip,1000);} else {clearInterval(tickTimer);}
+  updateRunStrip();
 }
 
 function setRetrying(attempt,max) {
   retryStatus={attempt:attempt||0,max:max||0};
-  statusDot.className='status__dot status__dot--busy';
-  statusDotSidebar.className=statusDot.className;
-  statusText.textContent=__('retrying_status').replace('{attempt}',retryStatus.attempt).replace('{max}',retryStatus.max);
+  statusDotSidebar.className='status__dot status__dot--busy';
+  updateRunStrip();
 }
 
 function clearRetrying() {
   if(!retryStatus)return;
   retryStatus=null;
-  if(running)statusText.textContent=__('thinking');
+  updateRunStrip();
 }
 
 function setConnState(state) {
   // state: 'connected' | 'reconnecting' | 'disconnected'
   const colors={connected:'var(--success)',reconnecting:'var(--warning)',disconnected:'var(--danger)'};
   const labels={connected:__('connected'),reconnecting:__('reconnecting'),disconnected:__('disconnected')};
-  if(!running){
-    statusDot.style.background=colors[state]||'';
-    statusDot.className='status__dot'+(state==='reconnecting'?' status__dot--busy':'');
-    statusText.textContent=labels[state]||state;
-  }
   statusDotSidebar.style.background=colors[state]||'';
+  statusDotSidebar.className='status__dot'+(state==='reconnecting'?' status__dot--busy':'');
+  if(!running)statusDotSidebar.title=labels[state]||state;
 }
 
 // ── transcript items model ──
@@ -1941,6 +2169,10 @@ function showApproval(a) {
   // the new request.
   if (currentApprovalCleanup) currentApprovalCleanup();
   currentApprovalCleanup = null;
+  pendingApprovalLabel = a.tool || '';
+  waitingPrompt = 'approval';
+  waitPause();
+  updateRunStrip();
   const d = el('div', 'approval');
   d.tabIndex = -1;
   const prefix = a.tool === 'bash' ? bashCommandPrefix(a.subject) : '';
@@ -2036,7 +2268,7 @@ function showApproval(a) {
   // to the composer only when it still sits inside the card, so a user who
   // deliberately moved elsewhere is not yanked back.
   if (!isTextEntry(document.activeElement) || (document.activeElement === input && !input.value)) d.focus({ preventScroll: true });
-  const cleanup = () => { pendingPrompts = pendingPrompts.filter(f => f !== cleanup); const hadFocus = d.contains(document.activeElement); d.remove(); document.removeEventListener('keydown', onkey); if (currentApprovalCleanup === cleanup) currentApprovalCleanup = null; if (hadFocus) input.focus(); };
+  const cleanup = () => { pendingPrompts = pendingPrompts.filter(f => f !== cleanup); if (waitingPrompt === 'approval') { waitingPrompt = null; waitResume(); updateRunStrip(); } const hadFocus = d.contains(document.activeElement); d.remove(); document.removeEventListener('keydown', onkey); if (currentApprovalCleanup === cleanup) currentApprovalCleanup = null; if (hadFocus) input.focus(); };
   currentApprovalCleanup = cleanup;
   pendingPrompts.push(cleanup);
   const resolve = payload => { post('/approve', Object.assign({ id: a.id }, payload)); cleanup(); };
@@ -2060,8 +2292,11 @@ function showApproval(a) {
 
 // ── ask ──
 function showAsk(ask) {
+  waitingPrompt = 'ask';
+  waitPause();
+  updateRunStrip();
   const d=el('div','ask');
-  const cleanup=()=>{pendingPrompts=pendingPrompts.filter(f=>f!==cleanup);d.remove();};
+  const cleanup=()=>{pendingPrompts=pendingPrompts.filter(f=>f!==cleanup);if (waitingPrompt === 'ask') { waitingPrompt = null; waitResume(); updateRunStrip(); } d.remove();};
   ask.questions.forEach(q=>{
     const qDiv=el('div'); qDiv.appendChild(el('div','ask__prompt',q.prompt));
     const opts=el('div','ask__options'); const selected=new Set();
@@ -2256,6 +2491,7 @@ es.onmessage=ev=>{setConnState('connected');
         if(typeof usageCost==='number')cumulativeCost+=usageCost;
         cumulativeCacheHit+=e.usage.cacheHitTokens||0;
         cumulativeCacheMiss+=e.usage.cacheMissTokens||0;
+        updateRunStrip();
       } break;
     case 'notice': { const d = el('div','notice'+(e.level==='warn'?' notice--warn':''),(e.level==='warn'?'! ':'')+(e.text||'')); const it = { id: genItemId(), kind: 'notice', text: e.text || '', level: e.level, turn: currentTurn }; items.push(it); appendItem(it, d); scrollDown(); break; }
     case 'phase': { finalizeMsg(); const d = el('div','phase',e.text||''); const it = { id: genItemId(), kind: 'phase', text: e.text || '', turn: currentTurn }; items.push(it); appendItem(it, d); scrollDown(); break; }
@@ -2282,6 +2518,7 @@ function fetchStatus(){
   fetch('/status').then(r=>r.json()).then(s=>{
     if(s.label)statusModel.textContent=s.label;
     if(welcomeModel)welcomeModel.textContent=s.label||'-';
+    const cml=$('#composer-model-value');if(cml){const cur=modelsCache.find(m=>m.active);cml.textContent=(s.label||'-')+(cur&&cur.provider?' · '+providerLabel(cur.provider):'');}
     if(welcomeCwd)welcomeCwd.textContent=(s.cwd||'-').replace(/^.*\//,'');
     // Re-sync running from the server: after a history rebuild the SSE guard
     // skips turn_started/turn_done, so the server is the source of truth here.
@@ -2303,7 +2540,6 @@ function fetchStatus(){
     const lastCost=s.lastUsage?.cost??s.lastUsage?.costUsd??s.lastUsage?.totalCost;
     if(typeof lastCost==='number')$('#sm-cost').textContent=fmtMoney(lastCost,s.lastUsage?.currency);
     if(s.balance){$('#sm-balance').textContent=s.balance.display||'--';}
-    if(s.balance)balanceInfo.textContent='💰 '+(s.balance.display||'--');
   }).catch(()=>{});
 }
 setInterval(fetchStatus,30000);
@@ -2629,14 +2865,27 @@ document.addEventListener('keydown',e=>{
   if(e.key==='/'&&isPlainKey(e)){e.preventDefault();input.focus();return;}
 });
 
-// mode helpers — Shift+Tab toggles Plan; Ctrl+Y toggles YOLO separately.
+// mode helpers — task mode (Direct/Plan/Goal, desktop collaborationMode).
+const TASK_MODE_ICONS = {
+  direct: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+  plan: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+  goal: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>',
+};
+function updateTaskModeUI(){
+  const mode = goalActive || goalMode ? 'goal' : planMode ? 'plan' : 'direct';
+  const btn = $('#btn-task-mode'), menu = $('#task-mode-menu');
+  $('#task-mode-label').textContent = __('task_mode_'+mode);
+  $('#task-mode-icon').innerHTML = TASK_MODE_ICONS[mode];
+  btn.classList.toggle('task-mode__trigger--goal', mode==='goal');
+  menu.querySelectorAll('.task-mode__item').forEach(it=>it.classList.toggle('is-active', it.dataset.mode===mode));
+}
 function updateModeButtons(){
-  const auto=!bypassMode&&toolApprovalMode==='auto';
-  $('#btn-auto').classList.toggle('toolbar__btn--ok',auto);
-  $('#btn-plan').classList.toggle('toolbar__btn--active',planMode);
-  $('#btn-bypass').classList.toggle('toolbar__btn--danger',bypassMode);
-  $('#btn-goal').classList.toggle('toolbar__btn--goal',goalMode&&!goalActive);
-  $('#btn-goal').classList.toggle('toolbar__btn--goal-active',goalActive);
+  updateTaskModeUI();
+  // approval modebar (desktop composer-modebar): ask / auto / yolo
+  const cur = bypassMode ? 'yolo' : toolApprovalMode;
+  const mb = $('#modebar');
+  mb.dataset.mode = cur;
+  mb.querySelectorAll('.composer-modebar__item').forEach(b => b.classList.toggle('is-active', b.dataset.mode === cur));
 }
 function updateGoalUI(){
   updateModeButtons();
@@ -2653,7 +2902,6 @@ async function setToolApprovalMode(mode){toolApprovalMode=mode;bypassMode=mode==
 async function setPlan(on){planMode=on;updateModeButtons();await post('/plan',{on});}
 async function cycleMode(){if(goalMode){goalMode=false;updateGoalUI();return;}await setPlan(!planMode);setTimeout(fetchStatus,200);}
 async function toggleYolo(){if(bypassMode){const restore=yoloRestoreMode==='auto'?'auto':'ask';await setToolApprovalMode(restore);}else{yoloRestoreMode=toolApprovalMode==='auto'?'auto':'ask';await setToolApprovalMode('yolo');}setTimeout(fetchStatus,200);}
-async function setMode(m){if(m==='auto')await setToolApprovalMode('auto');else if(m==='plan')await setPlan(!planMode);else if(m==='yolo')await toggleYolo();else if(m==='goal')toggleGoalMode();}
 function toggleGoalMode(){
   if(goalActive){
     // Clear active goal
@@ -2719,16 +2967,158 @@ $('#todos-head').onclick=function(e){
 // toolbar buttons
 btnSend.onclick=()=>void send();
 btnStop.onclick=()=>post('/cancel');
-$('#btn-auto').onclick=()=>void setMode('auto');
-$('#btn-plan').onclick=()=>void setPlan(!planMode);
-$('#btn-bypass').onclick=()=>void toggleYolo();
-$('#btn-goal').onclick=()=>toggleGoalMode();
+// work mode (desktop runtime profile): full=Balanced / economy=Lightweight / delivery=Delivery
+const WORKMODE_ICONS = {
+  full: '<line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/>',
+  economy: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  delivery: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+};
+const WORKMODE_KEYS = { full: 'work_mode_balanced', economy: 'work_mode_lightweight', delivery: 'work_mode_delivery' };
+let workMode = 'full';
+const workmodeMenu = $('#workmode-menu');
+function updateWorkModeUI() {
+  $('#workmode-label').textContent = __(WORKMODE_KEYS[workMode] || 'work_mode_balanced');
+  $('#workmode-icon').innerHTML = WORKMODE_ICONS[workMode] || WORKMODE_ICONS.full;
+  workmodeMenu.querySelectorAll('.workmode__item').forEach(it => it.classList.toggle('is-active', it.dataset.mode === workMode));
+}
+function fetchWorkMode() {
+  fetch('/profile').then(r => r.json()).then(d => { if (d && d.mode) { workMode = d.mode; updateWorkModeUI(); } }).catch(() => {});
+}
+$('#btn-workmode').onclick=()=>{ if(running)return; workmodeMenu.style.display = workmodeMenu.style.display === 'none' ? '' : 'none'; };
+workmodeMenu.querySelectorAll('.workmode__item').forEach(it=>{
+  it.onclick=()=>{
+    workmodeMenu.style.display='none';
+    if (it.dataset.mode === workMode) return;
+    post('/profile', { mode: it.dataset.mode }).then(() => fetchWorkMode());
+  };
+});
+document.addEventListener('click', e => { if (workmodeMenu.style.display !== 'none' && !e.target.closest('.workmode')) workmodeMenu.style.display = 'none'; });
+fetchWorkMode();
+// task mode trigger
+const taskModeMenu = $('#task-mode-menu');
+$('#btn-task-mode').onclick=()=>{if(running)return;taskModeMenu.style.display=taskModeMenu.style.display==='none'?'':'none';};
+taskModeMenu.querySelectorAll('.task-mode__item').forEach(it=>{
+  it.onclick=async()=>{
+    taskModeMenu.style.display='none';
+    const m=it.dataset.mode;
+    if(m==='direct'){if(goalMode)toggleGoalMode();await setPlan(false);}
+    else if(m==='plan'){if(goalMode)toggleGoalMode();await setPlan(true);}
+    else toggleGoalMode();
+    setTimeout(fetchStatus,200);
+  };
+});
+document.addEventListener('click',e=>{if(taskModeMenu.style.display!=='none'&&!e.target.closest('.task-mode'))taskModeMenu.style.display='none';});
+// approval modebar items
+$('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
+  b.onclick=()=>{ if(running)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
+});
 $('#goal-chip').onclick=()=>toggleGoalMode();
 $('#btn-new').onclick=()=>{if(running)return;post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();});};
 $('#btn-compact').onclick=()=>{if(actionDisabled('btn-compact')){showNotice(__('no_conversation'),'warn');return;}post('/compact');};
 $('#btn-rewind').onclick=()=>{if(actionDisabled('btn-rewind')){showNotice(__('no_checkpoints'),'warn');return;}openRewindPicker();};
 $('#btn-tree').onclick=()=>openBranches();
 $('#btn-models').onclick=()=>openModels();
+// model switcher popover (desktop ModelSwitcher)
+function providerLabel(p){
+  switch(p){
+    case 'deepseek':case 'deepseek-flash':case 'deepseek-pro':return __('provider_label_deepseek');
+    default:return p;
+  }
+}
+const modelswMenu = $('#modelsw-menu'), modelswList = $('#modelsw-list'), modelswSearch = $('#modelsw-search');
+function renderModelGroups(data) {
+  const models = Array.isArray(data?.models) ? data.models : [];
+  modelsCache = models;
+  const q = modelswSearch.value.trim().toLowerCase();
+  const filtered = q ? models.filter(m => (m.model||'').toLowerCase().includes(q) || (m.provider||'').toLowerCase().includes(q)) : models;
+  if (models.length === 0) { modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('error_loading'))+'</div>'; return; }
+  if (filtered.length === 0) { modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('model_no_match'))+'</div>'; return; }
+  const map = new Map();
+  let curProviderLabel = '';
+  for (const m of filtered) {
+    if (m.active) curProviderLabel = providerLabel(m.provider) || '';
+    const label = providerLabel(m.provider) || '?';
+    const arr = map.get(label) || [];
+    // De-duplicate same-named models inside a provider group: keep the
+    // active/default entry, otherwise the first one (same behavior as the
+    // desktop catalog where a provider maps to one display label).
+    const dup = arr.find(x => (x.model || x.ref) === (m.model || m.ref));
+    if (dup) {
+      if ((m.active || m.default) && !(dup.active || dup.default)) {
+        arr[arr.indexOf(dup)] = m;
+      }
+      continue;
+    }
+    arr.push(m);
+    map.set(label, arr);
+  }
+  const groups = [...map.entries()].sort(([a],[b]) => a === curProviderLabel ? -1 : (b === curProviderLabel ? 1 : a.localeCompare(b)));
+  modelswList.innerHTML = '';
+  groups.forEach(([label, items]) => {
+    const g = el('div', 'modelsw__group');
+    g.appendChild(el('div', 'modelsw__group-label', label));
+    items.forEach(m => {
+      const b = el('button', 'modelsw__item' + (m.active ? ' modelsw__item--current' : ''));
+      b.type = 'button';
+      b.appendChild(el('span', 'modelsw__copy', m.model || m.ref || ''));
+      if (m.active) b.appendChild(el('span', 'modelsw__check', '✓'));
+      b.onclick = () => { closeModelsw(); post('/submit', { input: '/model ' + (m.ref || '') }).then(() => setTimeout(fetchStatus, 300)); };
+      g.appendChild(b);
+    });
+    modelswList.appendChild(g);
+  });
+}
+function updateModelTrigger() {
+  const cur = modelsCache.find(m => m.active);
+  const cml = $('#composer-model-value');
+  if (!cml) return;
+  if (cur && cur.provider) cml.textContent = (cur.model || cur.ref || '-') + ' · ' + providerLabel(cur.provider);
+}
+function openModelsw() {
+  modelswMenu.style.display = '';
+  modelswSearch.value = '';
+  modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('loading'))+'</div>';
+  fetch('/models').then(r => r.json()).then(d => { renderModelGroups(d); updateModelTrigger(); }).catch(() => { modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('error_loading'))+'</div>'; });
+  modelswSearch.focus();
+}
+function closeModelsw() { modelswMenu.style.display = 'none'; }
+$('#btn-composer-model').onclick=()=>{ if(running)return; modelswMenu.style.display === 'none' ? openModelsw() : closeModelsw(); };
+modelswSearch.addEventListener('input', () => renderModelGroups({ models: modelsCache }));
+document.addEventListener('click', e => { if (modelswMenu.style.display !== 'none' && !e.target.closest('.modelsw')) closeModelsw(); });
+// effort switcher (desktop EffortSwitcher)
+const effortsw = $('#effortsw'), effortValue = $('#effort-value'), effortMenu = $('#effort-menu');
+let effortState = null;
+function renderEffortMenu() {
+  effortMenu.innerHTML = '';
+  (effortState?.levels || []).forEach(lv => {
+    const b = el('button', 'effortsw__item' + (lv === effortState.current ? ' is-active' : ''));
+    b.type = 'button';
+    b.appendChild(el('span', 'effortsw__copy', lv));
+    if (lv === effortState.current) b.appendChild(el('span', 'effortsw__check', '✓'));
+    b.onclick = () => {
+      effortMenu.style.display = 'none';
+      if (lv === effortState.current) return;
+      post('/effort', { level: lv }).then(() => fetchEffort());
+    };
+    effortMenu.appendChild(b);
+  });
+}
+function fetchEffort() {
+  fetch('/effort').then(r => r.json()).then(d => {
+    effortState = d || {};
+    const supported = !!(effortState.supported && Array.isArray(effortState.levels) && effortState.levels.length);
+    effortsw.style.display = supported ? '' : 'none';
+    if (supported) {
+      const cur = effortState.current || 'auto';
+      effortValue.textContent = cur;
+      document.getElementById('btn-effort').classList.toggle('effortsw__trigger--explicit', cur !== 'auto');
+      renderEffortMenu();
+    }
+  }).catch(() => {});
+}
+$('#btn-effort').onclick=()=>{ if(running)return; if(effortMenu.style.display==='none'){renderEffortMenu();effortMenu.style.display='';} else effortMenu.style.display='none'; };
+document.addEventListener('click', e => { if (effortMenu.style.display !== 'none' && !e.target.closest('.effortsw')) effortMenu.style.display = 'none'; });
+fetchEffort();
 $('#btn-stats').onclick=()=>openStats();
 $('#branches-modal-close').onclick=()=>closeBranches();
 $('#branches-modal').onclick=e=>{if(e.target===e.currentTarget)closeBranches();};
@@ -2823,3 +3213,4 @@ updateActionAvailability();
 </script>
 </body>
 </html>
+

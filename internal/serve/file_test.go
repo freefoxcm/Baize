@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -182,5 +183,116 @@ func TestServeAttachSavesBase64Image(t *testing.T) {
 	}
 	if resp, _ := http.Post(srv.URL+"/attach", "application/json", strings.NewReader(`{"name":"x.png"}`)); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("missing data status = %d, want 400", resp.StatusCode)
+	}
+}
+
+// TestServeEffortEndpoints checks the effort capability shape and validation.
+func TestServeEffortEndpoints(t *testing.T) {
+	ctrl, _ := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/effort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /effort status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Supported bool     `json:"supported"`
+		Levels    []string `json:"levels"`
+		Current   string   `json:"current"`
+		Default   string   `json:"default"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /effort: %v", err)
+	}
+	if body.Supported && len(body.Levels) == 0 {
+		t.Error("supported=true but no levels")
+	}
+	if body.Supported && body.Current == "" {
+		t.Error("supported=true but empty current")
+	}
+
+	bad, err := http.Post(srv.URL+"/effort", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Errorf("POST /effort {} status = %d, want 400", bad.StatusCode)
+	}
+}
+
+// TestServeProfileEndpoints checks the work-mode (runtime profile) endpoints.
+func TestServeProfileEndpoints(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{
+		Sink:       bc,
+		Label:      "m",
+		SessionDir: t.TempDir(),
+	})
+	server := New(ctrl, bc, config.ServeConfig{})
+	var rebuilt bool
+	server.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
+		rebuilt = true
+		return control.New(control.Options{
+			Sink:       bc,
+			Label:      "m",
+			SessionDir: t.TempDir(),
+		}), nil
+	}
+	srv := httptest.NewServer(server.Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["mode"] != "full" {
+		t.Fatalf("initial mode = %v, want full", body["mode"])
+	}
+
+	// Missing / invalid mode are rejected.
+	for _, payload := range []string{`{}`, `{"mode":"bogus"}`} {
+		bad, err := http.Post(srv.URL+"/profile", "application/json", strings.NewReader(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad.Body.Close()
+		if bad.StatusCode != http.StatusBadRequest {
+			t.Errorf("POST /profile %s status = %d, want 400", payload, bad.StatusCode)
+		}
+	}
+
+	// Switching to economy rebuilds the controller and persists the mode.
+	ok, err := http.Post(srv.URL+"/profile", "application/json", strings.NewReader(`{"mode":"economy"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /profile economy status = %d, want 204", ok.StatusCode)
+	}
+	if !rebuilt {
+		t.Error("work-mode switch did not rebuild the controller")
+	}
+	resp2, err := http.Get(srv.URL + "/profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if err := json.NewDecoder(resp2.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["mode"] != "economy" {
+		t.Fatalf("mode after switch = %v, want economy", body["mode"])
 	}
 }
