@@ -186,11 +186,11 @@ input,textarea{font:inherit;color:inherit}
 .card-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:7px 12px;font-size:13px;color:var(--fg-2);cursor:pointer;user-select:none;background:var(--card);transition:background .18s ease}
 .card-head:hover{background:var(--card-hover)}
 .card-head .ico{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);color:var(--fg-2);flex-shrink:0;font-size:10px}
-.card-main{display:grid;gap:2px;min-width:0}
-.card-title{display:flex;align-items:center;gap:7px;min-width:0}
+.card-main{display:flex;align-items:center;gap:8px;min-width:0}
+.card-title{display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 auto}
 .card-head .name{color:var(--fg);font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-head .subject{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.card-meta{display:flex;align-items:center;gap:8px;min-width:0;font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.card-head .subject{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:60%}
+.card-meta{display:flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap;font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
 .card-badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;border:1px solid var(--border);font-size:10.5px;color:var(--muted);white-space:nowrap}
 .card-actions{display:flex;align-items:center;gap:4px}
 .card-action{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);color:var(--muted);transition:background .15s ease,color .15s ease,border-color .15s ease}
@@ -338,6 +338,29 @@ input,textarea{font:inherit;color:inherit}
 .composer__btn--stop{background:var(--panel-2);color:var(--danger)}
 .composer__btn--stop:hover{background:var(--danger-soft)}
 .composer__btn svg{width:17px;height:17px}
+.composer__btn--steer{background:var(--accent-soft);color:var(--accent)}
+.composer__btn--steer:hover{transform:scale(1.05)}
+/* guidance queue shelf (desktop composer-guidance-shelf parity) */
+.composer-guidance-shelf{margin:0 2px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);display:flex;flex-direction:column;gap:6px}
+.composer-guidance-head{display:flex;align-items:center;gap:6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.composer-guidance-head__label{display:inline-flex;align-items:center;gap:5px}
+.composer-guidance-head__label svg{flex-shrink:0}
+.composer-guidance-list{display:flex;flex-direction:column;gap:4px}
+.composer-guidance-item{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;background:var(--card);border:1px solid transparent}
+.composer-guidance-item:hover{border-color:var(--border)}
+.composer-guidance-item__icon{color:var(--accent);flex-shrink:0;width:14px;height:14px}
+.composer-guidance-item__text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);font-size:13px}
+.composer-guidance-item__guide{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;flex-shrink:0;transition:background .18s ease}
+.composer-guidance-item__guide:hover:not(:disabled){background:var(--accent-strong);color:oklch(99% 0 0)}
+.composer-guidance-item__guide:disabled{opacity:.45;cursor:not-allowed}
+.composer-guidance-item__guide svg{width:12px;height:12px}
+.composer-guidance-item__action{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;color:var(--muted);flex-shrink:0;transition:background .18s ease,color .18s ease}
+.composer-guidance-item__action:hover:not(:disabled){background:var(--danger-soft);color:var(--danger)}
+.composer-guidance-item__action:disabled{opacity:.4;cursor:not-allowed}
+.composer-guidance-item__action svg{width:13px;height:13px}
+.composer-guidance-more{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:2px 8px;border-radius:5px;color:var(--muted);font-size:12px;transition:color .18s ease,background .18s ease}
+.composer-guidance-more:hover{color:var(--fg);background:var(--panel-2)}
+.composer-guidance-more svg{width:12px;height:12px}
 /* run strip — desktop composer-run-strip */
 .composer-run-strip{display:flex;align-items:center;gap:8px;min-height:24px;padding:4px 14px 0;font-size:12px;color:var(--accent)}
 .composer-run-strip__dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;animation:composer-pulse 1.2s ease-in-out infinite}
@@ -712,6 +735,12 @@ input,textarea{font:inherit;color:inherit}
         <span class="composer-run-strip__text" id="run-strip-text" aria-hidden="true"></span>
         <span class="sr-only" id="run-strip-announce" role="status"></span>
       </div>
+      <div class="composer-guidance-shelf" id="guidance-shelf" style="display:none" aria-label="__('guidance_queue')">
+        <div class="composer-guidance-head">
+          <span class="composer-guidance-head__label" id="guidance-count"></span>
+        </div>
+        <div class="composer-guidance-list" id="guidance-list"></div>
+      </div>
       <div class="composer" id="composer">
         <span class="composer__caret">&#8250;</span>
         <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
@@ -1057,6 +1086,17 @@ const __T = {
     'yolo': 'YOLO',
     'send': 'Send (Enter)',
     'cancel': 'Cancel (Esc)',
+    'guidance_queue': 'Queued guidance',
+    'guidance_count': 'Queued guidance #{n}',
+    'guidance_remaining': '#{n} more queued',
+    'guidance_collapse': 'Collapse',
+    'guidance_mode': 'Guide',
+    'guidance_send': 'Send this guidance to the transcript',
+    'guidance_dismiss': 'Dismiss queued guidance',
+    'guidance_steer_title': 'Queue as guidance',
+    'placeholder_running': 'Running — type guidance, Enter adds it to the queue',
+    'guidance_rejected': 'The turn ended before the guidance could be applied. It will be sent as a follow-up message.',
+    'guidance_queued': 'Added to the guidance queue',
     'cancel_plain': 'Cancel',
     'delete': 'Delete',
     'delete_session': 'Delete Session',
@@ -1263,6 +1303,17 @@ const __T = {
     'yolo': 'YOLO',
     'send': '发送 (Enter)',
     'cancel': '取消 (Esc)',
+    'guidance_queue': '待处理引导',
+    'guidance_count': '待处理引导 #{n}',
+    'guidance_remaining': '还有 #{n} 条',
+    'guidance_collapse': '收起',
+    'guidance_mode': '引导',
+    'guidance_send': '将这条引导加入信息流',
+    'guidance_dismiss': '移除这条引导提示',
+    'guidance_steer_title': '加入引导队列',
+    'placeholder_running': '正在运行——输入补充指示，Enter 加入队列',
+    'guidance_rejected': '本条引导未能应用，回合已结束。将作为后续消息发送。',
+    'guidance_queued': '已加入引导队列',
     'cancel_plain': '取消',
     'delete': '删除',
     'delete_session': '删除会话',
@@ -1381,6 +1432,13 @@ const slashAnchor = $('#slash-menu-anchor');
 // ── state ──
 let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask';
 let goalMode = false, goalActive = false, goalText = '';
+// guidance queue (desktop composer-guidance parity): mid-turn input is queued
+// here while a turn runs, then steered in immediately or sent after turn_done.
+let guidanceQueue = [];
+let guidanceNextId = 1;
+let guidanceExpanded = false;
+let guidanceSendingId = null;
+const GUIDANCE_VISIBLE = 2;
 let turnStartAt = 0, turnTokens = 0, tickTimer = null, retryStatus = null;
 let waitingPrompt = null, pendingApprovalLabel = '';
 let waitAccumMs = 0, waitStartedAt = 0; // desktop parity: ticker counts NET work time, waits (approval/ask) are excluded
@@ -1606,8 +1664,16 @@ function updateRunStrip() {
 function setRunning(on) {
   running=on;
   retryStatus=null;
-  btnSend.style.display=on?'none':'';
+  // While a turn runs the send button becomes the guidance-queue button
+  // (desktop parity): Enter / click queue the draft instead of submitting.
+  btnSend.classList.toggle('composer__btn--steer', on);
+  btnSend.querySelector('svg').innerHTML = on
+    ? '<path d="m15 10 5 5-5 5"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>'
+    : '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>';
+  btnSend.title = on ? __('guidance_send') : __('send');
+  btnSend.style.display='';
   btnStop.style.display=on?'':'none';
+  input.placeholder = on ? __('placeholder_running') : (goalMode ? __('goal_placeholder') : __('placeholder'));
   statusDotSidebar.className=on?'status__dot status__dot--busy':'status__dot';
   updateActionAvailability();
   if(on){turnStartAt=Date.now();turnTokens=0;waitAccumMs=0;waitStartedAt=0;tickTimer=setInterval(updateRunStrip,1000);} else {clearInterval(tickTimer);}
@@ -2201,6 +2267,19 @@ function renderDiffView(diffText) {
   wrap.dataset.stats = '+' + stats.add + ' -' + stats.del;
   return wrap;
 }
+// toolResultMeta renders the finished-state card meta by tool kind: errors
+// show the duration only; diff-carrying tools (file edits) show the +/- line
+// tallies; command tools show the duration only; anything else shows duration
+// plus output line count (the original rule).
+function toolResultMeta(t, durMs) {
+  const dur = durMs>0 ? fmtElapsed(durMs) : '';
+  const name = String(t.name||'').toLowerCase();
+  const isCmd = name==='bash'||name==='powershell'||name==='cmd'||name==='shell'||name==='terminal';
+  if (t.err) return dur;
+  if (t.added||t.removed||t.diff) return '+'+(t.added||0)+' -'+(t.removed||0)+(dur?' · '+dur:'');
+  if (isCmd) return dur;
+  return (dur?dur+' · ':'') + lineCount(String(t.output||'')) + ' ' + __('tool_lines');
+}
 // buildToolCard renders a tool call item. A fresh card shows running state;
 // finished tools get their status + output from the item fields.
 function buildToolCard(tool) {
@@ -2229,6 +2308,13 @@ function buildToolCard(tool) {
   if(copy)copy.onclick=async e=>{e.stopPropagation();const ok=await copyText(body.textContent||card.dataset.toolArgs||'');copy.title=ok?__('tool_copied'):__('tool_copy');setTimeout(()=>{copy.title=__('tool_copy');},1200);};
   card.appendChild(head);card.appendChild(body);
   if(!tool.diff&&(tool.output||tool.err)){body.textContent=(tool.output||'')+(tool.err?('\n'+tool.err):'');}
+  // History rebuilds create cards for tools that already finished; render the
+  // result meta here the same way renderToolResult would for a live stream
+  // (live-stream dispatch keeps the "args" meta until tool_result arrives).
+  if (tool.status==='done' || tool.err) {
+    const meta = head.querySelector('.card-meta');
+    if (meta) meta.textContent = toolResultMeta(tool, tool.durationMs);
+  }
   return card;
 }
 function cardForTool(it, tool) {
@@ -2270,6 +2356,8 @@ function renderToolDispatch(tool) {
   if (tool.name) t.name = tool.name;
   if (tool.args) t.args = String(tool.args);
   if (tool.diff) t.diff = tool.diff;
+  if (tool.added) t.added = tool.added;
+  if (tool.removed) t.removed = tool.removed;
   const card = cardForTool(it, t);
   if (card) {
     const summary = toolArgsSummary(t.args);
@@ -2316,21 +2404,17 @@ function renderToolResult(tool) {
       errBody.classList.toggle('err-body--expanded', expanded);
     };
     card.appendChild(errBody);
-    updateToolMeta(card, fmtElapsed(elapsed));
+    updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   else if (t.diff || card.dataset.hasDiff) {
     // Diff-driven card: result doesn't replace the diff body; refresh the stat.
     const dv = body.querySelector('.diff-view');
-    if (dv) {
-      const stats = dv.dataset.stats;
-      const meta = card.querySelector('.card-meta');
-      if (meta) meta.textContent = stats + ' · ' + fmtElapsed(elapsed);
-    }
+    if (dv) updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   else {
     const output = String(t.output || '');
     if (body) body.textContent = output ? output.slice(0, 2000) + (tool.truncated ? '\n...[truncated]' : '') : __('tool_no_output');
-    updateToolMeta(card, fmtElapsed(elapsed) + ' · ' + lineCount(output) + ' ' + __('tool_lines'));
+    updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   updateTurnSummaryForItem(it);
   scrollDown();
@@ -2981,7 +3065,7 @@ es.onmessage=ev=>{setConnState('connected');
     case 'compaction_started': showCompaction({trigger:e.compaction?.trigger}); break;
     case 'compaction_done': showCompaction(e.compaction||{}); break;
     case 'retrying': setRetrying(e.retryAttempt,e.retryMax); break;
-    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false);
+    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); autoSendGuidance();
       // Desktop behavior: a completed turn folds its tools+reasoning behind
       // the summary bar unless the user manually toggled it.
       { const tt = turnEls.get(currentTurn);
@@ -3064,7 +3148,7 @@ function renderHistoryMessages(ms){
       (m.toolCalls||[]).forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
-        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false});
+        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0)});
         if(tc.id)consumed.add(tc.id);
       });
       items.push(it);
@@ -3074,7 +3158,7 @@ function renderHistoryMessages(ms){
     if(m.role==='tool'){
       if(m.toolCallId&&consumed.has(m.toolCallId))return;
       const id=m.toolCallId||'hist-tool-'+(seq++);
-      const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:m.err||'',status:m.err?'failed':'done',dom:null,turn:histTurn||++histTurn};
+      const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:m.err||'',status:m.err?'failed':'done',durationMs:Number(m.durationMs||0),dom:null,turn:histTurn||++histTurn};
       items.push(it);
       const d=renderItem(it);if(d)appendItem(it,d);
     }
@@ -3306,8 +3390,155 @@ async function syncModeBeforeSubmit(){
     await post('/tool-approval-mode',{mode:bypassMode?'yolo':toolApprovalMode});
   // If goalMode is on, we'll send as /goal command — no separate POST needed
 }
+
+// ── guidance queue (desktop composer-guidance parity) ──
+// While a turn runs, submitted text joins this queue instead of starting a
+// second turn. Each item can be steered into the active turn immediately
+// (POST /steer); items left over when the turn ends are sent as ordinary
+// follow-ups. Cancel folds the queue back into the draft.
+function renderGuidanceShelf() {
+  const shelf = $('#guidance-shelf');
+  if (!shelf) return;
+  const list = $('#guidance-list');
+  if (guidanceQueue.length === 0) { shelf.style.display='none'; list.textContent=''; return; }
+  shelf.style.display='';
+  $('#guidance-count').textContent = __('guidance_count', 0, guidanceQueue.length);
+  list.textContent='';
+  const visible = guidanceExpanded ? guidanceQueue : guidanceQueue.slice(0, GUIDANCE_VISIBLE);
+  for (const item of visible) {
+    const row = el('div','composer-guidance-item');
+    const icon = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    icon.setAttribute('viewBox','0 0 24 24'); icon.setAttribute('fill','none');
+    icon.setAttribute('stroke','currentColor'); icon.setAttribute('stroke-width','2');
+    icon.innerHTML = '<path d="m15 10 5 5-5 5"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>';
+    icon.classList.add('composer-guidance-item__icon');
+    row.appendChild(icon);
+    row.appendChild(el('span','composer-guidance-item__text', item.text));
+    const guide = el('button','composer-guidance-item__guide', __('guidance_mode'));
+    guide.title = __('guidance_send');
+    guide.disabled = !running || guidanceSendingId !== null;
+    guide.onclick = () => void sendQueuedGuidance(item);
+    row.appendChild(guide);
+    const dismiss = el('button','composer-guidance-item__action','✕');
+    dismiss.title = __('guidance_dismiss');
+    dismiss.disabled = guidanceSendingId === item.id;
+    dismiss.onclick = () => { guidanceQueue = guidanceQueue.filter(q => q.id !== item.id); renderGuidanceShelf(); };
+    row.appendChild(dismiss);
+    list.appendChild(row);
+  }
+  if (guidanceQueue.length > GUIDANCE_VISIBLE) {
+    const more = el('button','composer-guidance-more',
+      guidanceExpanded ? __('guidance_collapse') : __('guidance_remaining', 0, guidanceQueue.length - GUIDANCE_VISIBLE));
+    more.setAttribute('aria-expanded', String(guidanceExpanded));
+    more.onclick = () => { guidanceExpanded = !guidanceExpanded; renderGuidanceShelf(); };
+    list.appendChild(more);
+  }
+}
+
+function queueGuidance(text) {
+  text = text.trim();
+  if (!text) return;
+  guidanceQueue.push({ id: guidanceNextId++, text });
+  renderGuidanceShelf();
+  input.value=''; input.style.height=''; closeSlashMenu();
+}
+
+// Steer one queued item into the active turn. On 409 the turn ended between
+// our running check and the enqueue: if the turn is over, re-arm the auto-send
+// so the item goes out as an ordinary follow-up; if the turn is still running,
+// keep the item queued and warn.
+async function sendQueuedGuidance(item) {
+  if (guidanceSendingId !== null) return;
+  const text = item.text.trim();
+  if (!text) return;
+  guidanceSendingId = item.id;
+  renderGuidanceShelf();
+  let rearmAutoSend = false;
+  try {
+    if (running) {
+      const resp = await fetch('/steer', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({text})});
+      // The item may have left the queue while the fetch was in flight (a
+      // stop folded it back into the draft): then the late result is moot.
+      const stillQueued = guidanceQueue.some(q => q.id === item.id);
+      if (resp.ok) {
+        guidanceQueue = guidanceQueue.filter(q => q.id !== item.id);
+        if (running && stillQueued) {
+          // Steer accepted while the turn is still live. Mirror the backend
+          // history render (serve.go historyMessages turns a queued steer
+          // into a "↪ text" notice) so the user sees their guidance land in
+          // the transcript while the turn runs. (202 only guarantees the
+          // enqueue, not consumption: an un-consumed steer surfaces later as
+          // the backend's unapplied notice.)
+          const d = el('div','notice','↪ '+text);
+          const it = { id: genItemId(), kind: 'notice', text: '↪ '+text, level: 'info', turn: currentTurn };
+          items.push(it); appendItem(it, d); scrollDown();
+        } else if (!running && stillQueued) {
+          // The backend accepted the steer but the frontend already saw
+          // turn_done: the agent's flush will record it as unapplied, so it
+          // never reaches the model. Re-queue it and send it as an ordinary
+          // follow-up (symmetric with the 409 path).
+          guidanceQueue.push(item);
+          rearmAutoSend = true;
+        }
+      } else if (stillQueued) {
+        // 409: the turn ended between our running check and the enqueue.
+        if (running) {
+          showNotice(__('guidance_rejected'), 'warn');
+        } else {
+          rearmAutoSend = true;
+        }
+      }
+    } else {
+      appendUserMsg(text);
+      await post('/submit',{input:text});
+      guidanceQueue = guidanceQueue.filter(q => q.id !== item.id);
+    }
+  } finally {
+    guidanceSendingId = null;
+    renderGuidanceShelf();
+    if (rearmAutoSend) autoSendGuidance();
+  }
+}
+
+// After a turn ends, leftovers are sent as ordinary follow-ups (desktop:
+// "queued guidance auto-sends once the turn finishes"). An item whose /steer
+// is still in flight is left in the queue: its fetch result decides it, and
+// sendQueuedGuidance re-arms this auto-send if the steer was rejected.
+function autoSendGuidance() {
+  const pending = guidanceQueue.filter(q => q.id !== guidanceSendingId);
+  if (pending.length === 0) return;
+  guidanceQueue = guidanceQueue.filter(q => q.id === guidanceSendingId);
+  guidanceExpanded = false;
+  renderGuidanceShelf();
+  for (const item of pending) {
+    appendUserMsg(item.text);
+    post('/submit',{input:item.text}).then(r=>{
+      if (!r.ok) { guidanceQueue.push(item); renderGuidanceShelf(); }
+    }).catch(()=>{ guidanceQueue.push(item); renderGuidanceShelf(); });
+  }
+}
+
+// Cancel restores queued guidance: stop means "stop acting", never "discard
+// what I typed" (desktop composer-run-strip parity).
+function foldGuidanceBackToDraft() {
+  if (guidanceQueue.length === 0) return;
+  const text = guidanceQueue.map(q => q.text).join('\n');
+  guidanceQueue = [];
+  guidanceExpanded = false;
+  guidanceSendingId = null;
+  renderGuidanceShelf();
+  input.value = text;
+  input.style.height='';
+  input.focus();
+}
+
 async function send(){
   const v=input.value.trim(); if(!v)return;
+  if(running){
+    // Mid-turn: queue as guidance instead of starting a second turn.
+    queueGuidance(v);
+    return;
+  }
   await syncModeBeforeSubmit();
   let submitInput=v;
   if(goalMode && !v.startsWith('/goal')){
@@ -3342,7 +3573,7 @@ input.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();return;}
   if(e.key==='Escape'){
     if(goalMode&&!running){goalMode=false;updateGoalUI();input.value='';closeSlashMenu();return;}
-    if(running){post('/cancel');return;}
+    if(running){foldGuidanceBackToDraft();post('/cancel');return;}
     // double-Esc for rewind
     if(input.value===''){if(escTimer){clearTimeout(escTimer);escTimer=null;openRewindPicker();}else{escTimer=setInterval(()=>escTimer=null,600);}return;}
   }
@@ -3386,7 +3617,7 @@ function updateGoalUI(){
   } else {
     bar.style.display='none';
   }
-  input.placeholder=goalMode?__('goal_placeholder'):__('placeholder');
+  input.placeholder=running?__('placeholder_running'):(goalMode?__('goal_placeholder'):__('placeholder'));
 }
 async function setToolApprovalMode(mode){toolApprovalMode=mode;bypassMode=mode==='yolo';updateModeButtons();await post('/tool-approval-mode',{mode});}
 async function setPlan(on){planMode=on;updateModeButtons();await post('/plan',{on});}
@@ -3456,7 +3687,7 @@ $('#todos-head').onclick=function(e){
 
 // toolbar buttons
 btnSend.onclick=()=>void send();
-btnStop.onclick=()=>post('/cancel');
+btnStop.onclick=()=>{foldGuidanceBackToDraft();post('/cancel');};
 // work mode (desktop runtime profile): full=Balanced / economy=Lightweight / delivery=Delivery
 const WORKMODE_ICONS = {
   full: '<line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/>',

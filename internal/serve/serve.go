@@ -596,6 +596,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /context", s.context)
 	mux.HandleFunc("GET /usage/calendar", s.usageCalendar)
 	mux.HandleFunc("POST /submit", s.submit)
+	mux.HandleFunc("POST /steer", s.steer)
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
 	mux.HandleFunc("POST /attach", s.attach)
@@ -844,6 +845,25 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		http.Error(w, "missing text", http.StatusBadRequest)
+		return
+	}
+	// TrySteer reports whether the active turn accepted the guidance. A
+	// rejection means the turn exited between the client's running check and
+	// the enqueue; the client keeps the text queued and retries it as a
+	// regular follow-up after the turn (Desktop guidance-queue semantics).
+	if !s.ctl().TrySteer(body.Text) {
+		http.Error(w, "no active turn accepted the guidance", http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // edit re-submits an edited user message. display is what the transcript
 // shows, input is what the agent receives, original is the pre-edit text the
 // controller uses to mark the edit. Output arrives on the event stream.
@@ -1082,6 +1102,8 @@ type historyToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
+	Added     int    `json:"added,omitempty"`
+	Removed   int    `json:"removed,omitempty"`
 }
 
 type historyMessage struct {
@@ -1091,6 +1113,7 @@ type historyMessage struct {
 	ToolCalls  []historyToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string            `json:"toolCallId,omitempty"`
 	ToolName   string            `json:"toolName,omitempty"`
+	DurationMs int64             `json:"durationMs,omitempty"` // tool result wall-clock time
 }
 
 func historyMessages(msgs []provider.Message) []historyMessage {
@@ -1119,13 +1142,14 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 			if len(m.ToolCalls) > 0 {
 				hm.ToolCalls = make([]historyToolCall, len(m.ToolCalls))
 				for i, tc := range m.ToolCalls {
-					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments}
+					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments, Added: tc.Added, Removed: tc.Removed}
 				}
 			}
 		}
 		if m.Role == provider.RoleTool {
 			hm.ToolCallID = m.ToolCallID
 			hm.ToolName = m.Name
+			hm.DurationMs = m.ToolDurationMs
 		}
 		out = append(out, hm)
 	}
