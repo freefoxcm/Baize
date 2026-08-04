@@ -357,6 +357,10 @@ var Chinese = Messages{
 	RewindPickHint:            "↑/↓ 移动 · Enter 选择 · Esc 关闭",
 	RewindRestoreTitleFmt:     "⟲ 恢复到第 %d 轮 ",
 	RewindApplyHint:           "↑/↓ · Enter 应用 · Esc 返回",
+	RewindCoverageTitle:       "⚠ 文件覆盖不完整",
+	RewindCoverageWarningFmt:  "检测到 %d 个覆盖缺口，部分文件修改可能无法恢复。",
+	RewindConfirmHint:         "Enter/y 确认 · Esc 返回",
+	RewindUnavailableFmt:      "无法回滚：%s",
 	RewindEmpty:               "(空)",
 
 	SelectProvidersLabel:     "选择要启用的 provider",

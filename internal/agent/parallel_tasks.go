@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"reasonix/internal/checkpoint"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
@@ -209,7 +210,12 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 			// Ordinary parallel_tasks (no profile) keep the concise read-only
 			// default system prompt — profile-aware batches use fleet instead.
 			sess := NewSession(DefaultReadOnlyTaskSystemPrompt)
-			opts := p.taskTool.subagentOptions(ctx, max, pricing, ctxWin, childDepth, "subagent:"+subID)
+			recoveryTaskID := "subagent:" + subID
+			var mutationObserver *checkpoint.MutationObserver
+			if p.taskTool.mutationObserver != nil {
+				mutationObserver = p.taskTool.mutationObserver.CloneForSubagent(recoveryTaskID, p.taskTool.mutationObserver.OwnershipTurn(), false)
+			}
+			opts := p.taskTool.subagentOptions(ctx, max, pricing, ctxWin, childDepth, recoveryTaskID, mutationObserver)
 			opts.ModelRef = usageModelRef
 			// Same contract as runSubSession: capture the pristine task before
 			// host framing is prepended so delivery intent classification judges

@@ -474,6 +474,45 @@ export interface CheckpointMeta {
   time: number; // unix ms
   canCode?: boolean;
   canConversation?: boolean;
+  coverage?: string;
+  coverageGaps?: string[];
+  expiredFilePayload?: boolean;
+  activeWriters?: number;
+  legacy?: boolean;
+  canUndoFiles?: boolean;
+  disabledReason?: string;
+}
+
+export interface RewindPlanView {
+  planId?: string;
+  turn?: number;
+  scope?: string;
+  coverage?: string;
+  coverageGaps?: string[];
+  legacy?: boolean;
+  expiredFilePayload?: boolean;
+  canFiles?: boolean;
+  canConversation?: boolean;
+  disabledReason?: string;
+  conflicts?: string[];
+  files?: string[];
+  fileCount?: number;
+  activeWriters?: number;
+  path?: string;
+  ok?: boolean;
+  error?: string;
+}
+
+export interface RewindResultView {
+  ok?: boolean;
+  transactionId?: string;
+  undoAvailable?: boolean;
+  written?: string[];
+  deleted?: string[];
+  conversationOk?: boolean;
+  error?: string;
+  conflicts?: string[];
+  coverage?: string;
 }
 
 // SessionMeta is one saved session for the history panel.
@@ -718,6 +757,7 @@ export interface WorkspaceChangeView {
   turns?: number[];
   latestPrompt?: string;
   latestTime?: number;
+  canSessionRevert?: boolean;
 }
 
 export interface WorkspaceChangesView {

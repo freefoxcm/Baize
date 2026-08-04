@@ -356,6 +356,10 @@ var English = Messages{
 	RewindPickHint:            "↑/↓ move · Enter choose · Esc close",
 	RewindRestoreTitleFmt:     "⟲ Restore to turn %d ",
 	RewindApplyHint:           "↑/↓ · Enter apply · Esc back",
+	RewindCoverageTitle:       "⚠ Partial file coverage",
+	RewindCoverageWarningFmt:  "%d coverage gap(s) mean some file changes may not be restored.",
+	RewindConfirmHint:         "Enter/y confirm · Esc back",
+	RewindUnavailableFmt:      "rewind unavailable: %s",
 	RewindEmpty:               "(empty)",
 
 	SelectProvidersLabel:     "Select providers to enable",
