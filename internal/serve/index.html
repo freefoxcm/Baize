@@ -103,7 +103,7 @@ input,textarea{font:inherit;color:inherit}
 .msg--assistant{color:var(--fg);line-height:1.7}
 .msg--assistant .msg__text{font-weight:400}
 .msg--system{font-size:13px;color:var(--fg-2);border-left:2px solid var(--border);padding:4px 12px;margin:8px auto}
-.msg--error{font-size:13px;color:var(--danger);border-left:2px solid var(--danger);padding:6px 12px;margin:8px auto;background:var(--danger-soft);border-radius:0 var(--radius) var(--radius) 0}
+.msg--error{max-width:var(--chat-maxw);font-size:13px;color:var(--danger);border-left:2px solid var(--danger);padding:6px 12px;margin:8px auto;background:var(--danger-soft);border-radius:0 var(--radius) var(--radius) 0}
 .reasoning{margin:2px 0 4px}
 .reasoning__head{display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:2px 7px;border:none;background:none;font-size:13px;font-weight:500;color:var(--muted);border-radius:6px;cursor:pointer;transition:color .15s,background .15s}
 .reasoning__head:hover{color:var(--fg-2);background:var(--panel)}
@@ -253,18 +253,43 @@ input,textarea{font:inherit;color:inherit}
 .approval__confirm-btn:hover{filter:brightness(1.1)}
 .approval__confirm-btn--danger{background:var(--danger);border-color:var(--danger);color:oklch(99% 0 0)}
 
-/* ask card */
-.ask{background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-lg);padding:14px;margin:8px 0;box-shadow:var(--shadow-md);animation:msg-in .2s ease}
-.ask__prompt{font-weight:600;margin-bottom:10px;font-size:13px;line-height:1.5}
-.ask__options{display:flex;flex-direction:column;gap:5px}
-.ask__opt{display:flex;align-items:flex-start;gap:8px;width:100%;text-align:left;padding:8px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;color:var(--fg);cursor:pointer;transition:all .18s ease}
+/* ask decision shelf (desktop .prompt-shelf parity: footer slot above the
+   composer, single-card, width- and height-bounded) */
+.ask-slot{width:100%;max-width:var(--chat-maxw);margin:0 auto}
+.ask-slot:empty{display:none}
+.ask{background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-lg);padding:14px 16px;margin:0 0 10px;box-shadow:var(--shadow-md);animation:msg-in .2s ease;display:flex;flex-direction:column;gap:8px;max-height:min(82vh,720px);overflow-y:auto}
+.ask__head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ask__title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.ask__badge{font-size:11.5px;color:var(--fg-2);background:var(--panel-2);border:1px solid var(--border);padding:2px 8px;border-radius:999px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ask__progress{font-size:11.5px;font-weight:600;color:var(--fg-2);background:var(--panel-2);border:1px solid var(--border);padding:2px 8px;border-radius:999px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ask__stop{margin-left:auto;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg-2);color:var(--muted);font-size:11.5px;white-space:nowrap;transition:color .15s ease,border-color .15s ease}
+.ask__stop:hover{color:var(--danger);border-color:var(--danger)}
+.ask__prompt{font-weight:600;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
+.ask__rows{display:flex;flex-direction:column;gap:5px}
+.ask__opt{display:flex;align-items:flex-start;gap:8px;width:100%;text-align:left;padding:8px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);cursor:pointer;transition:all .18s ease}
 .ask__opt:hover{border-color:var(--border-strong);background:var(--panel)}
 .ask__opt--selected{border-color:var(--accent);background:var(--accent-soft)}
+.ask__opt--focused{box-shadow:0 0 0 2px color-mix(in oklch,var(--accent) 35%,transparent)}
+.ask__opt--skip .ask__opt-label{color:var(--danger)}
+.ask__opt--skip.ask__opt--selected{border-color:var(--danger);background:var(--danger-soft)}
+.ask__num{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-top:1px;border-radius:5px;background:var(--panel-2);border:1px solid var(--border);font-size:11px;font-weight:600;color:var(--fg-2)}
+.ask__opt--selected .ask__num{background:var(--accent);border-color:var(--accent);color:oklch(99% 0 0)}
+.ask__opt--skip .ask__num{color:var(--danger)}
 .ask__opt-label{font-size:12.5px;font-weight:500}
 .ask__opt-desc{font-size:11.5px;color:var(--fg-2);margin-top:1px}
-.ask__submit{margin-top:8px;width:100%;padding:7px;background:var(--accent);color:oklch(99% 0 0);border-radius:6px;font-weight:600;font-size:12px;transition:background .18s ease}
-.ask__submit:hover{background:var(--accent-strong)}
-.ask__submit:disabled{background:var(--panel-2);color:var(--muted)}
+.ask__custom-row{padding:2px 0}
+.ask__custom-row input{width:100%;padding:8px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:12.5px}
+.ask__custom-row input:focus{border-color:var(--accent)}
+.ask__crumbs{display:flex;flex-wrap:wrap;gap:5px}
+.ask__crumb{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--muted);font-size:11px;padding:2px 9px}
+.ask__back{padding:7px 18px;border-radius:8px;background:var(--bg-2);border:1px solid var(--border-strong);color:var(--fg-2);font-weight:600;font-size:12.5px;transition:color .15s ease,border-color .15s ease}
+.ask__back:hover{color:var(--fg);border-color:var(--accent)}
+.ask__confirmbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:2px}
+.ask__actions{display:flex;gap:8px;align-items:center}
+.ask__hint{font-size:11.5px;color:var(--muted)}
+.ask__confirm{padding:7px 18px;background:var(--accent);color:oklch(99% 0 0);border-radius:8px;font-weight:600;font-size:12.5px;transition:background .18s ease}
+.ask__confirm:hover{background:var(--accent-strong)}
+.ask__confirm:disabled{background:var(--panel-2);color:var(--muted)}
 
 /* rewind picker */
 .rewind-overlay{position:fixed;inset:0;background:oklch(0% 0 0/.55);display:flex;align-items:center;justify-content:center;z-index:100;animation:msg-in .15s ease}
@@ -679,6 +704,7 @@ input,textarea{font:inherit;color:inherit}
       <ul class="todos__list" id="todos-list"></ul>
     </div>
     <div class="approval-slot" id="approval-slot"></div>
+    <div class="ask-slot" id="ask-slot"></div>
     <div class="composer-card">
       <div id="slash-menu-anchor"></div>
       <div class="composer-run-strip" id="run-strip" style="display:none">
@@ -908,6 +934,17 @@ const __T = {
     'retrying_status': 'Retrying ({attempt}/{max})...',
     'run_waiting_approval': 'Waiting for approval of {tool}',
     'run_waiting_ask': 'Waiting for your answer',
+    'ask_title': 'Question',
+    'ask_progress': 'Question {n}/{m}',
+    'ask_stop_task': 'Stop task',
+    'ask_next': 'Next',
+    'ask_back': 'Back',
+    'ask_custom_answer': 'Other answer',
+    'ask_custom_answer_desc': 'Type your own answer',
+    'ask_custom_placeholder': 'Type your own answer…',
+    'ask_just_chat': 'Skip and keep chatting',
+    'ask_just_chat_desc': 'Submit empty answers and continue the conversation.',
+    'ask_select_hint': 'Use ↑↓ to navigate · Enter to confirm',
     'run_waiting_plan': 'Waiting for plan approval…',
     'approval_plan_badge': 'Plan',
     'approval_plan_title': 'Approve plan execution',
@@ -1103,6 +1140,17 @@ const __T = {
     'retrying_status': '正在重试 ({attempt}/{max})...',
     'run_waiting_approval': '等待审批:{tool}',
     'run_waiting_ask': '等待你的回答',
+    'ask_title': '提问',
+    'ask_progress': '问题 {n}/{m}',
+    'ask_stop_task': '停止任务',
+    'ask_next': '下一步',
+    'ask_back': '上一步',
+    'ask_custom_answer': '其他答案',
+    'ask_custom_answer_desc': '输入你自己的答案',
+    'ask_custom_placeholder': '输入你自己的答案…',
+    'ask_just_chat': '跳过并继续聊天',
+    'ask_just_chat_desc': '提交空答案并继续对话。',
+    'ask_select_hint': '使用 ↑↓ 选择 · Enter 确认',
     'run_waiting_plan': '等待批准计划…',
     'approval_plan_badge': '计划',
     'approval_plan_title': '批准计划执行',
@@ -2476,28 +2524,218 @@ function showApproval(a) {
 }
 
 // ── ask ──
+// ── ask decision shelf (desktop .prompt-shelf parity) ──
+let askQueue = [], askActive = false, askAnswers = [], askCur = 0, askFocused = 0;
+const askSlot = $('#ask-slot');
 function showAsk(ask) {
-  waitingPrompt = 'ask';
-  waitPause();
-  updateRunStrip();
-  const d=el('div','ask');
-  const cleanup=()=>{pendingPrompts=pendingPrompts.filter(f=>f!==cleanup);if (waitingPrompt === 'ask') { waitingPrompt = null; waitResume(); updateRunStrip(); } d.remove();};
-  ask.questions.forEach(q=>{
-    const qDiv=el('div'); qDiv.appendChild(el('div','ask__prompt',q.prompt));
-    const opts=el('div','ask__options'); const selected=new Set();
-    q.options.forEach((o,i)=>{
-      const opt=el('button','ask__opt'); opt.innerHTML='<div><div class="ask__opt-label">'+escHtml(o.label)+'</div>'+(o.description?'<div class="ask__opt-desc">'+escHtml(o.description)+'</div>':'')+'</div>';
-      opt.onclick=()=>{if(q.multi){selected.has(i)?selected.delete(i):selected.add(i);opt.classList.toggle('ask__opt--selected',selected.has(i));}else{selected.clear();selected.add(i);opts.querySelectorAll('.ask__opt').forEach((o,j)=>o.classList.toggle('ask__opt--selected',j===i));}};
-      opts.appendChild(opt);
-    });
-    qDiv.appendChild(opts);
-    const submit=el('button','ask__submit',__('submit')); submit.disabled=true;
-    opts.addEventListener('click',()=>{submit.disabled=selected.size===0;});
-    submit.onclick=()=>{const answers=ask.questions.map(qq=>({questionId:qq.id,selected:Array.from(selected).map(i=>qq.options[i].label)}));post('/answer',{id:ask.id,answers});cleanup();};
-    qDiv.appendChild(submit); d.appendChild(qDiv);
+  askQueue.push(ask);
+  if (!askActive) {
+    askActive = true;
+    askAnswers = []; askCur = 0; askFocused = 0;
+    waitingPrompt = 'ask';
+    waitPause();
+    updateRunStrip();
+  }
+  if (askQueue.length === 1) renderAskCard();
+}
+function renderAskCard() {
+  const ask = askQueue[0];
+  if (!askSlot || !ask) return;
+  if (askSlot._askCleanup) { askSlot._askCleanup(); askSlot._askCleanup = null; }
+  askSlot.innerHTML = '';
+  const d = el('div', 'ask');
+  const q = ask.questions[askCur];
+  const isLast = askCur >= ask.questions.length - 1;
+  const hasMulti = ask.questions.length > 1;
+  const n = q.options.length;
+  const customRow = n, skipRow = n + 1, rowCount = n + 2;
+  let askRow = 0, customOpen = false, customText = '';
+  const selected = new Set();
+  // head: title + badges + stop-task action (desktop AskCard parity)
+  const head = el('div', 'ask__head');
+  head.appendChild(el('span', 'ask__title', __('ask_title')));
+  if (q.header) head.appendChild(el('span', 'ask__badge', q.header));
+  if (hasMulti) head.appendChild(el('span', 'ask__progress', __('ask_progress').replace('{n}', String(askCur + 1)).replace('{m}', String(ask.questions.length))));
+  const stop = el('button', 'ask__stop', __('ask_stop_task'));
+  stop.type = 'button';
+  stop.onclick = stopAsk;
+  head.appendChild(stop);
+  d.appendChild(head);
+  d.appendChild(el('div', 'ask__prompt', q.prompt));
+  // rows: options + "other answer" + "skip and keep chatting"
+  const rows = el('div', 'ask__rows');
+  const optEls = [];
+  const prev = askAnswers[askCur];
+  q.options.forEach((o, i) => {
+    const opt = el('button', 'ask__opt');
+    opt.type = 'button';
+    opt.innerHTML = '<span class="ask__num">' + (n <= 9 ? (i + 1) : '') + '</span><div><div class="ask__opt-label">' + escHtml(o.label) + '</div>' + (o.description ? '<div class="ask__opt-desc">' + escHtml(o.description) + '</div>' : '') + '</div>';
+    opt.onclick = () => selectRow(i);
+    rows.appendChild(opt);
+    optEls.push(opt);
   });
-  log.appendChild(d);scrollDown(true);
-  pendingPrompts.push(cleanup);
+  const customOpt = el('button', 'ask__opt ask__opt--custom');
+  customOpt.type = 'button';
+  customOpt.innerHTML = '<span class="ask__num"></span><div><div class="ask__opt-label">' + escHtml(__('ask_custom_answer')) + '</div><div class="ask__opt-desc">' + escHtml(__('ask_custom_answer_desc')) + '</div></div>';
+  customOpt.onclick = () => selectRow(customRow);
+  rows.appendChild(customOpt);
+  optEls.push(customOpt);
+  const skipOpt = el('button', 'ask__opt ask__opt--skip');
+  skipOpt.type = 'button';
+  skipOpt.innerHTML = '<span class="ask__num"></span><div><div class="ask__opt-label">' + escHtml(__('ask_just_chat')) + '</div><div class="ask__opt-desc">' + escHtml(__('ask_just_chat_desc')) + '</div></div>';
+  skipOpt.onclick = () => selectRow(skipRow);
+  rows.appendChild(skipOpt);
+  optEls.push(skipOpt);
+  d.appendChild(rows);
+  // custom answer input (expanded on demand)
+  const customBox = el('div', 'ask__custom-row');
+  customBox.style.display = 'none';
+  const cin = el('input');
+  cin.type = 'text';
+  cin.placeholder = __('ask_custom_placeholder');
+  cin.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && cin.value.trim()) { e.preventDefault(); confirmSelected(); }
+    e.stopPropagation();
+  });
+  cin.addEventListener('input', () => { customText = cin.value; updateConfirm(); });
+  customBox.appendChild(cin);
+  d.appendChild(customBox);
+  // crumbs: answered-summary capsules of prior questions
+  const crumbs = el('div', 'ask__crumbs');
+  d.appendChild(crumbs);
+  // confirm bar: back + hint + dynamic confirm on one row, same look
+  const bar = el('div', 'ask__confirmbar');
+  const hint = el('span', 'ask__hint', __('ask_select_hint'));
+  const actions = el('div', 'ask__actions');
+  if (hasMulti && askCur > 0) {
+    const back = el('button', 'ask__back', __('ask_back'));
+    back.type = 'button';
+    back.onclick = () => goBack();
+    actions.appendChild(back);
+  }
+  const confirm = el('button', 'ask__confirm', __('ask_next'));
+  confirm.type = 'button';
+  confirm.disabled = true;
+  confirm.onclick = confirmSelected;
+  actions.appendChild(confirm);
+  bar.appendChild(hint);
+  bar.appendChild(actions);
+  d.appendChild(bar);
+  askSlot.appendChild(d);
+  // restore previously given answers (Back navigation)
+  if (prev && prev.selected.length) {
+    prev.selected.forEach(s => { const idx = q.options.findIndex(o => o.label === s); if (idx >= 0) selected.add(idx); });
+    if (!q.multi && selected.size) askRow = [...selected][0];
+  }
+  function selectRow(i) {
+    if (i < n) {
+      if (q.multi) { selected.has(i) ? selected.delete(i) : selected.add(i); }
+      else { selected.clear(); selected.add(i); }
+      customOpen = false; customText = '';
+    } else if (i === customRow) {
+      customOpen = true;
+      if (!q.multi) selected.clear();
+    } else if (i === skipRow) {
+      customOpen = false; customText = '';
+      if (!q.multi) selected.clear();
+    }
+    askRow = i;
+    updateRows();
+  }
+  function updateRows() {
+    optEls.forEach((oe, j) => {
+      const on = j < n ? selected.has(j) : (j === customRow ? customOpen : askRow === skipRow);
+      oe.classList.toggle('ask__opt--selected', on);
+      oe.classList.toggle('ask__opt--focused', j === askRow);
+    });
+    customBox.style.display = customOpen ? '' : 'none';
+    if (customOpen) cin.focus();
+    updateConfirm();
+  }
+  function updateConfirm() {
+    confirm.disabled = !canConfirm();
+    confirm.textContent = askRow === skipRow ? __('ask_just_chat') : isLast ? __('submit') : __('ask_next');
+  }
+  function canConfirm() {
+    if (askRow === skipRow) return true;
+    if (askRow === customRow) return customText.trim() !== '';
+    if (q.multi) return selected.size > 0;
+    return askRow < n || selected.size > 0;
+  }
+  function confirmSelected() {
+    if (!canConfirm()) return;
+    if (askRow === skipRow) {
+      // Skip and keep chatting: empty answers for the whole ask.
+      finishAsk(ask.questions.map(qq => ({ questionId: qq.id, selected: [] })));
+      return;
+    }
+    if (askRow === customRow) { answerCurrent([customText.trim()]); return; }
+    if (q.multi) { answerCurrent(Array.from(selected).map(i => q.options[i].label)); return; }
+    const label = askRow < n ? q.options[askRow].label : (selected.size ? q.options[[...selected][0]].label : '');
+    if (label) answerCurrent([label]);
+  }
+  function goBack() { if (askCur > 0) { askCur--; renderAskCard(); } }
+  // crumbs content: labels of all answered questions before the current one.
+  crumbs.innerHTML = '';
+  for (let i = 0; i < askCur; i++) {
+    const a = askAnswers[i];
+    if (a && a.selected.length) crumbs.appendChild(el('span', 'ask__crumb', (i + 1) + '. ' + escHtml(a.selected.join(', '))));
+  }
+  const onkey = e => {
+    if (document.activeElement === cin) return;
+    if (e.key === 'Escape') { e.preventDefault(); stopAsk(); }
+    else if (e.key === 'Enter') { e.preventDefault(); confirmSelected(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      askRow = (askRow + dir + rowCount) % rowCount;
+      updateRows();
+    } else if (e.key === 'ArrowLeft' || e.key === 'Backspace') {
+      if (askCur > 0) { e.preventDefault(); goBack(); }
+    } else if (/^[1-9]$/.test(e.key)) {
+      const i = +e.key - 1;
+      if (i < n) { e.preventDefault(); selectRow(i); }
+    }
+  };
+  document.addEventListener('keydown', onkey);
+  askSlot._askCleanup = () => { document.removeEventListener('keydown', onkey); askSlot._askCleanup = null; };
+  if (document.activeElement === input && optEls[0]) optEls[0].focus();
+}
+// stopAsk cancels the running task and dismisses every queued question
+// (desktop parity: Esc = stop task, not skip).
+function stopAsk() {
+  if (askSlot) { if (askSlot._askCleanup) askSlot._askCleanup(); askSlot.innerHTML = ''; }
+  askQueue = [];
+  askActive = false;
+  waitingPrompt = null;
+  waitResume();
+  updateRunStrip();
+  post('/cancel');
+  input.focus();
+}
+function answerCurrent(selected) {
+  const ask = askQueue[0];
+  if (!ask) return;
+  const q = ask.questions[askCur];
+  askAnswers[askCur] = { questionId: q.id, selected: Array.from(selected) };
+  if (askSlot && askSlot._askCleanup) askSlot._askCleanup();
+  if (askCur < ask.questions.length - 1) { askCur++; renderAskCard(); }
+  else finishAsk(askAnswers);
+}
+function finishAsk(answers) {
+  const ask = askQueue[0];
+  if (!ask) return;
+  if (askSlot) askSlot.innerHTML = '';
+  askQueue.shift();
+  post('/answer', { id: ask.id, answers });
+  if (askQueue.length > 0) { renderAskCard(); }
+  else {
+    askActive = false;
+    waitingPrompt = null;
+    waitResume();
+    updateRunStrip();
+    input.focus();
+  }
 }
 
 // ── compaction ──
@@ -3089,6 +3327,10 @@ async function send(){
 
 input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';updateSlashMenu();});
 input.addEventListener('keydown',e=>{
+  // While an ask decision shelf is open it owns the keys (numbers/Enter/Esc
+  // answer the question); the composer must not submit or type into the
+  // transcript behind it.
+  if(askActive){e.preventDefault();return;}
   // slash menu nav
   if(slashOpen){
     if(e.key==='ArrowDown'){e.preventDefault();if(slashArgMode){slashIndex=Math.min(slashIndex+1,slashArgItems.length-1);renderSlashArgs(input.value.slice(input.value.indexOf(' ')+1));}else{slashIndex=Math.min(slashIndex+1,slashFiltered.length-1);renderSlashMenu();}return;}

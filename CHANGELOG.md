@@ -8,6 +8,36 @@ branch.
 
 ### Added
 
+- **Serve defaults tool approval to `auto`** (desktop parity): a freshly
+  built serve controller applies `desktop.default_tool_approval_mode`
+  (auto unless configured otherwise) instead of the kernel's conservative
+  ask. Runtime modebar switches are unaffected.
+- **Error messages width-bounded**: `.msg--error` now respects
+  `--chat-maxw` like regular messages, so notices such as
+  `✗ context canceled` no longer stretch across the full transcript width.
+- **Ask card aligned with desktop AskCard**: questions render as a
+  row-list (numbered options + "Other answer" expandable row + red
+  "Skip and keep chatting" row), a confirm bar with a dynamic label
+  (Next / Submit / Skip-and-keep-chatting), answered-summary crumbs,
+  a Back pill in a quick-actions row, a `q.header` badge and a
+  Stop-task button, a "Question 1/2" progress badge, and desktop keyboard
+  parity (digits, arrows, Enter, ←/Backspace back, **Esc now stops the
+  task** via `POST /cancel` instead of skipping).
+
+- **`/effort` command fixed**: a bare `/effort` submit is now intercepted by
+  the serve backend and reports the current reasoning-effort capability (same
+  payload as `GET /effort`) instead of falling through to the controller's
+  "unknown command" notice — symmetric with how `/model` lists models.
+- **Ask decision shelf (desktop `.prompt-shelf` parity)**: questions are no
+  longer stacked into the transcript. `showAsk` renders a single card into a
+  new `#ask-slot` in the footer (above the composer, `--chat-maxw`-centered,
+  `max-height:min(82vh,720px)` scrollable). Multi-question asks advance one
+  question at a time with a `1/N` progress badge, Back, custom-answer input,
+  Skip / just-chat, and full keyboard support (digits 1-9, arrows, Enter,
+  Esc). Concurrent asks queue instead of racing: answers are only sent via
+  `POST /answer` once all questions are answered, and the wait-timer resumes
+  exactly once.
+
 - Welcome-page **Token activity** uses the Codex-style seven-row, week-column
   heatmap with theme-derived activity levels and presets for the last six
   months (the default), the last three months, and this year. Hover, focus, or

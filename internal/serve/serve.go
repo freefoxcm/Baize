@@ -100,8 +100,23 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		now:      time.Now,
 	}
 	s.tokenMode = boot.TokenModeFull
+	s.applyDesktopDefaultApprovalMode(ctrl)
 	s.initTitleProvider()
 	return s
+}
+
+// applyDesktopDefaultApprovalMode applies the desktop-default tool approval
+// posture to a freshly constructed controller — desktop parity: new sessions
+// default to auto (config desktop.default_tool_approval_mode, "auto" unless
+// configured otherwise) instead of the kernel's conservative ask. Runtime
+// switches (modebar, model/work-mode rebuilds) keep whatever the user picked;
+// only initial construction gets the default.
+func (s *Server) applyDesktopDefaultApprovalMode(ctrl control.SessionAPI) {
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	ctrl.SetToolApprovalMode(cfg.DesktopDefaultToolApprovalMode())
 }
 
 // ctl returns the current controller. Handlers must read it through here, never
@@ -807,17 +822,23 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Intercept /effort <level> for reasoning effort switching.
-	if strings.HasPrefix(trimmed, "/effort ") {
+	// Intercept /effort <level> for reasoning-effort switching; bare /effort
+	// reports the current level and available levels (mirrors how /model
+	// lists models instead of switching). The controller's Submit path has no
+	// /effort case, so without this the bare command would surface as
+	// "unknown command".
+	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") {
 		level := strings.TrimSpace(strings.TrimPrefix(trimmed, "/effort"))
-		if level != "" {
-			if err := s.switchEffort(r.Context(), level); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
+		if level == "" {
+			s.effort(w, r)
 			return
 		}
+		if err := s.switchEffort(r.Context(), level); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 	s.ctl().SubmitHTTP(body.Input)
 	w.WriteHeader(http.StatusAccepted)
