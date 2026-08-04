@@ -8,38 +8,12 @@ import { useT } from "../lib/i18n";
 export function Welcome({ onPrompt, variant = "default" }: { onPrompt: (text: string) => void; variant?: "default" | "creation" }) {
   const t = useT();
   if (variant === "creation") {
-    const cards = [
-      {
-        icon: "plan",
-        title: t("welcome.creation.explainTitle"),
-        body: t("welcome.creation.explainBody"),
-      },
-      {
-        icon: "html",
-        title: t("welcome.creation.gitTitle"),
-        body: t("welcome.creation.gitBody"),
-      },
-      {
-        icon: "think",
-        title: t("welcome.creation.bugTitle"),
-        body: t("welcome.creation.bugBody"),
-      },
-    ];
+    // Creation empty state is headline-only; the slim hero Composer sits in the
+    // former prompt-card band (App.tsx chat-pane--creation-empty + Composer hero).
+    void onPrompt;
     return (
       <div className="welcome welcome--creation">
-        <h2 className="welcome-creation__headline">
-          <span>{t("welcome.creation.titlePrimary")}</span>
-          <span>{t("welcome.creation.titleSecondary")}</span>
-        </h2>
-        <div className="welcome-creation__cards">
-          {cards.map((card) => (
-            <button key={card.title} className="welcome-creation__card" onClick={() => onPrompt(card.title)}>
-              <span className="welcome-creation__icon">{card.icon}</span>
-              <strong>{card.title}</strong>
-              <span>{card.body}</span>
-            </button>
-          ))}
-        </div>
+        <h2 className="welcome-creation__headline">{t("welcome.creation.title")}</h2>
       </div>
     );
   }

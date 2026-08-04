@@ -39,11 +39,12 @@ var Chinese = Messages{
 	ResumeAlreadyActive: "已在该会话中",
 	ResumedTitle:        "已恢复会话",
 
-	RenameUsage:     "用法：/rename <新名称>  或  /rename <序号> <新名称>",
-	RenameNoSession: "当前没有活跃会话可重命名",
-	RenameDoneFmt:   "会话已重命名为 %q",
-	ResumePickTitle: "选择要恢复的会话",
-	ResumePickHint:  "↑/↓ 移动 · Enter 恢复 · Esc 取消",
+	RenameUsage:            "用法：/rename <新名称>  或  /rename <序号> <新名称>",
+	RenameNoSession:        "当前没有活跃会话可重命名",
+	RenameDoneFmt:          "会话已重命名为 %q",
+	ResumePickTitle:        "选择要恢复的会话",
+	ResumePickHint:         "↑/↓ 移动 · Enter 恢复 · Esc 取消",
+	ResumeRecoveryBadgeFmt: "[冲突副本 · 父会话 %s]",
 
 	ChatThinking:                           "思考中…",
 	ChatThoughtForFmt:                      "思考了 %d 秒",
