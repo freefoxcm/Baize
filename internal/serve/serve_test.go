@@ -888,3 +888,88 @@ func TestServeContextEndpoint(t *testing.T) {
 		t.Errorf("used = %d, want 0", body["used"])
 	}
 }
+
+// planApprovingRunner simulates the planner runner: it requests host approval
+// for the plan (via the controller-wired PlannerPlanApprover) before executing
+// the plan body, exactly like boot's planner path.
+type planApprovingRunner struct {
+	approver agent.PlannerPlanApprover
+}
+
+func (r *planApprovingRunner) SetPlannerPlanApprover(a agent.PlannerPlanApprover) { r.approver = a }
+func (r *planApprovingRunner) Run(ctx context.Context, input string) error {
+	executed := false
+	err := r.approver.RunWithPlannerApproval(ctx, "plan text", func(ctx context.Context) error {
+		executed = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	_ = executed
+	return nil
+}
+
+// TestServePlanApprovalPostureMatrix drives a plan-mode turn through the serve
+// HTTP stack and proves the plan approval (exit_plan_mode, a fresh human
+// decision) surfaces as an approval_request in every tool-approval mode —
+// auto/yolo must never silently approve a plan.
+func TestServePlanApprovalPostureMatrix(t *testing.T) {
+	for _, mode := range []string{"ask", "auto", "yolo"} {
+		t.Run(mode, func(t *testing.T) {
+			bc := NewBroadcaster()
+			runner := &planApprovingRunner{}
+			ctrl := control.New(control.Options{Runner: runner, Sink: bc})
+			ctrl.EnableInteractiveApproval()
+			ctrl.SetPlanMode(true)
+			ctrl.SetToolApprovalMode(mode)
+			srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+			defer srv.Close()
+
+			sub, cancel := bc.Subscribe()
+			defer cancel()
+
+			if _, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"draft a plan"}`)); err != nil {
+				t.Fatal(err)
+			}
+			approvalID := ""
+			deadline := time.After(5 * time.Second)
+		wait:
+			for {
+				select {
+				case data := <-sub:
+					var w eventwire.Event
+					if err := json.Unmarshal(data, &w); err == nil && w.Kind == "approval_request" && w.Approval != nil && w.Approval.Tool == "exit_plan_mode" {
+						approvalID = w.Approval.ID
+						break wait
+					}
+				case <-deadline:
+					t.Fatalf("mode %s: no exit_plan_mode approval_request received", mode)
+				}
+			}
+			// Approve the plan through the HTTP endpoint; the plan body must
+			// then run to completion.
+			payload := `{"id":"` + approvalID + `","allow":true,"session":false}`
+			resp, err := http.Post(srv.URL+"/approve", "application/json", strings.NewReader(payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("approve status = %d", resp.StatusCode)
+			}
+			deadline = time.After(5 * time.Second)
+			for {
+				select {
+				case data := <-sub:
+					var w eventwire.Event
+					if err := json.Unmarshal(data, &w); err == nil && w.Kind == "turn_done" {
+						return // plan approved and executed
+					}
+				case <-deadline:
+					t.Fatalf("mode %s: turn did not complete after approval", mode)
+				}
+			}
+		})
+	}
+}
