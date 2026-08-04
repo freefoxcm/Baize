@@ -38,11 +38,12 @@ var English = Messages{
 	ResumeAlreadyActive: "already in that session",
 	ResumedTitle:        "resumed session",
 
-	RenameUsage:     "usage: /rename <new title>  or  /rename <n> <new title>",
-	RenameNoSession: "no active session to rename",
-	RenameDoneFmt:   "session renamed to %q",
-	ResumePickTitle: "Resume a saved session",
-	ResumePickHint:  "↑/↓ move · Enter resume · Esc cancel",
+	RenameUsage:            "usage: /rename <new title>  or  /rename <n> <new title>",
+	RenameNoSession:        "no active session to rename",
+	RenameDoneFmt:          "session renamed to %q",
+	ResumePickTitle:        "Resume a saved session",
+	ResumePickHint:         "↑/↓ move · Enter resume · Esc cancel",
+	ResumeRecoveryBadgeFmt: "[recovery copy · parent %s]",
 
 	ChatThinking:                           "thinking…",
 	ChatThoughtForFmt:                      "thought for %ds",

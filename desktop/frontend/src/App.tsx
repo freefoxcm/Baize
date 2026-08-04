@@ -3397,6 +3397,14 @@ export default function App() {
     state.hydratePlaceholderItems?.length,
   );
   const transcriptHydrating = state.hydrating && !state.hydrateHistoryLoaded;
+  // Creation hero only after history hydration settles on a truly empty session.
+  // Avoid flash while switching tabs: items may be empty while placeholders show.
+  // (desktopLayoutStyle is available here; sidebarCreation is declared later.)
+  const creationEmptyHero =
+    desktopLayoutStyle === "creation" &&
+    !sessionHasContent &&
+    !transcriptHydrating &&
+    !hydratePlaceholderActive;
   const transcriptItems = hydratePlaceholderActive ? state.hydratePlaceholderItems! : state.items;
 
   // Display items: backend history is authoritative after immediate commit.
@@ -4442,7 +4450,7 @@ export default function App() {
           </button>
         )}
 
-        <section className={`chat-pane${sidebarCreation && !sessionHasContent ? " chat-pane--creation-empty" : ""}`}>
+        <section className={`chat-pane${creationEmptyHero ? " chat-pane--creation-empty" : ""}`}>
           <>
           <header className="topicbar">
             {workbenchChromeHidden && (
@@ -5000,6 +5008,7 @@ export default function App() {
               guidanceConsumedText={latestGuidanceConsumed?.text}
               guidanceQueuePreviewItems={guidanceQueueMockItems}
               showContextWindowRing={sidebarCreation}
+              heroMode={creationEmptyHero}
               context={state.context}
               turnCost={state.turnCost}
               currency={state.sessionCurrency}
