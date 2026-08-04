@@ -1847,6 +1847,7 @@ func (a *App) rebuildSettingTurnLocked(setting string, tab *WorkspaceTab, admiss
 		TokenMode:                runtime.tokenMode,
 		SharedHost:               sharedHost,
 		CleanupPendingReconciler: reconcileDesktopCleanupPending,
+		SubagentParentLive:       a.subagentParentProbeForBuild(tab),
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 	})

@@ -156,6 +156,10 @@ type Options struct {
 	// local UI metadata to automatic transcript recovery branches.
 	SessionRecoveryMeta func(control.SessionRecoveryRequest) agent.BranchMeta
 	OnSessionRecovered  func(control.SessionRecoveryInfo) error
+	// SubagentParentLive reports whether this process currently owns or is
+	// building the parent session. Desktop uses it to avoid probing a live tab's
+	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
+	SubagentParentLive func(sessionPath string) bool
 	// FileOverlay and TerminalRunner let a host transport (ACP) serve file
 	// content from editor buffers and run foreground bash in a host terminal.
 	// Both only change where tool I/O happens — tool names, descriptions, and
@@ -738,7 +742,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	if opts.MaxSteps > 0 {
 		maxSteps = opts.MaxSteps
 	}
-	subagentStore, err := newSubagentStore(sessionDir)
+	subagentStore, err := newSubagentStore(sessionDir, opts.SubagentParentLive)
 	if err != nil {
 		return nil, err
 	}
@@ -2188,12 +2192,12 @@ func isGitMarker(path string) bool {
 	return err == nil && (fi.IsDir() || fi.Mode().IsRegular())
 }
 
-func newSubagentStore(sessionDir string) (*agent.SubagentStore, error) {
+func newSubagentStore(sessionDir string, parentLive func(sessionPath string) bool) (*agent.SubagentStore, error) {
 	sessionDir = strings.TrimSpace(sessionDir)
 	if sessionDir == "" {
 		return nil, nil
 	}
-	store := agent.NewSubagentStore(filepath.Join(sessionDir, "subagents"))
+	store := agent.NewSubagentStore(filepath.Join(sessionDir, "subagents")).WithParentSessionProbe(parentLive)
 	if _, err := store.CleanupStaleRunning(); err != nil {
 		return nil, fmt.Errorf("cleanup stale subagents: %w", err)
 	}

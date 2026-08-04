@@ -3768,6 +3768,7 @@ func (a *App) buildTabControllerWithContextAdmissionHeld(tab *WorkspaceTab, load
 		TokenMode:                buildTokenMode,
 		SharedHost:               sharedHost,
 		CleanupPendingReconciler: reconcileDesktopCleanupPending,
+		SubagentParentLive:       a.subagentParentProbeForBuild(tab),
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 	})
