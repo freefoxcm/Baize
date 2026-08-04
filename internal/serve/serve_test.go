@@ -113,7 +113,7 @@ func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 // persisted tool-execution duration so the web UI can show it after a rebuild.
 func TestHistoryMessagesCarriesToolDuration(t *testing.T) {
 	msgs := []provider.Message{
-		{Role: provider.RoleAssistant, Content: "plan", ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: "echo"}}},
+		{Role: provider.RoleAssistant, Content: "plan", ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: "echo"}, {ID: "c2", Name: "edit_file", Arguments: "{}", Added: 3, Removed: 1}}},
 		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "out", ToolDurationMs: 2500},
 	}
 	hm := historyMessages(msgs)
@@ -135,6 +135,32 @@ func TestHistoryMessagesCarriesToolDuration(t *testing.T) {
 	}
 	if !strings.Contains(string(b), `"durationMs":2500`) {
 		t.Fatalf("history JSON omits durationMs: %s", b)
+	}
+
+	// The assistant message's tool calls carry the +/- line tallies the web UI
+	// shows on history-rebuilt diff cards.
+	var assistantMsg historyMessage
+	for _, m := range hm {
+		if m.Role == "assistant" {
+			assistantMsg = m
+		}
+	}
+	if len(assistantMsg.ToolCalls) != 2 {
+		t.Fatalf("assistant tool calls = %+v", assistantMsg.ToolCalls)
+	}
+	if assistantMsg.ToolCalls[1].Added != 3 || assistantMsg.ToolCalls[1].Removed != 1 {
+		t.Fatalf("diff tallies = +%d -%d, want +3 -1", assistantMsg.ToolCalls[1].Added, assistantMsg.ToolCalls[1].Removed)
+	}
+	b, err = json.Marshal(assistantMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"added":3`) || !strings.Contains(string(b), `"removed":1`) {
+		t.Fatalf("history JSON omits diff tallies: %s", b)
+	}
+	// A call without tallies omits both fields (old sessions).
+	if strings.Contains(string(b), `"added":0`) || strings.Contains(string(b), `"removed":0`) {
+		t.Fatalf("zero tallies should be omitted: %s", b)
 	}
 
 	// Zero duration (old sessions) is omitted from the wire form.

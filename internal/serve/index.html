@@ -2267,6 +2267,19 @@ function renderDiffView(diffText) {
   wrap.dataset.stats = '+' + stats.add + ' -' + stats.del;
   return wrap;
 }
+// toolResultMeta renders the finished-state card meta by tool kind: errors
+// show the duration only; diff-carrying tools (file edits) show the +/- line
+// tallies; command tools show the duration only; anything else shows duration
+// plus output line count (the original rule).
+function toolResultMeta(t, durMs) {
+  const dur = durMs>0 ? fmtElapsed(durMs) : '';
+  const name = String(t.name||'').toLowerCase();
+  const isCmd = name==='bash'||name==='powershell'||name==='cmd'||name==='shell'||name==='terminal';
+  if (t.err) return dur;
+  if (t.added||t.removed||t.diff) return '+'+(t.added||0)+' -'+(t.removed||0)+(dur?' · '+dur:'');
+  if (isCmd) return dur;
+  return (dur?dur+' · ':'') + lineCount(String(t.output||'')) + ' ' + __('tool_lines');
+}
 // buildToolCard renders a tool call item. A fresh card shows running state;
 // finished tools get their status + output from the item fields.
 function buildToolCard(tool) {
@@ -2300,16 +2313,7 @@ function buildToolCard(tool) {
   // (live-stream dispatch keeps the "args" meta until tool_result arrives).
   if (tool.status==='done' || tool.err) {
     const meta = head.querySelector('.card-meta');
-    if (meta) {
-      const dur = tool.durationMs>0 ? fmtElapsed(tool.durationMs) : '';
-      if (tool.err) {
-        meta.textContent = dur;
-      } else if (tool.diff || card.dataset.hasDiff) {
-        if (dur) meta.textContent += ' · ' + dur;
-      } else {
-        meta.textContent = (dur?dur+' · ':'') + lineCount(String(tool.output||'')) + ' ' + __('tool_lines');
-      }
-    }
+    if (meta) meta.textContent = toolResultMeta(tool, tool.durationMs);
   }
   return card;
 }
@@ -2352,6 +2356,8 @@ function renderToolDispatch(tool) {
   if (tool.name) t.name = tool.name;
   if (tool.args) t.args = String(tool.args);
   if (tool.diff) t.diff = tool.diff;
+  if (tool.added) t.added = tool.added;
+  if (tool.removed) t.removed = tool.removed;
   const card = cardForTool(it, t);
   if (card) {
     const summary = toolArgsSummary(t.args);
@@ -2398,21 +2404,17 @@ function renderToolResult(tool) {
       errBody.classList.toggle('err-body--expanded', expanded);
     };
     card.appendChild(errBody);
-    updateToolMeta(card, fmtElapsed(elapsed));
+    updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   else if (t.diff || card.dataset.hasDiff) {
     // Diff-driven card: result doesn't replace the diff body; refresh the stat.
     const dv = body.querySelector('.diff-view');
-    if (dv) {
-      const stats = dv.dataset.stats;
-      const meta = card.querySelector('.card-meta');
-      if (meta) meta.textContent = stats + ' · ' + fmtElapsed(elapsed);
-    }
+    if (dv) updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   else {
     const output = String(t.output || '');
     if (body) body.textContent = output ? output.slice(0, 2000) + (tool.truncated ? '\n...[truncated]' : '') : __('tool_no_output');
-    updateToolMeta(card, fmtElapsed(elapsed) + ' · ' + lineCount(output) + ' ' + __('tool_lines'));
+    updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   updateTurnSummaryForItem(it);
   scrollDown();
@@ -3146,7 +3148,7 @@ function renderHistoryMessages(ms){
       (m.toolCalls||[]).forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
-        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0});
+        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0)});
         if(tc.id)consumed.add(tc.id);
       });
       items.push(it);
