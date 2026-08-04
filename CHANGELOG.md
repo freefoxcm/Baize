@@ -34,6 +34,25 @@ branch.
   Connection state now lives solely in the sidebar dot (with a tooltip), the
   approval slot sits directly above the composer card, and the duplicate
   `#approval-slot` element was removed.
+  Approval-mode parity with desktop: the ask/auto/yolo modebar stays usable
+  while a turn is running (only a decision surface — an approval/ask card —
+  disables it), and plan approvals (`exit_plan_mode`, a fresh human decision)
+  render as a dedicated card ("Approve plan" / deny, no session/persist
+  grants) with a matching run-strip "Waiting for plan approval…" line.
+  `TestServePlanApprovalPostureMatrix` proves the plan card surfaces over HTTP
+  in ask, auto, and yolo alike.
+  The slash-command palette now anchors to the composer card (previously the
+  full-width footer), so it matches the input width exactly and opens just
+  above it — desktop `.slashmenu` positioning (`bottom: calc(100% + 6px)`,
+  `left: 0; right: 0`), with a 360px/50vh height cap.
+  The sidebar nav is trimmed to "New session" only: the compact / rewind /
+  branches / models entries are gone (their modals remain reachable via slash
+  commands), and the stats entry moved into the status block at the bottom of
+  the sidebar as a bare icon button next to the connection dot/model.
+  The stats icon now sits at the right of the "Status" heading (with a hover
+  tooltip), the sidebar nav no longer claims flex space (so the session list
+  grows to fill the freed height), and `applyStaticI18n` now translates
+  `aria-label` attributes too.
 
 - Added a **Remote SSH** module (VS Code Remote-SSH style): a user-global
   `[remote]` host config, `reasonix remote` CLI (add/list/remove/import/test/

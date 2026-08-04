@@ -54,7 +54,7 @@ input,textarea{font:inherit;color:inherit}
 .brand-wordmark{display:block;object-fit:contain;filter:brightness(0) invert(1);opacity:.94}
 .brand-wordmark--sidebar{width:136px;height:32px;object-position:left center}
 .brand-wordmark--welcome{width:240px;height:56px}
-.sidebar__nav{flex:1;padding:8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+.sidebar__nav{flex:0 0 auto;padding:8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
 .sidebar__item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;color:var(--fg-2);font-size:13px;transition:background .18s ease,color .18s ease;cursor:pointer}
 .sidebar__item:hover{background:var(--panel);color:var(--fg)}
 .sidebar__item--active{background:var(--accent-soft);color:var(--accent)}
@@ -284,7 +284,7 @@ input,textarea{font:inherit;color:inherit}
 .rewind-picker__foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:var(--muted-2)}
 
 /* slash menu */
-.slash-menu{position:absolute;bottom:calc(100% + 6px);left:0;right:0;max-height:min(360px,56vh);overflow:hidden;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column}
+.slash-menu{position:absolute;bottom:calc(100% + 6px);left:0;right:0;max-height:min(360px,50vh);overflow:hidden;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column}
 .slash-menu__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:11.5px;color:var(--muted)}
 .slash-menu__query{font-family:var(--mono);color:var(--fg-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .slash-menu__list{overflow-y:auto;padding:4px;min-height:0}
@@ -299,7 +299,7 @@ input,textarea{font:inherit;color:inherit}
 .slash-menu__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-top:1px solid var(--border);font-size:10.5px;color:var(--muted-2)}
 
 /* composer */
-.composer-card{width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--card);border:1px solid var(--border-strong);border-radius:14px;box-shadow:var(--shadow-md);overflow:visible;transition:border-color .18s ease,box-shadow .18s ease}
+.composer-card{position:relative;width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--card);border:1px solid var(--border-strong);border-radius:14px;box-shadow:var(--shadow-md);overflow:visible;transition:border-color .18s ease,box-shadow .18s ease}
 .composer-card:focus-within{border-color:var(--accent);box-shadow:var(--shadow-md),0 0 0 3px var(--accent-soft)}
 .composer{display:flex;gap:7px;align-items:flex-end;padding:10px 10px 10px 14px}
 .composer__caret{color:var(--accent);font-family:var(--mono);font-weight:600;font-size:16px;flex-shrink:0;line-height:38px}
@@ -433,6 +433,9 @@ input,textarea{font:inherit;color:inherit}
 .status{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .status__dot{width:5px;height:5px;border-radius:50%;background:var(--muted-2);flex-shrink:0}
 .status__dot--busy{background:var(--accent);animation:pulse 1.2s ease-in-out infinite}
+.sidebar__stats-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:auto;padding:0;border:none;border-radius:5px;background:none;color:var(--muted);cursor:pointer;transition:background .15s ease,color .15s ease}
+.sidebar__stats-btn:hover{background:var(--panel);color:var(--fg)}
+.sidebar__stats-btn svg{width:14px;height:14px}
 @keyframes pulse{50%{opacity:.35}}
 
 /* welcome */
@@ -585,27 +588,6 @@ input,textarea{font:inherit;color:inherit}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span>__('new_session')</span>
       </div>
-      <div class="sidebar__item" id="btn-compact">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-        <span>__('compact')</span>
-      </div>
-      <div class="sidebar__item" id="btn-rewind">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-        <span>__('rewind')</span>
-      </div>
-      <div class="sidebar__item" id="btn-tree">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-        <span>__('branches')</span>
-      </div>
-      <div class="sidebar__item" id="btn-models">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
-        <span>__('models')</span>
-      </div>
-      <div class="sidebar__sep"></div>
-      <div class="sidebar__item" id="btn-stats">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-        <span>__('stats')</span>
-      </div>
     </nav>
     <div class="sidebar__label-row"><span class="sidebar__label" style="padding:0">__('sessions')</span><span id="session-count" class="session-item__meta"></span></div>
     <div class="session-search">
@@ -615,7 +597,11 @@ input,textarea{font:inherit;color:inherit}
       <div style="padding:10px;color:var(--muted-2);font-size:12px">__('loading')</div>
     </div>
     <div class="sidebar__section">
-      <div class="sidebar__label">__('status')</div>
+      <div class="sidebar__label-row"><span class="sidebar__label" style="padding:0">__('status')</span>
+        <button type="button" class="sidebar__stats-btn" id="btn-stats" title="__('stats')" aria-label="__('stats')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+        </button>
+      </div>
       <div class="sidebar__ctx">
         <div class="ctx-bar"><div class="ctx-bar__fill" id="ctx-fill" style="width:0%"></div></div>
         <div class="ctx-label"><span id="ctx-used">0 tok</span><span id="ctx-window">0 tok</span></div>
@@ -677,7 +663,6 @@ input,textarea{font:inherit;color:inherit}
   </section>
 
   <footer class="footer">
-    <div id="slash-menu-anchor"></div>
     <div id="goal-active-bar" style="margin-bottom:6px;display:none">
       <span class="goal-chip" id="goal-chip" title="__('goal_exit')">
         <svg class="goal-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/></svg>
@@ -697,6 +682,7 @@ input,textarea{font:inherit;color:inherit}
     </div>
     <div class="approval-slot" id="approval-slot"></div>
     <div class="composer-card">
+      <div id="slash-menu-anchor"></div>
       <div class="composer-run-strip" id="run-strip" style="display:none">
         <span class="composer-run-strip__dot" aria-hidden="true"></span>
         <span class="composer-run-strip__text" id="run-strip-text" aria-hidden="true"></span>
@@ -924,6 +910,11 @@ const __T = {
     'retrying_status': 'Retrying ({attempt}/{max})...',
     'run_waiting_approval': 'Waiting for approval of {tool}',
     'run_waiting_ask': 'Waiting for your answer',
+    'run_waiting_plan': 'Waiting for plan approval…',
+    'approval_plan_badge': 'Plan',
+    'approval_plan_title': 'Approve plan execution',
+    'approval_plan_approve': 'Approve plan',
+    'approval_plan_approve_desc': 'Run the approved plan',
     'run_announce_running': 'Thinking…',
     'modebar_title': 'Tool approval mode',
     'mode_ask': 'Ask',
@@ -1116,6 +1107,11 @@ const __T = {
     'retrying_status': '正在重试 ({attempt}/{max})...',
     'run_waiting_approval': '等待审批:{tool}',
     'run_waiting_ask': '等待你的回答',
+    'run_waiting_plan': '等待批准计划…',
+    'approval_plan_badge': '计划',
+    'approval_plan_title': '批准计划执行',
+    'approval_plan_approve': '批准计划',
+    'approval_plan_approve_desc': '按计划执行',
     'run_announce_running': '思考中…',
     'modebar_title': '工具审批模式',
     'mode_ask': '询问',
@@ -1310,9 +1306,10 @@ function applyStaticI18n() {
   const nodes = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
   nodes.forEach(node => { node.nodeValue = translateTokens(node.nodeValue); });
-  document.querySelectorAll('[title],[placeholder]').forEach(node => {
+  document.querySelectorAll('[title],[placeholder],[aria-label]').forEach(node => {
     if (node.hasAttribute('title')) node.setAttribute('title', translateTokens(node.getAttribute('title')));
     if (node.hasAttribute('placeholder')) node.setAttribute('placeholder', translateTokens(node.getAttribute('placeholder')));
+    if (node.hasAttribute('aria-label')) node.setAttribute('aria-label', translateTokens(node.getAttribute('aria-label')));
   });
 }
 applyStaticI18n();
@@ -1332,6 +1329,7 @@ const $$ = s => document.querySelectorAll(s);
 const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('#btn-stop');
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
+const modebar = $('#modebar');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
 const welcome = $('#welcome');
@@ -1522,8 +1520,6 @@ function showNotice(text, tone) {
   scrollDown(true); // synchronous feedback to a user action — always reveal
 }
 function updateActionAvailability() {
-  setActionDisabled('btn-compact', running || !hasVisibleHistory, running ? __('thinking') : __('no_conversation'));
-  setActionDisabled('btn-rewind', running || checkpointCount === 0, running ? __('thinking') : __('no_checkpoints'));
 }
 
 // ── run strip (desktop composer-run-strip) ──
@@ -1542,12 +1538,15 @@ function updateRunStrip() {
   const on = running || waitingPrompt !== null || retryStatus !== null;
   runStrip.style.display = on ? '' : 'none';
   runStrip.className = 'composer-run-strip' + (waitingPrompt !== null ? ' composer-run-strip--waiting' : '');
+  // Desktop parity: the approval modebar stays usable while running, but is
+  // disabled while a decision surface (approval/ask card) owns the footer.
+  modebar.classList.toggle('composer-modebar--disabled', waitingPrompt !== null);
   if (!on) { runStripText.textContent = ''; runStripAnnounce.textContent = ''; return; }
   let stable = null;
   if (retryStatus) {
     stable = __('retrying_status').replace('{attempt}', retryStatus.attempt).replace('{max}', retryStatus.max);
   } else if (waitingPrompt === 'approval') {
-    stable = __('run_waiting_approval').replace('{tool}', pendingApprovalLabel);
+    stable = pendingApprovalLabel === 'exit_plan_mode' ? __('run_waiting_plan') : __('run_waiting_approval').replace('{tool}', pendingApprovalLabel);
   } else if (waitingPrompt === 'ask') {
     stable = __('run_waiting_ask');
   }
@@ -2356,6 +2355,10 @@ function showApproval(a) {
   updateRunStrip();
   const d = el('div', 'approval');
   d.tabIndex = -1;
+  // Plan approvals (exit_plan_mode) are fresh human decisions: a dedicated
+  // card like the desktop ApprovalModal's isPlanApproval branch — approve the
+  // plan execution or deny it. No session/persist grants apply.
+  const isPlan = a.tool === 'exit_plan_mode';
   const prefix = a.tool === 'bash' ? bashCommandPrefix(a.subject) : '';
   const hasPrefix = prefix !== '';
   const prefixRule = hasPrefix ? 'Bash(' + prefix + ')' : '';
@@ -2364,23 +2367,30 @@ function showApproval(a) {
   // shows the full command). The rule (e.g. Bash(prefix)) is kept on the
   // button's title tooltip. Payloads keep the session/persist semantics the
   // controller expects.
-  const actions = [
-    { label: __('allow_once'), desc: __('allow_once_desc'), payload: { allow: true, session: false }, danger: false, rule: '' },
-  ];
-  if (hasPrefix) {
-    actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true, scope: 'prefix' }, danger: false, rule: prefixRule });
-    actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true, scope: 'prefix' }, danger: false, rule: prefixRule });
-  } else {
-    actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true }, danger: false, rule: '' });
-    actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true }, danger: false, rule: '' });
+  const actions = isPlan
+    ? [
+        { label: __('approval_plan_approve'), desc: __('approval_plan_approve_desc'), payload: { allow: true, session: false }, danger: false, rule: '' },
+        { label: __('deny'), desc: __('deny_desc'), payload: { allow: false, session: false }, danger: true, rule: '' },
+      ]
+    : [
+        { label: __('allow_once'), desc: __('allow_once_desc'), payload: { allow: true, session: false }, danger: false, rule: '' },
+      ];
+  if (!isPlan) {
+    if (hasPrefix) {
+      actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true, scope: 'prefix' }, danger: false, rule: prefixRule });
+      actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true, scope: 'prefix' }, danger: false, rule: prefixRule });
+    } else {
+      actions.push({ label: __('session'), desc: __('session_desc'), payload: { allow: true, session: true }, danger: false, rule: '' });
+      actions.push({ label: __('persist_tool'), desc: __('persist_desc'), payload: { allow: true, session: true, persist: true }, danger: false, rule: '' });
+    }
+    actions.push({ label: __('deny'), desc: __('deny_desc'), payload: { allow: false, session: false }, danger: true, rule: '' });
   }
-  actions.push({ label: __('deny'), desc: __('deny_desc'), payload: { allow: false, session: false }, danger: true, rule: '' });
 
   const card = el('div', 'approval__card');
   // Head: amber tool badge + title + optional Details toggle for long reasons.
   const head = el('div', 'approval__head');
-  head.appendChild(el('span', 'approval__badge', a.tool));
-  head.appendChild(el('span', 'approval__title', __('approval_title')));
+  head.appendChild(el('span', 'approval__badge', isPlan ? __('approval_plan_badge') : a.tool));
+  head.appendChild(el('span', 'approval__title', isPlan ? __('approval_plan_title') : __('approval_title')));
   const reason = a.reason ? String(a.reason) : '';
   const reasonLong = reason.length > 160;
   let reasonEl = null;
@@ -3254,14 +3264,10 @@ taskModeMenu.querySelectorAll('.task-mode__item').forEach(it=>{
 document.addEventListener('click',e=>{if(taskModeMenu.style.display!=='none'&&!e.target.closest('.task-mode'))taskModeMenu.style.display='none';});
 // approval modebar items
 $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
-  b.onclick=()=>{ if(running)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
+  b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
 $('#goal-chip').onclick=()=>toggleGoalMode();
 $('#btn-new').onclick=()=>{if(running)return;post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();});};
-$('#btn-compact').onclick=()=>{if(actionDisabled('btn-compact')){showNotice(__('no_conversation'),'warn');return;}post('/compact');};
-$('#btn-rewind').onclick=()=>{if(actionDisabled('btn-rewind')){showNotice(__('no_checkpoints'),'warn');return;}openRewindPicker();};
-$('#btn-tree').onclick=()=>openBranches();
-$('#btn-models').onclick=()=>openModels();
 // model switcher popover (desktop ModelSwitcher)
 function providerLabel(p){
   switch(p){
