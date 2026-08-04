@@ -31,7 +31,7 @@
             "en": "Use /docs to access version-matched product documentation directly in Reasonix.",
             "zh": "使用 /docs 直接在 Reasonix 中访问版本匹配的产品文档。"
           },
-          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/ad763bce81b381efd2ada78ac1bae20d3a25dd23/docs/GUIDE.md"
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/786dc6d33e5ee396f17a3b7e936b803008deaa96/docs/GUIDE.md"
         }
       ],
       "highlights": [
@@ -391,6 +391,19 @@
             "refs": [
               7447
             ]
+          },
+          {
+            "title": {
+              "en": "Bounded recursive glob walks",
+              "zh": "递归 Glob 遍历支持超时"
+            },
+            "body": {
+              "en": "Recursive glob searches now default to a 30-second timeout and return clearly marked partial results instead of holding a turn open indefinitely.",
+              "zh": "递归 Glob 搜索现在默认 30 秒超时，并返回明确标记的不完整结果，避免长时间占用当前对话轮次。"
+            },
+            "refs": [
+              7455
+            ]
           }
         ],
         "fixed": [
@@ -444,6 +457,97 @@
             },
             "refs": [
               7418
+            ]
+          },
+          {
+            "title": {
+              "en": "Provider stream errors identify invalid payloads",
+              "zh": "提供者流错误可定位异常载荷"
+            },
+            "body": {
+              "en": "When a gateway sends invalid SSE data, decode errors now identify the provider and include a bounded excerpt of the offending payload.",
+              "zh": "当网关发送无效 SSE 数据时，解码错误现在会标明提供者，并附带长度受限的异常载荷片段。"
+            },
+            "refs": [
+              7461
+            ]
+          },
+          {
+            "title": {
+              "en": "Longer Retry-After windows are honored",
+              "zh": "遵循更长的 Retry-After 等待时间"
+            },
+            "body": {
+              "en": "Rate-limit responses can now delay retries for up to 60 seconds, including HTTP-date Retry-After values, instead of exhausting attempts against a closed window.",
+              "zh": "限流响应现在可将重试延迟到最长 60 秒，并支持 HTTP-date 格式的 Retry-After，避免在限流窗口内耗尽重试次数。"
+            },
+            "refs": [
+              7459
+            ]
+          },
+          {
+            "title": {
+              "en": "Transcript elements follow text-size settings",
+              "zh": "对话元素跟随文字大小设置"
+            },
+            "body": {
+              "en": "Thinking headers, tool cards, attachments, memory citations, and inline editing now scale with the configured transcript text size.",
+              "zh": "思考标题、工具卡片、附件、记忆引用和行内编辑现在会随对话文字大小设置同步缩放。"
+            },
+            "refs": [
+              7457
+            ]
+          },
+          {
+            "title": {
+              "en": "Windows detects malformed subagent storage",
+              "zh": "Windows 可识别异常子代理存储"
+            },
+            "body": {
+              "en": "A file occupying the subagent storage path is now reported as an error on Windows instead of being mistaken for an absent store.",
+              "zh": "当文件占用子代理存储路径时，Windows 现在会正确报告错误，而不会将其误判为存储目录不存在。"
+            },
+            "refs": [
+              7456
+            ]
+          },
+          {
+            "title": {
+              "en": "Session previews prioritize the request",
+              "zh": "会话预览优先显示实际请求"
+            },
+            "body": {
+              "en": "Prompts that begin with file references now use the following request text for the session preview and sidebar title instead of showing only paths.",
+              "zh": "以文件引用开头的提示词现在会使用后续请求文本生成会话预览和侧边栏标题，而不再只显示文件路径。"
+            },
+            "refs": [
+              7464
+            ]
+          },
+          {
+            "title": {
+              "en": "Workspace toggle aligns with its panel edge",
+              "zh": "工作区切换按钮与面板边缘对齐"
+            },
+            "body": {
+              "en": "The workspace collapse and expand control now sits at the end of the topic-bar actions in both Workbench and Creation layouts.",
+              "zh": "工作区折叠与展开按钮现在在 Workbench 和 Creation 布局中都位于主题栏操作区末端。"
+            },
+            "refs": [
+              7468
+            ]
+          },
+          {
+            "title": {
+              "en": "Changes panel uses readable Git status labels",
+              "zh": "改动面板显示易读的 Git 状态"
+            },
+            "body": {
+              "en": "Changed files now show localized labels such as Modified, Untracked, and Conflict instead of raw porcelain codes like MM and ??.",
+              "zh": "改动文件现在显示“已修改”“未跟踪”“冲突”等本地化标签，而不再直接展示 MM、?? 等原始状态码。"
+            },
+            "refs": [
+              7469
             ]
           },
           {
