@@ -66,18 +66,18 @@ type Message struct {
 	// replayed on the next turn when a tool call followed thinking; providers
 	// without signed reasoning (e.g. the openai-compatible ones) leave it empty.
 	// Round-tripped alongside ReasoningContent.
-	ReasoningSignature string           `json:"reasoning_signature,omitempty"`
-	ToolCalls          []ToolCall       `json:"tool_calls,omitempty"`      // set by assistant
+	ReasoningSignature string     `json:"reasoning_signature,omitempty"`
+	ToolCalls          []ToolCall `json:"tool_calls,omitempty"` // set by assistant
 	// ResponsesItems preserves provider-issued Responses API output items that
 	// must be replayed on a stateless follow-up. Today only DeepSeek
 	// web_search_call items use this path; other providers ignore the field.
 	// Keeping the opaque JSON on the assistant turn makes resume/restart safe,
 	// while omitempty keeps old session files byte-compatible when unused.
-	ResponsesItems     []json.RawMessage `json:"responses_items,omitempty"`
-	ToolCallID         string            `json:"tool_call_id,omitempty"`    // links a tool result to its call
-	Name               string            `json:"name,omitempty"`            // tool message: tool name
-	MemoryCitations    []MemoryCitation  `json:"memoryCitations,omitempty"` // local UI metadata; provider requests ignore it
-	WorkDurationMs     int64             `json:"workDurationMs,omitempty"`  // local UI metadata; provider requests ignore it
+	ResponsesItems  []json.RawMessage `json:"responses_items,omitempty"`
+	ToolCallID      string            `json:"tool_call_id,omitempty"`    // links a tool result to its call
+	Name            string            `json:"name,omitempty"`            // tool message: tool name
+	MemoryCitations []MemoryCitation  `json:"memoryCitations,omitempty"` // local UI metadata; provider requests ignore it
+	WorkDurationMs  int64             `json:"workDurationMs,omitempty"`  // local UI metadata; provider requests ignore it
 	// ToolDurationMs is the wall-clock execution time of a tool result, in
 	// milliseconds. Local UI metadata (the web/desktop card meta shows it
 	// after a history rebuild); provider requests ignore it.
