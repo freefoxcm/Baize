@@ -967,10 +967,14 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	// reports the current level and available levels (mirrors how /model
 	// lists models instead of switching). The controller's Submit path has no
 	// /effort case, so without this the bare command would surface as
-	// "unknown command".
-	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") {
+	// "unknown command". /thinking is the same knob under its historical name.
+	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") || trimmed == "/thinking" || strings.HasPrefix(trimmed, "/thinking ") {
 		level := strings.TrimSpace(strings.TrimPrefix(trimmed, "/effort"))
+		if strings.HasPrefix(trimmed, "/thinking") {
+			level = strings.TrimSpace(strings.TrimPrefix(trimmed, "/thinking"))
+		}
 		if level == "" {
+			// Bare command reports the current level and available levels.
 			s.effort(w, r)
 			return
 		}

@@ -528,10 +528,81 @@ func (c *Controller) managementNotice(trimmed string) bool {
 			return true
 		}
 		c.notice(c.mcpListText())
+	case "/forget":
+		name := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if name == "" {
+			c.notice("usage: /forget <item>")
+			return true
+		}
+		if err := c.ForgetMemory(name); err != nil {
+			c.notice("forget: " + err.Error())
+		} else {
+			c.notice("forgotten " + name)
+		}
+	case "/help":
+		c.notice(c.helpText())
 	default:
 		return false
 	}
 	return true
+}
+
+func (c *Controller) helpText() string {
+	var b strings.Builder
+	b.WriteString("commands:")
+	for _, line := range builtinHelpLines {
+		b.WriteString("\n" + line)
+	}
+	for _, cmd := range c.Commands() {
+		if cmd.Hidden {
+			continue
+		}
+		desc := cmd.Description
+		if desc == "" {
+			desc = cmd.ArgHint
+		}
+		if desc == "" {
+			desc = "custom command"
+		}
+		fmt.Fprintf(&b, "\n  /%-16s %s", cmd.Name, desc)
+	}
+	if skills := c.Skills(); len(skills) > 0 {
+		b.WriteString("\nskills:")
+		for _, sk := range skills {
+			fmt.Fprintf(&b, "\n  /%-16s %s", sk.SlashName(), sk.Description)
+		}
+	}
+	b.WriteString("\nmore: /docs (documentation), /skill (manage skills), /mcp (servers)")
+	return b.String()
+}
+
+// builtinHelpLines is the Submit-path quick reference shown by /help. It is a
+// curated list of the commands the controller itself handles; /docs owns the
+// full documentation.
+var builtinHelpLines = []string{
+	"  /tree               show branch tree",
+	"  /branch <name>      create a branch",
+	"  /switch <id>        switch branch",
+	"  /rewind [turn]      rewind conversation",
+	"  /compact            compact context",
+	"  /new                start a new session",
+	"  /clear              clear context",
+	"  /model [ref]        list or switch models",
+	"  /effort [level]     reasoning effort",
+	"  /thinking [level]   alias of /effort",
+	"  /goal [task]        goal mode",
+	"  /provider [name]    list or switch provider",
+	"  /mcp                MCP servers",
+	"  /skill              skills",
+	"  /hooks              hooks",
+	"  /memory             memory",
+	"  /forget <item>      forget a memory",
+	"  /plan-exec          execute plan todos",
+	"  /prometheus <task>  planning interview",
+	"  /migrate            migrate legacy data",
+	"  /reload-cmd         reload commands",
+	"  /plugins            list plugins",
+	"  /docs [query]       documentation",
 }
 
 func (c *Controller) modelListText() string {

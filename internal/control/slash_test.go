@@ -522,3 +522,67 @@ func TestManagementMigrateFromImportsExplicitSessions(t *testing.T) {
 		}
 	}
 }
+
+func TestManagementForgetRemovesMemory(t *testing.T) {
+	userDir := filepath.Join(t.TempDir(), "reasonix home")
+	cwd := filepath.Join(t.TempDir(), "project")
+	store := memory.StoreFor(userDir, cwd)
+	saved, err := store.SaveWithOptions(memory.Memory{
+		Name: "forget-me", Title: "Forget me", Description: "to be deleted",
+		Type: memory.TypeProject, Body: "Temporary fact.",
+	}, memory.SaveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notices []string
+	c := New(Options{
+		Memory: &memory.Set{Store: store, CWD: cwd, UserDir: userDir},
+		Sink: event.FuncSink(func(e event.Event) {
+			if e.Kind == event.Notice {
+				notices = append(notices, e.Text)
+			}
+		}),
+	})
+
+	if !c.managementNotice("/forget " + saved.Memory.ID) {
+		t.Fatal("/forget was not handled")
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "forgotten") {
+		t.Fatalf("/forget notice missing confirmation:\n%s", joined)
+	}
+	if _, ok := c.Memory().Store.Read(saved.Memory.ID); ok {
+		t.Fatal("memory still active after /forget")
+	}
+
+	// Missing argument reports usage instead of erroring.
+	notices = nil
+	if !c.managementNotice("/forget") {
+		t.Fatal("bare /forget was not handled")
+	}
+	if !strings.Contains(strings.Join(notices, "\n"), "usage: /forget") {
+		t.Fatalf("bare /forget notice = %v", notices)
+	}
+}
+
+func TestManagementHelpNotice(t *testing.T) {
+	isolateControlConfigHome(t)
+	var notices []string
+	c := New(Options{Sink: event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice {
+			notices = append(notices, e.Text)
+		}
+	})})
+	if !c.managementNotice("/help") {
+		t.Fatal("/help was not handled")
+	}
+	if len(notices) != 1 {
+		t.Fatalf("/help notices = %v", notices)
+	}
+	joined := notices[0]
+	for _, want := range []string{"commands:", "/docs", "/effort", "/memory"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("/help missing %q:\n%s", want, joined)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reasonix/internal/config"
@@ -133,5 +134,50 @@ func TestEffortHandlerReportsRuntimeNormalizedEffort(t *testing.T) {
 	}
 	if out.Current != "auto" {
 		t.Fatalf("current = %q, want auto (stored disabled degrades at runtime)", out.Current)
+	}
+}
+
+// TestThinkingAliasSubmitsEffort covers the /thinking alias: a bare command
+// reports the current effort capability, a level argument switches through the
+// same path as /effort.
+func TestThinkingAliasSubmitsEffort(t *testing.T) {
+	t.Setenv("REASONIX_HOME", t.TempDir())
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc, ModelRef: "deepseek-flash/deepseek-v4-flash"})
+	s := &Server{ctrl: ctrl, bc: bc}
+
+	// Bare /thinking reports capability JSON like /effort.
+	rec := httptest.NewRecorder()
+	s.submit(rec, httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(`{"input":"/thinking"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bare /thinking status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Current string `json:"current"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode /thinking response: %v", err)
+	}
+	if out.Current == "" {
+		t.Fatalf("bare /thinking current empty: %s", rec.Body.String())
+	}
+
+	// /thinking <level> switches like /effort and returns 204.
+	rec = httptest.NewRecorder()
+	s.submit(rec, httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(`{"input":"/thinking max"}`)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("/thinking max status = %d, want 204 (body %s)", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	s.effort(rec, httptest.NewRequest(http.MethodGet, "/effort", nil))
+	var after struct {
+		Current string `json:"current"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+		t.Fatalf("decode effort response: %v", err)
+	}
+	if after.Current != "max" {
+		t.Fatalf("current after /thinking max = %q, want max", after.Current)
 	}
 }
