@@ -278,6 +278,10 @@ func (s *Server) switchModel(ctx context.Context, ref string) error {
 	// this session.
 	if prev, ok := cur.(*control.Controller); ok {
 		newCtrl.RestoreSessionAuthorizations(prev.SessionAuthorizations())
+		// Carry the runtime approval posture across the rebuild: boot.Build
+		// starts from config defaults, so without this a live ask/auto/yolo
+		// choice resets after every model/effort switch.
+		newCtrl.SetToolApprovalMode(prev.ToolApprovalMode())
 	}
 	// Persist before publishing the replacement. A failed write leaves cur and
 	// the on-disk transcript coherent and lets the caller retry; publishing first
@@ -339,12 +343,20 @@ func (s *Server) build(ctx context.Context, ref string) (*control.Controller, er
 	s.profileMu.RLock()
 	tokenMode := s.tokenMode
 	s.profileMu.RUnlock()
+	// Rebuilds (model/effort/work-mode switches) must keep the serving
+	// workspace's session store and workspace root: boot.Build would otherwise
+	// fall back to the global session dir, orphaning the per-workspace session
+	// list in GET /sessions. build() runs before the replacement is published,
+	// so s.ctl() still holds the outgoing controller whose values to continue.
+	cur := s.ctl()
 	return boot.Build(ctx, boot.Options{
-		Model:       ref,
-		Sink:        s.bc,
-		Stderr:      os.Stderr,
-		StatsSource: "serve",
-		TokenMode:   tokenMode,
+		Model:         ref,
+		Sink:          s.bc,
+		Stderr:        os.Stderr,
+		StatsSource:   "serve",
+		TokenMode:     tokenMode,
+		SessionDir:    cur.SessionDir(),
+		WorkspaceRoot: cur.WorkspaceRoot(),
 	})
 }
 
@@ -409,9 +421,16 @@ func (s *Server) effort(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	cap := config.EffortCapabilityForEntry(entry)
-	current := entry.Effort
+	// Report the runtime-normalized effort: a provider-scoped stored level the
+	// active model cannot express degrades to auto at build time, so the UI
+	// must not keep advertising the stored value (which no longer applies).
+	current := config.NormalizeStoredEffortForModel(entry)
 	if current == "" {
-		current = cap.Default
+		// "auto" means "don't override the provider default"; an unset stored
+		// effort (explicit /effort auto and never-set both store "") behaves
+		// the same, so surface it as auto instead of collapsing to the model's
+		// default level (which would highlight "high" after picking auto).
+		current = "auto"
 	}
 	writeJSON(w, map[string]any{
 		"supported": cap.Supported,
@@ -478,6 +497,8 @@ func (s *Server) switchProfile(ctx context.Context, mode string) error {
 	newCtrl.AdoptHistory(carried, newPath)
 	if prev, ok := cur.(*control.Controller); ok {
 		newCtrl.RestoreSessionAuthorizations(prev.SessionAuthorizations())
+		// Keep the runtime approval posture across work-mode rebuilds too.
+		newCtrl.SetToolApprovalMode(prev.ToolApprovalMode())
 	}
 	if newPath != "" {
 		if err := newCtrl.Snapshot(); err != nil {
@@ -1121,6 +1142,10 @@ type historyMessage struct {
 
 func historyMessages(msgs []provider.Message) []historyMessage {
 	out := make([]historyMessage, 0, len(msgs))
+	// CreatedAt of the most recent assistant message that issued tool calls;
+	// used to estimate the duration of tool results from sessions that
+	// predate ToolDurationMs persistence.
+	var lastToolCallAt int64
 	for _, m := range msgs {
 		if m.Role == provider.RoleUser {
 			// Steer messages are surfaced as a notice, not a user message.
@@ -1147,12 +1172,21 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 				for i, tc := range m.ToolCalls {
 					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments, Added: tc.Added, Removed: tc.Removed}
 				}
+				lastToolCallAt = m.CreatedAt
 			}
 		}
 		if m.Role == provider.RoleTool {
 			hm.ToolCallID = m.ToolCallID
 			hm.ToolName = m.Name
 			hm.DurationMs = m.ToolDurationMs
+			// Sessions predating ToolDurationMs (older than the duration
+			// persistence change) have no recorded execution time; estimate it
+			// from the persisted CreatedAt delta between the tool result and
+			// the assistant message that issued the calls. Parallel batches
+			// share the same start, so each result shows the batch span.
+			if hm.DurationMs == 0 && lastToolCallAt > 0 && m.CreatedAt > lastToolCallAt {
+				hm.DurationMs = m.CreatedAt - lastToolCallAt
+			}
 		}
 		out = append(out, hm)
 	}

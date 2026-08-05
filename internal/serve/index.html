@@ -1592,7 +1592,14 @@ function workspaceDisplayName(path){
 }
 function currencySymbol(c){const v=String(c||'¥').trim();if(/^(cny|rmb|yuan)$/i.test(v))return '¥';if(/^(usd|dollar)$/i.test(v))return '$';return v||'¥';}
 function fmtMoney(n,c){if(typeof n!=='number'||!isFinite(n))return '—';const s=currencySymbol(c);return s+(n<1?n.toFixed(4):n.toFixed(2));}
-function fmtElapsed(ms) { const s=Math.floor(ms/1000); return s<60?s+'s':Math.floor(s/60)+'m '+s%60+'s';}
+function fmtElapsed(ms) {
+  const total = Math.max(0, ms) / 1000;
+  // Seconds with up to 3 decimal places, trailing zeros trimmed by JS number
+  // stringification; ≥60s keeps the m/s structure (1m 23.456s).
+  if (total < 60) return String(Math.round(total * 1000) / 1000) + 's';
+  const m = Math.floor(total / 60);
+  return m + 'm ' + String(Math.round((total - m * 60) * 1000) / 1000) + 's';
+}
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function escAttr(s) { return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function el(tag,cls,text) { const e=document.createElement(tag); if(cls)e.className=cls; if(text)e.textContent=text; return e;}
@@ -2931,22 +2938,40 @@ document.addEventListener('keydown',e=>{
 },true);
 
 // ── slash menu ──
-let slashOpen=false, slashIndex=0, slashFiltered=[], slashArgMode=false, slashArgItems=[];
+let slashOpen=false, slashIndex=0, slashFiltered=[], slashArgMode=false, slashArgItems=[], slashArgCmd='';
 function updateSlashMenu() {
   const v=input.value;
   if(!v.startsWith('/')){closeSlashMenu();return;}
   const space=v.indexOf(' ');
   if(space>=0){
-    // Argument completion (desktop ArgMenu): /model <ref>
-    if(v.slice(0,space)!=='/model'){closeSlashMenu();return;}
-    const q=v.slice(space+1).trim().toLowerCase();
-    ensureModelsLoaded().then(()=>{
-      slashArgItems=uniqueModelRefs().filter(r=>r.toLowerCase().includes(q));
-      if(slashArgItems.length===0){closeSlashMenu();return;}
-      slashOpen=true; slashIndex=0; slashArgMode=true;
-      renderSlashArgs(q);
-    });
-    return;
+    // Argument completion (desktop ArgMenu): /model <ref>, /effort <level>
+    const cmd=v.slice(0,space);
+    if(cmd==='/model'){
+      const q=v.slice(space+1).trim().toLowerCase();
+      ensureModelsLoaded().then(()=>{
+        if(!input.value.startsWith('/model '))return; // user moved on while loading
+        slashArgItems=uniqueModelRefs().filter(r=>r.toLowerCase().includes(q));
+        if(slashArgItems.length===0){closeSlashMenu();return;}
+        slashArgCmd='/model';
+        slashOpen=true; slashIndex=0; slashArgMode=true;
+        renderSlashArgs(q);
+      });
+      return;
+    }
+    if(cmd==='/effort'){
+      const q=v.slice(space+1).trim().toLowerCase();
+      ensureEffortLoaded().then(()=>{
+        if(!input.value.startsWith('/effort '))return; // user moved on while loading
+        if(!effortState||!effortState.supported||!Array.isArray(effortState.levels)){closeSlashMenu();return;}
+        slashArgItems=effortState.levels.filter(l=>l.toLowerCase().includes(q));
+        if(slashArgItems.length===0){closeSlashMenu();return;}
+        slashArgCmd='/effort';
+        slashOpen=true; slashIndex=0; slashArgMode=true;
+        renderSlashArgs(q);
+      });
+      return;
+    }
+    closeSlashMenu();return;
   }
   slashArgMode=false;
   const q=v.slice(1).toLowerCase();
@@ -2978,7 +3003,7 @@ function renderSlashMenu() {
     item.setAttribute('role','option');
     item.setAttribute('aria-selected',i===slashIndex?'true':'false');
     item.innerHTML='<span class="slash-menu__name">/'+escHtml(c.cmd)+'</span><span class="slash-menu__desc">'+escHtml(c.desc)+'</span><span class="slash-menu__pill'+(c.danger?' slash-menu__pill--danger':'')+'">'+escHtml(c.danger?__('danger'):slashGroupLabel(c.group))+'</span><span class="slash-menu__sig">'+escHtml(c.sig)+'</span>';
-    item.onmouseenter=()=>{slashIndex=i;renderSlashMenu();};
+    item.onmouseenter=()=>{if(slashIndex!==i){slashIndex=i;renderSlashMenu();}};
     item.onclick=()=>{input.value='/'+c.cmd+' ';closeSlashMenu();input.focus();};
     list.appendChild(item);
   });
@@ -2987,17 +3012,19 @@ function renderSlashMenu() {
 }
 function renderSlashArgs(q) {
   let menu=$('#slash-menu'); if(!menu){menu=el('div','slash-menu');menu.id='slash-menu';slashAnchor.appendChild(menu);}
-  menu.innerHTML='<div class="slash-menu__head"><span>'+escHtml(__('command_palette'))+'</span><span class="slash-menu__query">/model '+escHtml(q)+'</span></div><div class="slash-menu__list" id="slash-menu-list" role="listbox"></div><div class="slash-menu__foot"><span>'+escHtml(__('command_nav'))+'</span><span>'+slashArgItems.length+'</span></div>';
+  const cmdName=slashArgCmd||'/model';
+  const isModel=cmdName==='/model';
+  menu.innerHTML='<div class="slash-menu__head"><span>'+escHtml(__('command_palette'))+'</span><span class="slash-menu__query">'+escHtml(cmdName)+' '+escHtml(q)+'</span></div><div class="slash-menu__list" id="slash-menu-list" role="listbox"></div><div class="slash-menu__foot"><span>'+escHtml(__('command_nav'))+'</span><span>'+slashArgItems.length+'</span></div>';
   const list=$('#slash-menu-list');
   slashArgItems.forEach((ref,i)=>{
     const item=el('button','slash-menu__item'+(i===slashIndex?' slash-menu__item--active':''));
     item.type='button';
     item.setAttribute('role','option');
     item.setAttribute('aria-selected',i===slashIndex?'true':'false');
-    const isCurrent=ref===currentModelRefLabel();
-    item.innerHTML='<span class="slash-menu__name" style="--slash-name:var(--fg)">'+escHtml(ref)+'</span><span class="slash-menu__desc">'+escHtml(ref.split('/')[0])+'</span><span class="slash-menu__pill'+(isCurrent?' slash-menu__pill--current':'')+'">'+escHtml(isCurrent?__('current'):'')+'</span><span class="slash-menu__sig"></span>';
-    item.onmouseenter=()=>{slashIndex=i;renderSlashArgs(q);};
-    item.onclick=()=>{input.value='/model '+ref;closeSlashMenu();input.focus();};
+    const isCurrent=isModel?ref===currentModelRefLabel():ref===(effortState.current||'auto');
+    item.innerHTML='<span class="slash-menu__name" style="--slash-name:var(--fg)">'+escHtml(ref)+'</span><span class="slash-menu__desc">'+escHtml(isModel?(ref.split('/')[0]||''):__('effort_title'))+'</span><span class="slash-menu__pill'+(isCurrent?' slash-menu__pill--current':'')+'">'+escHtml(isCurrent?__('current'):'')+'</span><span class="slash-menu__sig"></span>';
+    item.onmouseenter=()=>{if(slashIndex!==i){slashIndex=i;renderSlashArgs(q);}};
+    item.onclick=()=>{input.value=cmdName+' '+ref;closeSlashMenu();input.focus();};
     list.appendChild(item);
   });
   const active=menu.querySelector('.slash-menu__item--active');
@@ -3007,7 +3034,7 @@ function closeSlashMenu(){slashOpen=false;const m=$('#slash-menu');if(m)m.remove
 function acceptSlash(){if(!slashOpen)return;
   if(slashArgMode){
     const it=slashArgItems[slashIndex];
-    if(it){input.value='/model '+it;}
+    if(it){input.value=(slashArgCmd||'/model')+' '+it;}
     closeSlashMenu();input.focus();return;
   }
   const c=slashFiltered[slashIndex];if(c){input.value='/'+c.cmd+' ';}closeSlashMenu();input.focus();}
@@ -3016,6 +3043,17 @@ function acceptSlash(){if(!slashOpen)return;
 function ensureModelsLoaded() {
   if(modelsCache.length>0)return Promise.resolve();
   return fetch('/models').then(r=>r.json()).then(d=>{modelsCache=Array.isArray(d?.models)?d.models:[];}).catch(()=>{modelsCache=[];});
+}
+// Effort levels are small and can change with the active model, so the /effort
+// menu always fetches fresh state (also keeps effortState/button in sync). One
+// in-flight promise is shared across keystrokes; a failure keeps the last good
+// effortState instead of clobbering it (the effort button stays usable).
+let effortFetch=null;
+function ensureEffortLoaded() {
+  if(!effortFetch){
+    effortFetch=fetch('/effort').then(r=>r.json()).then(d=>{effortState=d||{};}).catch(()=>{}).finally(()=>{effortFetch=null;});
+  }
+  return effortFetch;
 }
 // Unique model refs matching /model text output semantics: same-named models
 // across provider aliases collapse to one ref (active/default entry wins).
@@ -3552,7 +3590,7 @@ async function send(){
     updateGoalUI();
   }
   appendUserMsg(v);
-  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&r.status===204){fetchStatus();loadSessions();}});
+  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&r.status===204){fetchStatus();loadSessions();fetchEffort();}});
   input.value='';input.style.height='';closeSlashMenu();
 }
 
@@ -3779,7 +3817,7 @@ function renderModelGroups(data) {
       b.type = 'button';
       b.appendChild(el('span', 'modelsw__copy', m.model || m.ref || ''));
       if (m.active) b.appendChild(el('span', 'modelsw__check', '✓'));
-      b.onclick = () => { closeModelsw(); post('/submit', { input: '/model ' + (m.ref || '') }).then(() => setTimeout(fetchStatus, 300)); };
+      b.onclick = () => { closeModelsw(); post('/submit', { input: '/model ' + (m.ref || '') }).then(() => setTimeout(()=>{fetchStatus();fetchEffort();}, 300)); };
       g.appendChild(b);
     });
     modelswList.appendChild(g);
@@ -3855,7 +3893,7 @@ $('#models-list').onclick=e=>{
   const ref=btn.dataset.modelRef;
   if(!ref)return;
   closeModels();
-  post('/submit',{input:'/model '+ref}).then(()=>setTimeout(fetchStatus,300));
+  post('/submit',{input:'/model '+ref}).then(()=>setTimeout(()=>{fetchStatus();fetchEffort();},300));
 };
 $('#session-search').addEventListener('input',e=>{sessionFilter=e.target.value;renderSessions();});
 
