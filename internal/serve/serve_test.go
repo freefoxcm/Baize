@@ -181,6 +181,46 @@ func TestHistoryMessagesCarriesToolDuration(t *testing.T) {
 	}
 }
 
+// TestHistoryMessagesDurationFallback verifies that tool results from
+// sessions predating ToolDurationMs persistence estimate their duration from
+// the CreatedAt delta with the issuing assistant message.
+func TestHistoryMessagesDurationFallback(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleAssistant, Content: "plan", CreatedAt: 1000, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: "echo"}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "out", CreatedAt: 4234},
+	}
+	hm := historyMessages(msgs)
+	if hm[1].DurationMs != 3234 {
+		t.Fatalf("fallback duration = %d, want 3234 (4234-1000)", hm[1].DurationMs)
+	}
+
+	// Recorded durations win over the fallback.
+	msgs[1].ToolDurationMs = 2500
+	hm = historyMessages(msgs)
+	if hm[1].DurationMs != 2500 {
+		t.Fatalf("recorded duration = %d, want 2500", hm[1].DurationMs)
+	}
+	msgs[1].ToolDurationMs = 0
+
+	// A parallel batch shares the issuing assistant's start; each result gets
+	// its own span.
+	msgs = append(msgs,
+		provider.Message{Role: provider.RoleAssistant, Content: "plan2", CreatedAt: 5000, ToolCalls: []provider.ToolCall{{ID: "c2", Name: "bash", Arguments: "x"}, {ID: "c3", Name: "bash", Arguments: "y"}}},
+		provider.Message{Role: provider.RoleTool, ToolCallID: "c2", Name: "bash", Content: "a", CreatedAt: 6400},
+		provider.Message{Role: provider.RoleTool, ToolCallID: "c3", Name: "bash", Content: "b", CreatedAt: 7200},
+	)
+	hm = historyMessages(msgs)
+	if hm[3].DurationMs != 1400 || hm[4].DurationMs != 2200 {
+		t.Fatalf("batch fallback durations = %d/%d, want 1400/2200", hm[3].DurationMs, hm[4].DurationMs)
+	}
+
+	// A standalone tool result without any issuing assistant omits the field.
+	hm = historyMessages([]provider.Message{{Role: provider.RoleTool, ToolCallID: "x", Name: "bash", Content: "o", CreatedAt: 1234}})
+	if hm[0].DurationMs != 0 {
+		t.Fatalf("standalone duration = %d, want 0", hm[0].DurationMs)
+	}
+}
+
 func TestServeEndpoints(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc}) // no runner needed for these
