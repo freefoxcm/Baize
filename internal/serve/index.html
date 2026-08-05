@@ -1015,23 +1015,28 @@ const __T = {
     'placeholder': 'Message Baize...  / for commands',
     'cmd_compact': 'Compact conversation',
     'cmd_new': 'New session',
-    'cmd_resume': 'Resume session',
+    'cmd_clear': 'Clear context',
     'cmd_rewind': 'Rewind to checkpoint',
     'cmd_tree': 'Show branch tree',
     'cmd_branch': 'Create branch',
     'cmd_switch': 'Switch branch',
     'cmd_model': 'List/switch models',
+    'cmd_provider': 'List/switch provider',
     'cmd_effort': 'Reasoning effort level',
     'cmd_mcp': 'MCP servers',
     'cmd_skill': 'Skills',
     'cmd_hooks': 'Hooks',
-    'cmd_reload': 'Reload extensions',
+    'cmd_migrate': 'Migrate legacy data',
+    'cmd_reload_cmd': 'Reload commands',
+    'cmd_plugins': 'Plugins',
     'cmd_memory': 'Show memory',
     'cmd_forget': 'Forget memory',
     'cmd_goal': 'Set a goal for the agent to pursue autonomously',
+    'cmd_plan_exec': 'Execute plan todos',
+    'cmd_prometheus': 'Planning interview',
     'cmd_thinking': 'Thinking effort',
-    'cmd_verbose': 'Toggle reasoning',
     'cmd_help': 'Help',
+    'cmd_docs': 'Local documentation',
     'cmd_group_session': 'Session',
     'cmd_group_branch': 'Branches',
     'cmd_group_model': 'Model',
@@ -1236,23 +1241,28 @@ const __T = {
     'placeholder': '给 Baize 发消息...  / 查看命令',
     'cmd_compact': '压缩对话',
     'cmd_new': '新建会话',
-    'cmd_resume': '恢复会话',
+    'cmd_clear': '清空上下文',
     'cmd_rewind': '回退到检查点',
     'cmd_tree': '显示分支树',
     'cmd_branch': '创建分支',
     'cmd_switch': '切换分支',
     'cmd_model': '列出/切换模型',
+    'cmd_provider': '列出/切换服务商',
     'cmd_effort': '推理努力级别',
     'cmd_mcp': 'MCP 服务器',
     'cmd_skill': '技能',
     'cmd_hooks': '钩子',
-    'cmd_reload': '重新加载扩展',
+    'cmd_migrate': '迁移旧版数据',
+    'cmd_reload_cmd': '重新加载命令',
+    'cmd_plugins': '插件',
     'cmd_memory': '显示记忆',
     'cmd_forget': '忘记记忆',
     'cmd_goal': '设置目标让代理自主执行',
+    'cmd_plan_exec': '执行计划任务',
+    'cmd_prometheus': '需求访谈规划',
     'cmd_thinking': '思考努力',
-    'cmd_verbose': '切换推理显示',
     'cmd_help': '帮助',
+    'cmd_docs': '本地文档',
     'cmd_group_session': '会话',
     'cmd_group_branch': '分支',
     'cmd_group_model': '模型',
@@ -1460,24 +1470,29 @@ let sessionsCache = [], sessionFilter = '', pendingDeleteSession = null;
 // ── slash commands registry ──
 const SLASH_CMDS = [
   {cmd:'new',sig:'/new',desc:__('cmd_new'),group:'session'},
-  {cmd:'resume',sig:'/resume [n]',desc:__('cmd_resume'),group:'session'},
+  {cmd:'clear',sig:'/clear',desc:__('cmd_clear'),group:'session'},
   {cmd:'compact',sig:'/compact',desc:__('cmd_compact'),group:'session'},
   {cmd:'rewind',sig:'/rewind',desc:__('cmd_rewind'),group:'session'},
   {cmd:'tree',sig:'/tree',desc:__('cmd_tree'),group:'branch'},
   {cmd:'branch',sig:'/branch <name>',desc:__('cmd_branch'),group:'branch'},
   {cmd:'switch',sig:'/switch <id>',desc:__('cmd_switch'),group:'branch'},
   {cmd:'model',sig:'/model [provider/model]',desc:__('cmd_model'),group:'model'},
+  {cmd:'provider',sig:'/provider [name]',desc:__('cmd_provider'),group:'model'},
   {cmd:'effort',sig:'/effort <level>',desc:__('cmd_effort'),group:'model'},
+  {cmd:'thinking',sig:'/thinking <level>',desc:__('cmd_thinking'),group:'model'},
   {cmd:'goal',sig:'/goal <task>',desc:__('cmd_goal'),group:'agent'},
-  {cmd:'thinking',sig:'/thinking <level>',desc:__('cmd_thinking'),group:'agent'},
-  {cmd:'verbose',sig:'/verbose',desc:__('cmd_verbose'),group:'agent'},
+  {cmd:'plan-exec',sig:'/plan-exec [--strict]',desc:__('cmd_plan_exec'),group:'agent'},
+  {cmd:'prometheus',sig:'/prometheus <task>',desc:__('cmd_prometheus'),group:'agent'},
   {cmd:'mcp',sig:'/mcp',desc:__('cmd_mcp'),group:'system'},
   {cmd:'skill',sig:'/skill',desc:__('cmd_skill'),group:'system'},
   {cmd:'hooks',sig:'/hooks',desc:__('cmd_hooks'),group:'system'},
-  {cmd:'reload',sig:'/reload',desc:__('cmd_reload'),group:'system'},
+  {cmd:'migrate',sig:'/migrate [--from <dir>]',desc:__('cmd_migrate'),group:'system'},
+  {cmd:'reload-cmd',sig:'/reload-cmd',desc:__('cmd_reload_cmd'),group:'system'},
+  {cmd:'plugins',sig:'/plugins [list|show <name>]',desc:__('cmd_plugins'),group:'system'},
   {cmd:'memory',sig:'/memory',desc:__('cmd_memory'),group:'memory'},
   {cmd:'forget',sig:'/forget <item>',desc:__('cmd_forget'),group:'memory',danger:true},
   {cmd:'help',sig:'/help',desc:__('cmd_help'),group:'help'},
+  {cmd:'docs',sig:'/docs [query]',desc:__('cmd_docs'),group:'help'},
 ];
 const SLASH_GROUPS = ['session','branch','model','agent','system','memory','help'];
 function slashGroupLabel(group){return __('cmd_group_'+group)||group;}
@@ -3006,14 +3021,14 @@ function updateSlashMenu() {
       });
       return;
     }
-    if(cmd==='/effort'){
+    if(cmd==='/effort'||cmd==='/thinking'){
       const q=v.slice(space+1).trim().toLowerCase();
       ensureEffortLoaded().then(()=>{
-        if(!input.value.startsWith('/effort '))return; // user moved on while loading
+        if(!input.value.startsWith(cmd+' '))return; // user moved on while loading
         if(!effortState||!effortState.supported||!Array.isArray(effortState.levels)){closeSlashMenu();return;}
         slashArgItems=effortState.levels.filter(l=>l.toLowerCase().includes(q));
         if(slashArgItems.length===0){closeSlashMenu();return;}
-        slashArgCmd='/effort';
+        slashArgCmd=cmd;
         slashOpen=true; slashIndex=0; slashArgMode=true;
         renderSlashArgs(q);
       });

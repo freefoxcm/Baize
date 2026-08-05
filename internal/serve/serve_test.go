@@ -809,7 +809,7 @@ func TestServeIndexRendersAndReloadsExtensions(t *testing.T) {
 		"case 'extension_status': if(e.extension)renderExtensionSurface(e.extension); break;",
 		"const node=el('div','notice'",
 		"post('/extensions/reload',{})",
-		"{cmd:'reload',sig:'/reload'",
+		"{cmd:'reload-cmd',sig:'/reload-cmd'",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing extension support %q", want)
