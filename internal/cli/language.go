@@ -12,6 +12,24 @@ import (
 	"reasonix/internal/i18n"
 )
 
+// applyServeLanguage lets the desktop/webui language setting drive the
+// server-side message catalogue when no CLI-level language or locale has
+// pinned one. The webui surfaces [desktop] language (or the browser locale);
+// without this its notices (/help, /docs, command output) would stay English
+// even on a Chinese-language interface. The CLI-level language and the
+// environment still win: this only fills the gap when they resolved to "en".
+func applyServeLanguage(cfg *config.Config) {
+	if cfg == nil || i18n.CurrentLanguage() != "en" {
+		return
+	}
+	if cfg.Language != "" {
+		return // CLI-level language pinned — cli.go already applied it
+	}
+	if dl := cfg.DesktopLanguage(); dl != "" {
+		i18n.DetectLanguage(dl)
+	}
+}
+
 func (m *chatTUI) runLanguageSubcommand(input string) tea.Cmd {
 	args := tokenizeArgs(input)
 	if len(args) < 2 {

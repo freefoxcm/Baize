@@ -327,6 +327,32 @@ var English = Messages{
 	ListHooksNone:       "hooks: none active — configure in .reasonix/settings.json (project) or <Reasonix home>/settings.json (global)",
 	ListMcpHeader:       "mcp servers",
 	ListMcpNone:         "mcp: no servers connected — add one in reasonix.toml ([[plugins]]) or a project .mcp.json",
+	HelpHeaderCommands:  "commands:",
+	HelpHeaderSkills:    "skills:",
+	HelpMoreFmt:         "more: /docs (documentation), /skill (manage skills), /mcp (servers)",
+	HelpCommands: "  /tree               show branch tree\n" +
+		"  /branch <name>      create a branch\n" +
+		"  /switch <id>        switch branch\n" +
+		"  /rewind [turn]      rewind conversation\n" +
+		"  /compact            compact context\n" +
+		"  /new                start a new session\n" +
+		"  /clear              clear context\n" +
+		"  /model [ref]        list or switch models\n" +
+		"  /effort [level]     reasoning effort\n" +
+		"  /thinking [level]   alias of /effort\n" +
+		"  /goal [task]        goal mode\n" +
+		"  /provider [name]    list or switch provider\n" +
+		"  /mcp                MCP servers\n" +
+		"  /skill              skills\n" +
+		"  /hooks              hooks\n" +
+		"  /memory             memory\n" +
+		"  /forget <item>      forget a memory\n" +
+		"  /plan-exec          execute plan todos\n" +
+		"  /prometheus <task>  planning interview\n" +
+		"  /migrate            migrate legacy data\n" +
+		"  /reload-cmd         reload commands\n" +
+		"  /plugins            plugins\n" +
+		"  /docs [query]       documentation",
 
 	MemoryNone:                   "memory: none — add with “/remember <note>” or create REASONIX.md in the project root",
 	MemoryLoaded:                 "memory loaded:",

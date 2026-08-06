@@ -845,6 +845,7 @@ func runServe(args []string) int {
 	ctx := context.Background()
 	bc := serve.NewBroadcaster()
 	cfg, _ := config.Load()
+	applyServeLanguage(cfg)
 
 	// Build serve config, merging CLI flags over config file.
 	serveCfg := cfg.Serve

@@ -320,6 +320,13 @@ type Messages struct {
 	ListMcpHeader       string // "mcp servers"
 	ListMcpNone         string // no mcp servers
 
+	// /help quick reference (the Submit path). HelpCommands is one
+	// newline-joined line per builtin command, mirroring the catalogue.
+	HelpHeaderCommands string // "commands:"
+	HelpHeaderSkills   string // "skills:"
+	HelpMoreFmt        string // "more: /docs (...), /skill (...), /mcp (...)"
+	HelpCommands       string // newline-joined builtin command lines
+
 	// in-chat memory/model/rewind notices.
 
 	MemoryNone                   string

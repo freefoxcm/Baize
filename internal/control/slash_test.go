@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"reasonix/internal/event"
+	"reasonix/internal/i18n"
 	"reasonix/internal/instruction"
 	"reasonix/internal/memory"
 	"reasonix/internal/skill"
@@ -584,5 +585,18 @@ func TestManagementHelpNotice(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("/help missing %q:\n%s", want, joined)
 		}
+	}
+}
+func TestManagementHelpLocalized(t *testing.T) {
+	t.Cleanup(func() { i18n.DetectLanguage("en") })
+	i18n.DetectLanguage("zh")
+	c := New(Options{})
+	if got := c.helpText(); !strings.Contains(got, "命令：") || !strings.Contains(got, "显示分支树") || !strings.Contains(got, "更多：/docs") {
+		t.Fatalf("zh help missing localized markers: %q", got)
+	}
+	i18n.DetectLanguage("en")
+	c = New(Options{})
+	if got := c.helpText(); !strings.Contains(got, "commands:") || !strings.Contains(got, "show branch tree") {
+		t.Fatalf("en help regressed to non-English: %q", got)
 	}
 }

@@ -549,8 +549,8 @@ func (c *Controller) managementNotice(trimmed string) bool {
 
 func (c *Controller) helpText() string {
 	var b strings.Builder
-	b.WriteString("commands:")
-	for _, line := range builtinHelpLines {
+	b.WriteString(i18n.M.HelpHeaderCommands)
+	for _, line := range strings.Split(i18n.M.HelpCommands, "\n") {
 		b.WriteString("\n" + line)
 	}
 	for _, cmd := range c.Commands() {
@@ -567,42 +567,13 @@ func (c *Controller) helpText() string {
 		fmt.Fprintf(&b, "\n  /%-16s %s", cmd.Name, desc)
 	}
 	if skills := c.Skills(); len(skills) > 0 {
-		b.WriteString("\nskills:")
+		b.WriteString("\n" + i18n.M.HelpHeaderSkills)
 		for _, sk := range skills {
 			fmt.Fprintf(&b, "\n  /%-16s %s", sk.SlashName(), sk.Description)
 		}
 	}
-	b.WriteString("\nmore: /docs (documentation), /skill (manage skills), /mcp (servers)")
+	b.WriteString("\n" + i18n.M.HelpMoreFmt)
 	return b.String()
-}
-
-// builtinHelpLines is the Submit-path quick reference shown by /help. It is a
-// curated list of the commands the controller itself handles; /docs owns the
-// full documentation.
-var builtinHelpLines = []string{
-	"  /tree               show branch tree",
-	"  /branch <name>      create a branch",
-	"  /switch <id>        switch branch",
-	"  /rewind [turn]      rewind conversation",
-	"  /compact            compact context",
-	"  /new                start a new session",
-	"  /clear              clear context",
-	"  /model [ref]        list or switch models",
-	"  /effort [level]     reasoning effort",
-	"  /thinking [level]   alias of /effort",
-	"  /goal [task]        goal mode",
-	"  /provider [name]    list or switch provider",
-	"  /mcp                MCP servers",
-	"  /skill              skills",
-	"  /hooks              hooks",
-	"  /memory             memory",
-	"  /forget <item>      forget a memory",
-	"  /plan-exec          execute plan todos",
-	"  /prometheus <task>  planning interview",
-	"  /migrate            migrate legacy data",
-	"  /reload-cmd         reload commands",
-	"  /plugins            list plugins",
-	"  /docs [query]       documentation",
 }
 
 func (c *Controller) modelListText() string {
