@@ -666,7 +666,7 @@ input,textarea{font:inherit;color:inherit}
       </div>
       <div class="sidebar__ctx">
         <div class="ctx-bar"><div class="ctx-bar__fill" id="ctx-fill" style="width:0%"></div></div>
-        <div class="ctx-label"><span id="ctx-used">0 tok</span><span id="ctx-window">0 tok</span></div>
+        <div class="ctx-label"><span id="ctx-used">0 tokens</span><span id="ctx-window">0 tokens</span></div>
       </div>
       <div class="status-metrics" id="status-metrics">
         <div class="sm-item"><span class="sm-val" id="sm-cache">—</span><span>__('cache')</span></div>
@@ -898,7 +898,7 @@ input,textarea{font:inherit;color:inherit}
         <div class="stat-card stat-card--wide">
           <div class="stat-card__label">__('context_usage')</div>
           <div class="ctx-bar" style="margin-top:8px"><div class="ctx-bar__fill" id="stats-ctx-fill" style="width:0%"></div></div>
-          <div class="ctx-label" style="margin-top:4px"><span id="stats-ctx-used">0 tok</span><span id="stats-ctx-window">0 tok</span></div>
+          <div class="ctx-label" style="margin-top:4px"><span id="stats-ctx-used">0 tokens</span><span id="stats-ctx-window">0 tokens</span></div>
         </div>
       </div>
     </div>
@@ -1475,7 +1475,7 @@ let guidanceNextId = 1;
 let guidanceExpanded = false;
 let guidanceSendingId = null;
 const GUIDANCE_VISIBLE = 2;
-let turnStartAt = 0, turnTokens = 0, tickTimer = null, retryStatus = null;
+let turnStartAt = 0, turnTokens = 0, turnArgChars = 0, tickTimer = null, retryStatus = null;
 let waitingPrompt = null, pendingApprovalLabel = '';
 let waitAccumMs = 0, waitStartedAt = 0; // desktop parity: ticker counts NET work time, waits (approval/ask) are excluded
 function waitPause() { if (waitStartedAt === 0) waitStartedAt = Date.now(); }
@@ -1570,7 +1570,7 @@ function renderUsageCalendar(d){
     const cell=el('button','cal-cell'+(lvl?' cal-cell--'+lvl:'')+(dayKey===todayKey?' cal-cell--today':''));
     cell.type='button';cell.dataset.day=dayKey;cell.style.gridRow=String(row);cell.style.gridColumn=String(col);
     cell.setAttribute('role','gridcell');cell.setAttribute('aria-expanded','false');
-    cell.setAttribute('aria-label',dayKey+' · '+fmtTok(toks)+' tok · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns')));
+    cell.setAttribute('aria-label',dayKey+' · '+fmtTok(toks)+' tokens · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns')));
     cell.onmouseenter=()=>showCalTip(cell,dayKey,entry,false);cell.onmouseleave=()=>hideCalTip(false);
     cell.onfocus=()=>showCalTip(cell,dayKey,entry,false);cell.onblur=()=>hideCalTip(false);
     cell.onclick=e=>{e.stopPropagation();toggleCalDay(cell,dayKey,entry);};grid.appendChild(cell);
@@ -1593,7 +1593,7 @@ function loadUsageCalendar(){
 }
 function calTipHTML(dayKey,entry){
   const e=entry||{},tokens=e.tokens||0,requests=e.requests||0,turns=e.turns||0;
-  let html='<div><b>'+escHtml(dayKey)+'</b> · '+fmtTok(tokens)+' tok · '+requests+' '+(requests===1?__('cal_req'):__('cal_reqs'))+' · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns'))+'</div>';
+  let html='<div><b>'+escHtml(dayKey)+'</b> · '+fmtTok(tokens)+' tokens · '+requests+' '+(requests===1?__('cal_req'):__('cal_reqs'))+' · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns'))+'</div>';
   const models=Object.entries(e.byModel||{}).sort((a,b)=>b[1]-a[1]);
   if(models.length)html+='<div class="cal-models">'+models.map(([m,t])=>'<div class="cal-model"><span>'+escHtml(m)+'</span><b>'+fmtTok(t)+'</b></div>').join('')+'</div>';
   return html;
@@ -1626,7 +1626,17 @@ if(typeof ResizeObserver!=='undefined')new ResizeObserver(sizeUsageCalendarGrid)
 // browser/OS chord is held (Cmd+A must never resolve an approval).
 function isTextEntry(t) { return !!t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable); }
 function isPlainKey(e) { return !e.ctrlKey&&!e.metaKey&&!e.altKey&&!isTextEntry(e.target); }
-function fmtTok(n) { return n>=1000?(n/1000).toFixed(1).replace(/\.0$/,'')+'k':String(n);}
+// fmtTok mirrors desktop's formatTokens (desktop/frontend/src/lib/format.ts):
+//  - n <= 0            → "-"
+//  - n >= 1_000_000    → "X.YM" (trailing .0 stripped)
+//  - n >= 1_000        → "X.YK" (trailing .0 stripped)
+//  - otherwise         → plain number
+function fmtTok(n) {
+  if (typeof n !== 'number' || n <= 0) return '-';
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
 function workspaceDisplayName(path){
   const raw=String(path||'').trim();if(!raw)return '-';
   const trimmed=raw.replace(/[\\/]+$/,'');if(!trimmed)return raw;
@@ -1680,7 +1690,8 @@ function tickerText() {
   const words = SPINNER_WORDS[__LANG] || SPINNER_WORDS.en;
   const ms = Math.max(0, Date.now() - turnStartAt - waitAccumMs - (waitStartedAt ? Date.now() - waitStartedAt : 0));
   const word = words[Math.floor(ms / 3000) % words.length];
-  const tok = turnTokens > 0 ? ' · ↓ ' + fmtTok(turnTokens) + ' tok' : '';
+  const liveTokens = turnTokens + Math.round(turnArgChars / 4); // desktop parity: streaming tool args ÷ 4 ≈ tokens
+  const tok = liveTokens > 0 ? ' · ↓ ' + fmtTok(liveTokens) + ' tokens' : '';
   return word + '… ' + fmtElapsed(ms) + tok;
 }
 function updateRunStrip() {
@@ -2542,7 +2553,7 @@ function buildToolCard(tool) {
   card.dataset.startedAt=String(Date.now());
   const head=el('div','card-head');
   const summary=toolArgsSummary(tool.args);
-  head.innerHTML='<span class="ico'+(tone==='accent'?' spin':'')+'">'+toolIcon(tone==='danger'?'danger':tone==='success'?'success':'accent')+'</span><div class="card-main"><div class="card-title"><span class="name">'+escHtml(tool.name||'tool')+'</span>'+(summary?'<span class="subject">'+escHtml(summary)+'</span>':'')+'</div><div class="card-meta">'+escHtml(__('tool_args'))+' '+fmtTok(String(tool.args||'').length)+'</div></div><span class="card-badge">'+escHtml(tool.err?__('tool_failed'):tool.status==='done'?__('tool_done'):__('tool_running'))+'</span><div class="card-actions"><button type="button" class="card-action card-copy" title="'+escAttr(__('tool_copy'))+'" aria-label="'+escAttr(__('tool_copy'))+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div>';
+  head.innerHTML='<span class="ico'+(tone==='accent'?' spin':'')+'">'+toolIcon(tone==='danger'?'danger':tone==='success'?'success':'accent')+'</span><div class="card-main"><div class="card-title"><span class="name">'+escHtml(tool.name||'tool')+'</span>'+(summary?'<span class="subject">'+escHtml(summary)+'</span>':'')+'</div><div class="card-meta"></div></div><span class="card-badge">'+escHtml(tool.err?__('tool_failed'):tool.status==='done'?__('tool_done'):__('tool_running'))+'</span><div class="card-actions"><button type="button" class="card-action card-copy" title="'+escAttr(__('tool_copy'))+'" aria-label="'+escAttr(__('tool_copy'))+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div>';
   const body=el('div','card-body');
   body.style.display='none';
   if (tool.diff) {
@@ -2559,8 +2570,7 @@ function buildToolCard(tool) {
   card.appendChild(head);card.appendChild(body);
   if(!tool.diff&&(tool.output||tool.err)){body.textContent=(tool.output||'')+(tool.err?('\n'+tool.err):'');}
   // History rebuilds create cards for tools that already finished; render the
-  // result meta here the same way renderToolResult would for a live stream
-  // (live-stream dispatch keeps the "args" meta until tool_result arrives).
+  // result meta here the same way renderToolResult would for a live stream.
   if (tool.status==='done' || tool.err) {
     const meta = head.querySelector('.card-meta');
     if (meta) meta.textContent = toolResultMeta(tool, tool.durationMs);
@@ -2623,7 +2633,6 @@ function renderToolDispatch(tool) {
         card.dataset.hasDiff = 'true';
       }
     }
-    updateToolMeta(card, __('tool_args')+' '+fmtTok(String(t.args||'').length));
   }
   updateTurnSummaryForItem(it);
   scrollDown();
@@ -3360,17 +3369,18 @@ es.onmessage=ev=>{setConnState('connected');
   const e=JSON.parse(ev.data);
   if(e.kind!=='retrying')clearRetrying();
   switch(e.kind){
-    case 'turn_started': setRunning(true); clearPendingPrompts(); finalizeMsg(); currentTurn++; todosDismissed=false; break;
+    case 'turn_started': setRunning(true); clearPendingPrompts(); finalizeMsg(); currentTurn++; turnArgChars = 0; todosDismissed=false; break;
     case 'reasoning': appendReasoning(e.reasoning||e.text||''); break;
     case 'text': appendText(e.text||''); break;
     case 'message': finalizeMsg(); break;
-    case 'tool_dispatch': if(e.tool)renderToolDispatch(e.tool); break;
+    case 'tool_dispatch': if(e.tool){renderToolDispatch(e.tool); if (e.tool.argChars && e.tool.argChars > 0) turnArgChars = e.tool.argChars;} break;
     case 'tool_result': if(e.tool){renderToolResult(e.tool);if(e.tool.name==='todo_write'&&!e.tool.parentId&&!e.tool.err){try{const ts=parseTodos(e.tool.args);if(ts.length){todosState=ts;renderTodoPanel();}}catch{}}} break;
     case 'tool_progress': if(e.tool)renderToolProgress(e.tool); break;
     case 'usage':
       // Usage never enters the transcript (matches desktop): accumulate into
       // the session stats that drive the sidebar metrics and the stats modal.
       if(e.usage){turnTokens=e.usage.completionTokens||0;
+        turnArgChars = 0; // desktop parity: usage closes the streaming-args estimate
         cumulativeTokens+=e.usage.totalTokens||0;
         const usageCost=e.usage.cost??e.usage.costUsd;
         if(typeof usageCost==='number')cumulativeCost+=usageCost;
@@ -3421,7 +3431,7 @@ function fetchStatus(){
     bypassMode=toolApprovalMode==='yolo';
     if(!bypassMode&&toolApprovalMode==='auto')yoloRestoreMode='auto';
     updateModeButtons();
-    if(s.window){const pct=Math.min(100,Math.round(s.used/s.window*100));ctxFill.style.width=pct+'%';ctxFill.style.background=pct>85?'var(--warning)':pct>95?'var(--danger)':'var(--accent)';ctxUsed.textContent=fmtTok(s.used)+' tok';ctxWindow.textContent=fmtTok(s.window)+' tok';}
+    if(s.window){const pct=Math.min(100,Math.round(s.used/s.window*100));ctxFill.style.width=pct+'%';ctxFill.style.background=pct>85?'var(--warning)':pct>95?'var(--danger)':'var(--accent)';ctxUsed.textContent=fmtTok(s.used)+' tokens';ctxWindow.textContent=fmtTok(s.window)+' tokens';}
     // goal state
     goalText=(s.goal||'').trim();
     goalActive=goalText!==''&&(s.goalStatus||'')==='running';
@@ -4212,7 +4222,7 @@ function openStats(){
     $('#stats-model').textContent=s.label||'-';
     $('#stats-sessions').textContent=sessionCount||'0';
     const total=cumulativeTokens||s.used||0;
-    $('#stats-total-tokens').textContent=total>=1000?fmtTok(total):String(total);
+    $('#stats-total-tokens').textContent=fmtTok(total);
     const hit=cumulativeCacheHit||s.cacheHit||0, miss=cumulativeCacheMiss||s.cacheMiss||0;
     const rate=hit+miss>0?Math.round(hit/(hit+miss)*100)+'%':'0%';
     $('#stats-cache-rate').textContent=rate;
@@ -4221,7 +4231,7 @@ function openStats(){
     const cost=cumulativeCost;
     $('#stats-total-cost').textContent=cost>0?fmtMoney(cost,s.lastUsage?.currency):'-';
     $('#stats-balance').textContent=s.balance?.display||'-';
-    if(s.window){const pct=Math.min(100,Math.round(s.used/s.window*100));$('#stats-ctx-fill').style.width=pct+'%';$('#stats-ctx-used').textContent=fmtTok(s.used)+' tok';$('#stats-ctx-window').textContent=fmtTok(s.window)+' tok';}
+    if(s.window){const pct=Math.min(100,Math.round(s.used/s.window*100));$('#stats-ctx-fill').style.width=pct+'%';$('#stats-ctx-used').textContent=fmtTok(s.used)+' tokens';$('#stats-ctx-window').textContent=fmtTok(s.window)+' tokens';}
   }).catch(()=>{});
   modal.style.display='flex';
 }
