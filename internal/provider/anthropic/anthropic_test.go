@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"reasonix/internal/provider"
 )
@@ -100,76 +99,34 @@ func TestBuildRequestNoSystem(t *testing.T) {
 	}
 }
 
-func lastBlockCacheControl(r anthRequest) *cacheControl {
-	last := r.Messages[len(r.Messages)-1]
-	return last.Content[len(last.Content)-1].CacheControl
-}
-
-func TestBuildRequestDefaultsToShortCacheTTL(t *testing.T) {
+func TestBuildRequestKeepsDefaultCacheControlBytesStable(t *testing.T) {
 	c := &client{model: "claude-opus-4-8"}
-	r := c.buildRequest(context.Background(), provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-	got := lastBlockCacheControl(r)
-	if got == nil || got.TTL != "" {
-		t.Fatalf("cache_control = %+v, want empty TTL with no gap hint", got)
+	req := provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}}
+	want, err := json.Marshal(c.buildRequest(context.Background(), req))
+	if err != nil {
+		t.Fatalf("marshal first request: %v", err)
 	}
-}
-
-func TestBuildRequestUsesLongCacheTTLOnLargeGap(t *testing.T) {
-	c := &client{model: "claude-opus-4-8"}
-	ctx := provider.WithCacheGapHint(context.Background(), 3*time.Minute)
-	r := c.buildRequest(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-	got := lastBlockCacheControl(r)
-	if got == nil || got.TTL != "1h" {
-		t.Fatalf("cache_control = %+v, want ttl=1h for a 3-minute gap", got)
+	requestCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got, err := json.Marshal(c.buildRequest(requestCtx, req))
+	if err != nil {
+		t.Fatalf("marshal second request: %v", err)
 	}
-}
-
-func TestBuildRequestKeepsShortCacheTTLBelowThreshold(t *testing.T) {
-	c := &client{model: "claude-opus-4-8"}
-	ctx := provider.WithCacheGapHint(context.Background(), 10*time.Second)
-	r := c.buildRequest(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-	got := lastBlockCacheControl(r)
-	if got == nil || got.TTL != "" {
-		t.Fatalf("cache_control = %+v, want default ttl for a 10s gap", got)
+	if string(got) != string(want) {
+		t.Fatalf("request bytes changed with unrelated context:\nfirst:  %s\nsecond: %s", want, got)
+	}
+	if strings.Contains(string(got), `"ttl"`) {
+		t.Fatalf("default cache_control unexpectedly opted into a TTL: %s", got)
 	}
 }
 
 func TestCacheControlOmitsTTLByDefault(t *testing.T) {
-	b, err := json.Marshal(ephemeral(""))
+	b, err := json.Marshal(ephemeral())
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	if string(b) != `{"type":"ephemeral"}` {
 		t.Fatalf("default cache_control = %s, want byte-identical to every prior release", b)
-	}
-	b, err = json.Marshal(ephemeral("1h"))
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if string(b) != `{"type":"ephemeral","ttl":"1h"}` {
-		t.Fatalf("1h cache_control = %s", b)
-	}
-}
-
-func TestUseLongCacheTTL(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		gap  time.Duration
-		hint bool
-		want bool
-	}{
-		{"no hint", 0, false, false},
-		{"below threshold", cacheGapLongTTLThreshold - time.Second, true, false},
-		{"at threshold", cacheGapLongTTLThreshold, true, true},
-		{"above threshold", cacheGapLongTTLThreshold + time.Minute, true, true},
-	} {
-		ctx := context.Background()
-		if tc.hint {
-			ctx = provider.WithCacheGapHint(ctx, tc.gap)
-		}
-		if got := useLongCacheTTL(ctx); got != tc.want {
-			t.Errorf("%s: useLongCacheTTL = %v, want %v", tc.name, got, tc.want)
-		}
 	}
 }
 
@@ -274,6 +231,28 @@ func TestNewDetectsOfficialDeepSeekEndpoint(t *testing.T) {
 		if got := p.(*client).deepseek; got != tc.want {
 			t.Errorf("New(%q).deepseek = %v, want %v", tc.baseURL, got, tc.want)
 		}
+	}
+}
+
+func TestNewScopesNativeCacheWritePricingToAnthropic(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		baseURL string
+		want    bool
+	}{
+		{name: "default", want: true},
+		{name: "official v1", baseURL: "https://api.anthropic.com/v1", want: true},
+		{name: "compatible gateway", baseURL: "https://proxy.example.com/anthropic", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := New(provider.Config{Name: "test", BaseURL: tc.baseURL, Model: "claude-sonnet-4-6"})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			if got := p.(*client).nativeAnthropic; got != tc.want {
+				t.Fatalf("nativeAnthropic = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -506,8 +485,43 @@ data: {"type":"message_stop"}
 	if usage.CacheHitTokens != 7 || usage.CacheMissTokens != 18 {
 		t.Fatalf("usage cache = hit %d miss %d", usage.CacheHitTokens, usage.CacheMissTokens)
 	}
+	if usage.CacheWriteTokens != 5 || usage.CacheWriteBilledTokens != 0 {
+		t.Fatalf("compatible-gateway cache write = raw %d billed %v, want 5/0", usage.CacheWriteTokens, usage.CacheWriteBilledTokens)
+	}
 	if usage.FinishReason != "stop" {
 		t.Fatalf("finish reason = %q", usage.FinishReason)
+	}
+}
+
+func TestReadStreamPricesNativeCacheWritesAtDefaultTTL(t *testing.T) {
+	sse := `event: message_start
+data: {"type":"message_start","message":{"usage":{"input_tokens":3,"cache_creation_input_tokens":5,"cache_read_input_tokens":7,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+	c := &client{name: "anthropic", nativeAnthropic: true}
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(sse))}
+	ch := make(chan provider.Chunk)
+	go c.readStream(context.Background(), resp, ch)
+
+	var usage *provider.Usage
+	for ck := range ch {
+		if ck.Type == provider.ChunkError {
+			t.Fatalf("unexpected error chunk: %v", ck.Err)
+		}
+		if ck.Type == provider.ChunkUsage {
+			usage = ck.Usage
+		}
+	}
+	if usage == nil {
+		t.Fatal("expected a usage chunk")
+	}
+	if usage.CacheWriteTokens != 5 || usage.CacheWriteBilledTokens != 6.25 {
+		t.Fatalf("usage cache write = raw %d billed %v, want 5/6.25", usage.CacheWriteTokens, usage.CacheWriteBilledTokens)
 	}
 }
 

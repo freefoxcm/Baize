@@ -116,6 +116,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		keySource:        keySource,
 		baseURL:          root,
 		model:            cfg.Model,
+		nativeAnthropic:  strings.EqualFold(root, defaultBaseURL),
 		deepseek:         openai.IsDeepSeek(root),
 		thinking:         thinking,
 		effort:           effort,
@@ -142,6 +143,7 @@ type client struct {
 	keySource        string // source of keyEnv, surfaced in auth errors
 	baseURL          string
 	model            string
+	nativeAnthropic  bool   // first-party endpoint: documented default-5m cache-write pricing applies
 	deepseek         bool   // official DeepSeek Anthropic endpoint: unsigned reasoning replay + automatic cache
 	thinking         string // "adaptive" enables extended thinking; "" = off (config-driven)
 	effort           string // output_config.effort: low|medium|high|xhigh|max; "" = provider default
@@ -302,7 +304,7 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 // become `tool_use` blocks; RoleTool results become `tool_result` blocks in a user
 // turn. Consecutive same-role messages are coalesced because the API requires
 // alternating user/assistant turns (tool results are user turns).
-func (c *client) buildRequest(ctx context.Context, req provider.Request) anthRequest {
+func (c *client) buildRequest(_ context.Context, req provider.Request) anthRequest {
 	var system []textBlock
 	var msgs []anthMessage
 
@@ -395,23 +397,19 @@ func (c *client) buildRequest(ctx context.Context, req provider.Request) anthReq
 	// tools → system → messages, so a marker on the last system block caches
 	// tools+system together; with no system, mark the last tool. A marker on the
 	// last block of the last message caches the conversation prefix, accruing hits
-	// incrementally as turns are appended. Max 4 breakpoints; we use ≤2. One TTL
-	// decision (default 5m, or 1h when the previous request was long enough ago
-	// that the 5m window would likely already have expired) applies to all of
-	// them — this is a single "extend this prefix" choice, not per-block.
+	// incrementally as turns are appended. Max 4 breakpoints; we use ≤2. Keep
+	// Anthropic's default 5m TTL by omitting the ttl field. Besides being cheaper
+	// than the opt-in 1h write, this keeps provider-visible request bytes stable
+	// across turns, retries, and wall-clock timing.
 	if !c.deepseek {
-		ttl := ""
-		if useLongCacheTTL(ctx) {
-			ttl = cacheTTL1Hour
-		}
 		if n := len(system); n > 0 {
-			system[n-1].CacheControl = ephemeral(ttl)
+			system[n-1].CacheControl = ephemeral()
 		} else if n := len(tools); n > 0 {
-			tools[n-1].CacheControl = ephemeral(ttl)
+			tools[n-1].CacheControl = ephemeral()
 		}
 		if n := len(msgs); n > 0 {
 			if k := len(msgs[n-1].Content); k > 0 {
-				msgs[n-1].Content[k-1].CacheControl = ephemeral(ttl)
+				msgs[n-1].Content[k-1].CacheControl = ephemeral()
 			}
 		}
 	}
@@ -687,13 +685,19 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 
 finalize:
 	if haveUsage {
+		cacheWriteBilledTokens := 0.0
+		if cacheCreate > 0 && c.nativeAnthropic {
+			cacheWriteBilledTokens = float64(cacheCreate) * cacheWrite5MinuteInputMultiplier
+		}
 		usage := &provider.Usage{
-			PromptTokens:     inTok + cacheCreate + cacheRead,
-			CompletionTokens: outTok,
-			TotalTokens:      inTok + cacheCreate + cacheRead + outTok,
-			CacheHitTokens:   cacheRead,
-			CacheMissTokens:  inTok + cacheCreate, // uncached input + cache writes (billed ≥1×)
-			FinishReason:     mapStopReason(stopReason),
+			PromptTokens:           inTok + cacheCreate + cacheRead,
+			CompletionTokens:       outTok,
+			TotalTokens:            inTok + cacheCreate + cacheRead + outTok,
+			CacheHitTokens:         cacheRead,
+			CacheMissTokens:        inTok + cacheCreate,
+			CacheWriteTokens:       cacheCreate,
+			CacheWriteBilledTokens: cacheWriteBilledTokens,
+			FinishReason:           mapStopReason(stopReason),
 		}
 		provider.ApplyRequestAttemptCount(ctx, usage)
 		if !send(provider.Chunk{Type: provider.ChunkUsage, Usage: usage}) {
@@ -770,33 +774,12 @@ func formatWebSearchResults(raw json.RawMessage) string {
 
 // --- Messages API wire protocol ---
 
-// cacheGapLongTTLThreshold is how long the gap since the previous request must
-// be before the 1h cache breakpoint (2x write cost) is worth it over the
-// default 5m one (1.25x write cost). Comfortably under Anthropic's 5-minute
-// expiry so the switch happens before that window would actually go cold, but
-// high enough that one ordinary ~60-90s tool round (a build, a test run)
-// doesn't flip it: an unneeded 1h choice costs proportionally more (2.1x) than
-// an unneeded 5m one (1.35x) would have, so this errs conservative.
-const cacheGapLongTTLThreshold = 120 * time.Second
+const cacheWrite5MinuteInputMultiplier = 1.25
 
-// cacheTTL1Hour is the opt-in extended cache_control TTL value (GA, no beta
-// header required). An empty TTL string omits the field entirely, which is
-// Anthropic's default 5-minute window.
-const cacheTTL1Hour = "1h"
-
-// useLongCacheTTL reports whether the gap since the previous request (see
-// provider.WithCacheGapHint) is large enough that the default 5-minute
-// prompt-cache window would likely already have expired.
-func useLongCacheTTL(ctx context.Context) bool {
-	gap, ok := provider.CacheGapHintFromContext(ctx)
-	return ok && gap >= cacheGapLongTTLThreshold
-}
-
-func ephemeral(ttl string) *cacheControl { return &cacheControl{Type: "ephemeral", TTL: ttl} }
+func ephemeral() *cacheControl { return &cacheControl{Type: "ephemeral"} }
 
 type cacheControl struct {
 	Type string `json:"type"`
-	TTL  string `json:"ttl,omitempty"`
 }
 
 type anthRequest struct {

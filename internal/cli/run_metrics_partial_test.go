@@ -21,6 +21,27 @@ func usageEvent(source string, prompt, completion int) event.Event {
 	}
 }
 
+func usageEventWithCacheReason(reason string) event.Event {
+	e := usageEvent(event.UsageSourceSubagent, 10, 1)
+	e.CacheDiagnostics = &event.CacheDiagnostics{PrefixChangeReasons: []string{reason}}
+	return e
+}
+
+func TestSnapshotDeepCopiesPrefixChangeReasons(t *testing.T) {
+	s := &metricsSink{inner: event.Discard}
+	s.Emit(usageEventWithCacheReason("compact_auto"))
+
+	snapshot := s.Snapshot()
+	s.Emit(usageEventWithCacheReason("snip"))
+
+	if snapshot.PrefixChangeReasonCounts["compact_auto"] != 1 {
+		t.Fatalf("snapshot compact_auto = %d, want 1", snapshot.PrefixChangeReasonCounts["compact_auto"])
+	}
+	if _, changed := snapshot.PrefixChangeReasonCounts["snip"]; changed {
+		t.Fatalf("snapshot changed after return: %v", snapshot.PrefixChangeReasonCounts)
+	}
+}
+
 // A killed agent writes no final record. Everything it did before the kill is
 // only recoverable if snapshots landed on disk while it ran.
 func TestSnapshotSurvivesWithoutAFinalWrite(t *testing.T) {
@@ -173,7 +194,7 @@ func TestConcurrentEmitAndSnapshotAreRaceFree(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < each; j++ {
-				s.Emit(usageEvent(event.UsageSourceSubagent, 10, 1))
+				s.Emit(usageEventWithCacheReason("compact_auto"))
 				s.Emit(event.Event{Kind: event.ToolResult, Tool: event.Tool{Name: "bash"}})
 			}
 		}()
@@ -182,7 +203,10 @@ func TestConcurrentEmitAndSnapshotAreRaceFree(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 200; i++ {
-			_ = s.Snapshot()
+			if _, err := json.Marshal(s.Snapshot()); err != nil {
+				t.Errorf("marshal snapshot: %v", err)
+				return
+			}
 		}
 	}()
 	wg.Wait()

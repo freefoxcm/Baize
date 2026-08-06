@@ -142,6 +142,7 @@ func (s *metricsSink) Snapshot() RunMetrics {
 
 func (m RunMetrics) clone() RunMetrics {
 	out := m
+	out.PrefixChangeReasonCounts = cloneCounts(m.PrefixChangeReasonCounts)
 	out.UsageBySource = cloneSourceUsage(m.UsageBySource)
 	out.ToolCallsByName = cloneCounts(m.ToolCallsByName)
 	out.ToolFailuresByName = cloneCounts(m.ToolFailuresByName)
@@ -208,9 +209,7 @@ func (s *metricsSink) record(e event.Event) {
 		s.m.Estimated = s.m.Estimated || u.Estimated
 		var stepCost float64
 		if p := e.Pricing; p != nil {
-			stepCost = (float64(u.CacheHitTokens)*p.CacheHit +
-				float64(u.CacheMissTokens)*p.Input +
-				float64(u.CompletionTokens)*p.Output) / 1e6
+			stepCost = p.Cost(u)
 			s.m.Cost += stepCost
 			s.m.Currency = p.Currency
 		}

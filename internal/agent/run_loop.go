@@ -719,6 +719,8 @@ func mergeSamplingUsage(acc, attempt *provider.Usage) *provider.Usage {
 	}
 	merged.CacheHitTokens = ah + bh
 	merged.CacheMissTokens = am + bm
+	merged.CacheWriteTokens += attempt.CacheWriteTokens
+	merged.CacheWriteBilledTokens += attempt.CacheWriteBilledTokens
 	merged.PromptTokens = billablePrompt(merged.CacheHitTokens, merged.CacheMissTokens, 0)
 	if merged.PromptTokens == 0 {
 		merged.PromptTokens = acc.PromptTokens + attempt.PromptTokens

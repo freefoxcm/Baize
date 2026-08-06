@@ -286,13 +286,6 @@ type Agent struct {
 	// run loop writes it while a frontend's status line reads it, so it is atomic.
 	lastUsage atomic.Pointer[provider.Usage]
 
-	// lastRequestSentAt is the wall-clock moment (unix millis) the most recent
-	// provider attempt was sent. Each attempt updates it, while all attempts in
-	// one frozen sampling round reuse the first attempt's gap hint so adaptive
-	// cache TTL cannot change the provider-visible replay body. Zero means no
-	// request sent yet — a fresh process or sub-agent gets the cheaper default TTL.
-	lastRequestSentAt atomic.Int64
-
 	// sessCacheHit/sessCacheMiss accumulate cache tokens across every API call
 	// this session, so frontends can show the aggregate hit-rate (Σhit/Σ(hit+miss))
 	// — a steadier, cost-oriented number than the single-turn rate. They are NOT
@@ -2876,10 +2869,7 @@ func toolBudgetNoticeText() string {
 // round. All stream retries replay this exact payload — no synthetic recovery
 // messages, no schema reorder, no previous_response_id drift from failed attempts.
 type samplingRequest struct {
-	req             provider.Request
-	cacheGap        time.Duration
-	cacheGapKnown   bool
-	cacheGapPresent bool
+	req provider.Request
 }
 
 // prepareSamplingRequest runs interceptors and schema fetch once per model
@@ -2996,30 +2986,9 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		}
 		req = prepared.req
 	}
-	// Stamp every actual attempt at send time, but freeze the first attempt's
-	// cache-gap hint for the entire sampling lifecycle. Anthropic derives an
-	// ephemeral-cache TTL from this context value, so recomputing it on an
-	// immediate retry would change the HTTP body despite an identical Request.
-	sentAt := time.Now()
-	priorMs := a.lastRequestSentAt.Swap(sentAt.UnixMilli())
-	if frozen == nil {
-		if priorMs != 0 {
-			ctx = provider.WithCacheGapHint(ctx, sentAt.Sub(time.UnixMilli(priorMs)))
-		}
-	} else {
-		if !frozen.cacheGapKnown {
-			frozen.cacheGapKnown = true
-			if priorMs != 0 {
-				frozen.cacheGap = sentAt.Sub(time.UnixMilli(priorMs))
-				frozen.cacheGapPresent = true
-			}
-		}
-		if frozen.cacheGapPresent {
-			ctx = provider.WithCacheGapHint(ctx, frozen.cacheGap)
-		}
-	}
-	// After #7725 Goal token request admission was removed; stream goes
-	// directly to the provider while still carrying the cache-gap hint.
+	// After #7725 Goal token request admission was removed, stream goes
+	// directly to the provider. Provider-visible cache controls stay stable
+	// across retries and request timing because they are derived from req alone.
 	ch, err := a.prov.Stream(ctx, req)
 	if err != nil {
 		return "", "", "", "", "", nil, nil, provider.UsageWithRequestAttemptCount(ctx, nil), false, false, nil, 0, err

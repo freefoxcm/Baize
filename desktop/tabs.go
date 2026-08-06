@@ -247,13 +247,17 @@ type readFileRecord struct {
 }
 
 type sessionUsageStats struct {
-	PromptTokens     int  `json:"promptTokens"`
-	CompletionTokens int  `json:"completionTokens"`
-	TotalTokens      int  `json:"totalTokens"`
-	ReasoningTokens  int  `json:"reasoningTokens"`
-	CacheHitTokens   int  `json:"cacheHitTokens"`
-	CacheMissTokens  int  `json:"cacheMissTokens"`
-	Estimated        bool `json:"estimated,omitempty"`
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
+	TotalTokens      int `json:"totalTokens"`
+	ReasoningTokens  int `json:"reasoningTokens"`
+	CacheHitTokens   int `json:"cacheHitTokens"`
+	CacheMissTokens  int `json:"cacheMissTokens"`
+	CacheWriteTokens int `json:"cacheWriteTokens,omitempty"`
+	// CacheWriteBilledTokens preserves provider-specific cache-write pricing
+	// across persisted telemetry repricing without changing hit-rate totals.
+	CacheWriteBilledTokens float64 `json:"cacheWriteBilledTokens,omitempty"`
+	Estimated              bool    `json:"estimated,omitempty"`
 	// LastUsedTokens is the executor-reported context fill (prompt+completion)
 	// from the most recent turn. It is persisted so the status bar / context
 	// panel can show a meaningful fill percentage after a session rebind
@@ -280,17 +284,19 @@ type sessionUsageStats struct {
 }
 
 type usageSourceStats struct {
-	PromptTokens     int     `json:"promptTokens"`
-	CompletionTokens int     `json:"completionTokens"`
-	TotalTokens      int     `json:"totalTokens"`
-	ReasoningTokens  int     `json:"reasoningTokens"`
-	CacheHitTokens   int     `json:"cacheHitTokens"`
-	CacheMissTokens  int     `json:"cacheMissTokens"`
-	Estimated        bool    `json:"estimated,omitempty"`
-	RequestCount     int     `json:"requestCount"`
-	SessionCost      float64 `json:"sessionCost,omitempty"`
-	SessionCurrency  string  `json:"sessionCurrency,omitempty"`
-	SessionCostUsd   float64 `json:"sessionCostUsd,omitempty"`
+	PromptTokens           int     `json:"promptTokens"`
+	CompletionTokens       int     `json:"completionTokens"`
+	TotalTokens            int     `json:"totalTokens"`
+	ReasoningTokens        int     `json:"reasoningTokens"`
+	CacheHitTokens         int     `json:"cacheHitTokens"`
+	CacheMissTokens        int     `json:"cacheMissTokens"`
+	CacheWriteTokens       int     `json:"cacheWriteTokens,omitempty"`
+	CacheWriteBilledTokens float64 `json:"cacheWriteBilledTokens,omitempty"`
+	Estimated              bool    `json:"estimated,omitempty"`
+	RequestCount           int     `json:"requestCount"`
+	SessionCost            float64 `json:"sessionCost,omitempty"`
+	SessionCurrency        string  `json:"sessionCurrency,omitempty"`
+	SessionCostUsd         float64 `json:"sessionCostUsd,omitempty"`
 }
 
 type sourceSessionCacheCounters struct {
@@ -966,6 +972,8 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 	cacheHitTokens, cacheMissTokens := t.usageTelemetry.cacheTokenDelta(source, u, e.SessionHit, e.SessionMiss)
 	t.usageTelemetry.CacheHitTokens += cacheHitTokens
 	t.usageTelemetry.CacheMissTokens += cacheMissTokens
+	t.usageTelemetry.CacheWriteTokens += u.CacheWriteTokens
+	t.usageTelemetry.CacheWriteBilledTokens += u.CacheWriteBilledTokens
 	t.usageTelemetry.Estimated = t.usageTelemetry.Estimated || u.Estimated
 	requestCount := u.RequestCount
 	if requestCount <= 0 {
@@ -996,6 +1004,8 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 	src.ReasoningTokens += u.ReasoningTokens
 	src.CacheHitTokens += cacheHitTokens
 	src.CacheMissTokens += cacheMissTokens
+	src.CacheWriteTokens += u.CacheWriteTokens
+	src.CacheWriteBilledTokens += u.CacheWriteBilledTokens
 	src.Estimated = src.Estimated || u.Estimated
 	src.RequestCount += requestCount
 	if e.Pricing != nil {
@@ -1029,25 +1039,29 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 
 func usageStatsAsProviderUsage(stats usageSourceStats) *provider.Usage {
 	return &provider.Usage{
-		PromptTokens:     stats.PromptTokens,
-		CompletionTokens: stats.CompletionTokens,
-		TotalTokens:      stats.TotalTokens,
-		ReasoningTokens:  stats.ReasoningTokens,
-		CacheHitTokens:   stats.CacheHitTokens,
-		CacheMissTokens:  stats.CacheMissTokens,
-		Estimated:        stats.Estimated,
+		PromptTokens:           stats.PromptTokens,
+		CompletionTokens:       stats.CompletionTokens,
+		TotalTokens:            stats.TotalTokens,
+		ReasoningTokens:        stats.ReasoningTokens,
+		CacheHitTokens:         stats.CacheHitTokens,
+		CacheMissTokens:        stats.CacheMissTokens,
+		CacheWriteTokens:       stats.CacheWriteTokens,
+		CacheWriteBilledTokens: stats.CacheWriteBilledTokens,
+		Estimated:              stats.Estimated,
 	}
 }
 
 func sessionStatsAsProviderUsage(stats sessionUsageStats) *provider.Usage {
 	return &provider.Usage{
-		PromptTokens:     stats.PromptTokens,
-		CompletionTokens: stats.CompletionTokens,
-		TotalTokens:      stats.TotalTokens,
-		ReasoningTokens:  stats.ReasoningTokens,
-		CacheHitTokens:   stats.CacheHitTokens,
-		CacheMissTokens:  stats.CacheMissTokens,
-		Estimated:        stats.Estimated,
+		PromptTokens:           stats.PromptTokens,
+		CompletionTokens:       stats.CompletionTokens,
+		TotalTokens:            stats.TotalTokens,
+		ReasoningTokens:        stats.ReasoningTokens,
+		CacheHitTokens:         stats.CacheHitTokens,
+		CacheMissTokens:        stats.CacheMissTokens,
+		CacheWriteTokens:       stats.CacheWriteTokens,
+		CacheWriteBilledTokens: stats.CacheWriteBilledTokens,
+		Estimated:              stats.Estimated,
 	}
 }
 

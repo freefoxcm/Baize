@@ -691,14 +691,16 @@ const (
 // Estimated marks counts reconstructed locally because the provider's terminal
 // usage record did not arrive; exact provider usage leaves it false.
 type Usage struct {
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-	CacheHitTokens   int    // prompt tokens served from cache
-	CacheMissTokens  int    // prompt tokens not cached
-	ReasoningTokens  int    // subset of CompletionTokens spent on chain-of-thought
-	FinishReason     string // "stop", "tool_calls", "length", "content_filter", "repetition_truncation", …
-	Estimated        bool
+	PromptTokens           int
+	CompletionTokens       int
+	TotalTokens            int
+	CacheHitTokens         int     // prompt tokens served from cache
+	CacheMissTokens        int     // prompt tokens not cached, including CacheWriteTokens
+	CacheWriteTokens       int     // subset of CacheMissTokens used to create provider cache entries
+	CacheWriteBilledTokens float64 // cache-write charge expressed in ordinary input-token equivalents
+	ReasoningTokens        int     // subset of CompletionTokens spent on chain-of-thought
+	FinishReason           string  // "stop", "tool_calls", "length", "content_filter", "repetition_truncation", …
+	Estimated              bool
 	// RequestCount is the number of provider requests represented by this
 	// aggregate. Zero means one request for backward compatibility. Recovery
 	// paths that merge multiple attempts set the exact count.
@@ -761,8 +763,30 @@ func (p *Pricing) Cost(u *Usage) float64 {
 	} else if miss == 0 && hit > 0 && u.PromptTokens > hit {
 		miss = u.PromptTokens - hit
 	}
+	// CacheMissTokens intentionally remains the raw prompt-token denominator
+	// used by cache hit-rate displays, so cache writes are included there. For
+	// cost, split those writes back out and replace them with their provider-
+	// supplied input-token equivalent (for example Anthropic's 1.25x 5-minute
+	// writes or 2x 1-hour writes). Older providers leave both fields at zero and
+	// keep the legacy one-input-rate behavior. A write count without billed
+	// units also falls back to 1x for backward compatibility.
+	write := u.CacheWriteTokens
+	if write < 0 {
+		write = 0
+	}
+	if write > miss {
+		write = miss
+	}
+	billedWrite := 0.0
+	if write > 0 {
+		billedWrite = u.CacheWriteBilledTokens
+		if billedWrite <= 0 {
+			billedWrite = float64(write)
+		}
+	}
+	inputTokenUnits := float64(miss-write) + billedWrite
 	return (float64(hit)*p.CacheHit +
-		float64(miss)*p.Input +
+		inputTokenUnits*p.Input +
 		float64(u.CompletionTokens)*p.Output) / 1e6
 }
 

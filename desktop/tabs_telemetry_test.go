@@ -135,6 +135,34 @@ func TestWorkspaceTabRepricesUsageWithoutMixingCurrencies(t *testing.T) {
 	}
 }
 
+func TestWorkspaceTabRepricesCacheWritesWithoutLosingBillingTier(t *testing.T) {
+	tab := &WorkspaceTab{}
+	tab.recordUsage(event.Event{
+		Usage: &provider.Usage{
+			PromptTokens:           500_000,
+			TotalTokens:            500_000,
+			CacheMissTokens:        500_000,
+			CacheWriteTokens:       100_000,
+			CacheWriteBilledTokens: 200_000,
+		},
+		UsageSource: event.UsageSourceExecutor,
+		Pricing:     &provider.Pricing{Input: 2, Currency: "CNY"},
+	})
+	if ok := tab.repriceUsage(map[string]*provider.Pricing{
+		event.UsageSourceExecutor: {Input: 1, Currency: "USD"},
+	}); !ok {
+		t.Fatal("repriceUsage rejected cache-write usage")
+	}
+	got := tab.telemetrySnapshot().Usage
+	// 400K ordinary input units + 200K billed cache-write units.
+	if got.SessionCurrency != "$" || got.SessionCost != 0.6 {
+		t.Fatalf("repriced cache-write usage = %f %q, want 0.6 USD", got.SessionCost, got.SessionCurrency)
+	}
+	if got.CacheWriteTokens != 100_000 || got.CacheWriteBilledTokens != 200_000 {
+		t.Fatalf("persisted cache writes = raw %d billed %v", got.CacheWriteTokens, got.CacheWriteBilledTokens)
+	}
+}
+
 func TestRepriceTabUsageUsesDetectedLocaleForAutoCurrency(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	cfg := config.Default()
@@ -278,14 +306,16 @@ func TestTelemetryLastContextRoundTripAndLegacyDefaults(t *testing.T) {
 	want := tabTelemetrySnapshot{
 		Version: 2,
 		Usage: sessionUsageStats{
-			PromptTokens:         100,
-			TotalTokens:          120,
-			LastUsedTokens:       120,
-			LastPromptTokens:     100,
-			LastCompletionTokens: 20,
-			LastReasoningTokens:  8,
-			LastCacheHitTokens:   70,
-			LastCacheMissTokens:  30,
+			PromptTokens:           100,
+			TotalTokens:            120,
+			CacheWriteTokens:       5,
+			CacheWriteBilledTokens: 10,
+			LastUsedTokens:         120,
+			LastPromptTokens:       100,
+			LastCompletionTokens:   20,
+			LastReasoningTokens:    8,
+			LastCacheHitTokens:     70,
+			LastCacheMissTokens:    30,
 		},
 	}
 	if err := saveTelemetry(path, want); err != nil {
@@ -300,11 +330,17 @@ func TestTelemetryLastContextRoundTripAndLegacyDefaults(t *testing.T) {
 		got.LastCacheMissTokens != want.Usage.LastCacheMissTokens {
 		t.Fatalf("last context round trip = %+v, want %+v", got, want.Usage)
 	}
+	if got.CacheWriteTokens != 5 || got.CacheWriteBilledTokens != 10 {
+		t.Fatalf("cache-write round trip = raw %d billed %v, want 5/10", got.CacheWriteTokens, got.CacheWriteBilledTokens)
+	}
 
 	if err := os.WriteFile(path, []byte(`{"version":2,"usage":{"promptTokens":50,"totalTokens":50}}`), 0o644); err != nil {
 		t.Fatalf("write pre-last-context telemetry: %v", err)
 	}
 	legacy := loadTelemetry(path).Usage
+	if legacy.CacheWriteTokens != 0 || legacy.CacheWriteBilledTokens != 0 {
+		t.Fatalf("legacy cache-write fields = raw %d billed %v, want zero defaults", legacy.CacheWriteTokens, legacy.CacheWriteBilledTokens)
+	}
 	if legacy.LastUsedTokens != 0 ||
 		legacy.LastPromptTokens != 0 ||
 		legacy.LastCompletionTokens != 0 ||

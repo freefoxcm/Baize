@@ -630,6 +630,8 @@ func mergeUsage(total, next *provider.Usage, countRequests bool) *provider.Usage
 	total.TotalTokens += next.TotalTokens
 	total.CacheHitTokens += next.CacheHitTokens
 	total.CacheMissTokens += next.CacheMissTokens
+	total.CacheWriteTokens += next.CacheWriteTokens
+	total.CacheWriteBilledTokens += next.CacheWriteBilledTokens
 	total.ReasoningTokens += next.ReasoningTokens
 	if countRequests {
 		total.RequestCount = totalRequests + nextRequests

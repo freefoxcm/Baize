@@ -39,8 +39,8 @@ func (failedRequestProvider) Stream(ctx context.Context, _ provider.Request) (<-
 }
 
 func TestMergeStreamUsageCountsProviderRequests(t *testing.T) {
-	first := &provider.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15, RequestCount: 1}
-	retry := &provider.Usage{PromptTokens: 20, CompletionTokens: 8, TotalTokens: 28, RequestCount: 1}
+	first := &provider.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15, CacheWriteTokens: 2, CacheWriteBilledTokens: 2.5, RequestCount: 1}
+	retry := &provider.Usage{PromptTokens: 20, CompletionTokens: 8, TotalTokens: 28, CacheWriteTokens: 3, CacheWriteBilledTokens: 6, RequestCount: 1}
 	got := mergeStreamUsage(first, retry)
 	if got == nil || got.TotalTokens != 43 || got.RequestCount != 2 || got.CompletionTokens != 13 {
 		t.Fatalf("merged usage = %+v, want total=43 requests=2 completion=13", got)
@@ -48,6 +48,9 @@ func TestMergeStreamUsageCountsProviderRequests(t *testing.T) {
 	// Billable PromptTokens align with summed cache hit+miss.
 	if got.CacheMissTokens != 30 || got.PromptTokens != 30 {
 		t.Fatalf("billable input = prompt %d miss %d, want 30/30", got.PromptTokens, got.CacheMissTokens)
+	}
+	if got.CacheWriteTokens != 5 || got.CacheWriteBilledTokens != 8.5 {
+		t.Fatalf("merged cache writes = raw %d billed %v, want 5/8.5", got.CacheWriteTokens, got.CacheWriteBilledTokens)
 	}
 
 	third := &provider.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2, RequestCount: 1}
