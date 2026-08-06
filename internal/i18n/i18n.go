@@ -341,7 +341,7 @@ type Messages struct {
 	GoalPausedReason             string
 	GoalPausedFmt                string // %s = stop cause
 	GoalBudgetExtended           string
-	GoalRuntimeFmt               string // turns, limits, no-progress, extensions
+	GoalRuntimeFmt               string // turns used/limit, tokens used, no-progress, extensions
 	GoalRuntimeLastReason        string
 	ModelSwitchUnavailable       string
 	ModelSwitchBusy              string

@@ -288,10 +288,17 @@ func (a *Agent) runToolLoop(ctx context.Context, state *runLoopState) error {
 			prevPrefixShape = prefixShape
 		}
 
+		// Drain reasons queued since the previous capture (compaction,
+		// snip/prune, rewind, guardian merge) so CompareShape can attribute
+		// any prefix change to the operation that actually caused it, instead
+		// of a generic rewrite signal that also fires on local-only metadata
+		// edits.
+		contentReasons := a.session.DrainContentRewriteReasons()
+
 		streamed := a.streamWithMissingReasoningRecovery(ctx, step+1)
 		text, reasoning, signature, calls, responsesItems, usage := streamed.text, streamed.reasoning, streamed.signature, streamed.calls, streamed.responsesItems, streamed.usage
 		interrupted, partialToolStarted, partialCalls, err := streamed.interrupted, streamed.partialToolStarted, streamed.partialCalls, streamed.err
-		cacheDiagnostics := CompareShape(prevPrefixShape, prefixShape, usage)
+		cacheDiagnostics := CompareShape(prevPrefixShape, prefixShape, usage, contentReasons)
 		if err != nil {
 			a.emitTurnUsage(usage, &cacheDiagnostics)
 			if msg, ok := finishReasonMessage(usage); ok {

@@ -699,7 +699,7 @@ export const en = {
   "composer.taskModeResumeGoal": "Resume goal",
   "composer.goalPaused": "Goal paused",
   "composer.goalBlocked": "Goal blocked — resume to continue",
-  "composer.goalRuntimeLine": "turns {turnsUsed}/{turnsLimit} · tokens {tokensUsed}/{tokensLimit} · no-progress {noProgressTurns}/{noProgressLimit} · extensions {extensions}",
+  "composer.goalRuntimeLine": "turns {turnsUsed}/{turnsLimit} · tokens {tokensUsed} · no-progress {noProgressTurns}/{noProgressLimit} · extensions {extensions}",
   "composer.accessMenuTitle": "Tool access ({shortcut} toggles YOLO)",
   "composer.accessAsk": "Ask first",
   "composer.accessAskTitle": "Ask before approval-gated tool calls; Ask is not read-only",

@@ -357,21 +357,26 @@ func (s *Server) build(ctx context.Context, ref string) (*control.Controller, er
 	s.profileMu.RLock()
 	tokenMode := s.tokenMode
 	s.profileMu.RUnlock()
+	opts := boot.Options{
+		Model:       ref,
+		Sink:        s.bc,
+		Stderr:      os.Stderr,
+		StatsSource: "serve",
+		TokenMode:   tokenMode,
+	}
 	// Rebuilds (model/effort/work-mode switches) must keep the serving
 	// workspace's session store and workspace root: boot.Build would otherwise
 	// fall back to the global session dir, orphaning the per-workspace session
 	// list in GET /sessions. build() runs before the replacement is published,
 	// so s.ctl() still holds the outgoing controller whose values to continue.
 	cur := s.ctl()
-	return boot.Build(ctx, boot.Options{
-		Model:         ref,
-		Sink:          s.bc,
-		Stderr:        os.Stderr,
-		StatsSource:   "serve",
-		TokenMode:     tokenMode,
-		SessionDir:    cur.SessionDir(),
-		WorkspaceRoot: cur.WorkspaceRoot(),
-	})
+	opts.SessionDir = cur.SessionDir()
+	opts.WorkspaceRoot = cur.WorkspaceRoot()
+	// Keep the logical-session private temporary directory across model switches.
+	if cur, ok := cur.(*control.Controller); ok && cur != nil {
+		opts.SessionTemp = cur.SessionTemp()
+	}
+	return boot.Build(ctx, opts)
 }
 
 // reloadExtensions fail-atomically rebuilds the active controller generation

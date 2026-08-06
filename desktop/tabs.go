@@ -2596,6 +2596,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot, forcedTokenMode string) (TabM
 	defaultModel, defaultToolApprovalMode := desktopNewSessionDefaults(scope, actualRoot)
 
 	a.mu.Lock()
+	var reusable *WorkspaceTab
 	for _, id := range a.orderedTabIDsLocked() {
 		tab := a.tabs[id]
 		if a.blankTabMatchesTargetLocked(tab, scope, workspaceRoot) {
@@ -2603,12 +2604,25 @@ func (a *App) ensureBlankTab(scope, workspaceRoot, forcedTokenMode string) (TabM
 				a.mu.Unlock()
 				return TabMeta{}, err
 			}
-			a.activeTabID = tab.ID
-			meta := a.tabMeta(tab, true)
-			a.saveTabsLocked()
-			a.mu.Unlock()
-			return enrichTabMeta(meta), nil
+			reusable = tab
+			break
 		}
+	}
+	if reusable != nil {
+		a.mu.Unlock()
+		if err := a.alignReusableBlankTabModel(reusable, defaultModel); err != nil {
+			return TabMeta{}, err
+		}
+		a.mu.Lock()
+		if reusable.removed || a.tabs[reusable.ID] != reusable {
+			a.mu.Unlock()
+			return TabMeta{}, fmt.Errorf("blank session changed while applying the default model; retry")
+		}
+		a.activeTabID = reusable.ID
+		meta := a.tabMeta(reusable, true)
+		a.saveTabsLocked()
+		a.mu.Unlock()
+		return enrichTabMeta(meta), nil
 	}
 
 	// New blank sessions start from global session defaults for model and
@@ -2741,6 +2755,77 @@ func (a *App) ensureBlankTab(scope, workspaceRoot, forcedTokenMode string) (TabM
 	a.startTabControllerBuild(created)
 	a.emitProjectTreeChangedForSessionDirs(sessionListCacheDirForPath(prePath))
 	return enrichTabMeta(meta), nil
+}
+
+// alignReusableBlankTabModel makes a reused empty session obey the same
+// provider/model default as a newly-created session. Ready runtimes use the
+// normal failure-atomic model switch. A tab that is still starting has no
+// controller to swap, so invalidate its startup generation, update the empty
+// session's model metadata, and restart the build from the intended provider.
+func (a *App) alignReusableBlankTabModel(tab *WorkspaceTab, model string) error {
+	model = strings.TrimSpace(model)
+	if tab == nil || model == "" {
+		return nil
+	}
+
+	a.mu.RLock()
+	if tab.removed || a.tabs[tab.ID] != tab {
+		a.mu.RUnlock()
+		return fmt.Errorf("blank session changed while applying the default model; retry")
+	}
+	currentModel := strings.TrimSpace(tab.model)
+	ctrl := tab.Ctrl
+	path := strings.TrimSpace(tab.SessionPath)
+	a.mu.RUnlock()
+
+	storedModel, hasStoredModel := agent.LoadSessionModel(path)
+	storedModelChanged := path != "" && (!hasStoredModel || strings.TrimSpace(storedModel) != model)
+
+	if ctrl != nil {
+		if currentModel != model {
+			if err := a.SetModelForTab(tab.ID, model); err != nil {
+				return err
+			}
+		} else if storedModelChanged {
+			return a.persistTabModelIfCurrent(tab, model)
+		}
+		return nil
+	}
+
+	if currentModel == model && !storedModelChanged {
+		return nil
+	}
+	if storedModelChanged {
+		// With no published controller there is nothing to swap atomically. Fix
+		// the empty session metadata first so the replacement startup cannot
+		// prefer the outgoing provider over the corrected tab model.
+		if err := agent.SetBranchModelPreserveUpdated(path, model); err != nil {
+			return fmt.Errorf("persist default model for blank session: %w", err)
+		}
+	}
+
+	// A startup build may already have read the old sidecar model. Fence and
+	// cancel that generation before publishing the corrected tab model, then
+	// start a replacement build. The generation check prevents the cancelled
+	// build from overwriting the replacement if it completes late.
+	a.mu.Lock()
+	if tab.removed || a.tabs[tab.ID] != tab {
+		a.mu.Unlock()
+		return fmt.Errorf("blank session changed while applying the default model; retry")
+	}
+	if tab.Ctrl != nil {
+		a.mu.Unlock()
+		return a.alignReusableBlankTabModel(tab, model)
+	}
+	a.supersedeTabBuildLocked(tab)
+	tab.model = model
+	tab.Label = model
+	tab.Ready = false
+	clearTabStartupError(tab)
+	a.saveTabsLocked()
+	a.mu.Unlock()
+	a.startTabControllerBuild(tab)
+	return nil
 }
 
 // blankTabMatchesTargetLocked returns true if tab is a reusable blank tab

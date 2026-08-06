@@ -282,6 +282,15 @@ type Agent struct {
 	// run loop writes it while a frontend's status line reads it, so it is atomic.
 	lastUsage atomic.Pointer[provider.Usage]
 
+	// lastRequestSentAt is the wall-clock moment (unix millis) the most recent
+	// provider request was sent. stream() reads-and-resets it via Swap each time
+	// it builds the next request, so it can tell the provider how long the gap
+	// since the previous request was (adaptive prompt-cache TTL, e.g. Anthropic's
+	// 1h vs default 5m ephemeral breakpoint). Zero means no request sent yet — a
+	// fresh process or sub-agent naturally starts here and gets the provider's
+	// cheaper default TTL.
+	lastRequestSentAt atomic.Int64
+
 	// sessCacheHit/sessCacheMiss accumulate cache tokens across every API call
 	// this session, so frontends can show the aggregate hit-rate (Σhit/Σ(hit+miss))
 	// — a steadier, cost-oriented number than the single-turn rate. They are NOT
@@ -2916,11 +2925,20 @@ func (a *Agent) stream(ctx context.Context, turn int, sink event.Sink) (string, 
 	if err != nil {
 		return "", "", "", "", "", nil, nil, nil, false, false, nil, err
 	}
-	inputFloor := 0
-	if previous := a.lastUsage.Load(); previous != nil {
-		inputFloor = previous.PromptTokens
+	// Stamp at send time (not response-received time), so the measured gap is
+	// the true idle time since the previous request went out — not undercounted
+	// by that request's own generation duration. A missing-reasoning recovery
+	// retry (streamWithMissingReasoningRecovery) calls stream() again right
+	// away and correctly measures ~0 gap against its own just-set stamp.
+	// The gap travels via context (WithCacheGapHint) and never enters
+	// provider.Request, so non-Anthropic providers and request equality stay clean.
+	sentAt := time.Now()
+	if priorMs := a.lastRequestSentAt.Swap(sentAt.UnixMilli()); priorMs != 0 {
+		ctx = provider.WithCacheGapHint(ctx, sentAt.Sub(time.UnixMilli(priorMs)))
 	}
-	ch, err := provider.StreamWithRequestBudgetEstimate(ctx, a.prov, req, inputFloor)
+	// After #7725 Goal token request admission was removed; stream goes
+	// directly to the provider while still carrying the cache-gap hint.
+	ch, err := a.prov.Stream(ctx, req)
 	if err != nil {
 		return "", "", "", "", "", nil, nil, provider.UsageWithRequestAttemptCount(ctx, nil), false, false, nil, err
 	}

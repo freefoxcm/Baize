@@ -55,6 +55,7 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/recovery"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/sessiontemp"
 	"reasonix/internal/skill"
 	"reasonix/internal/store"
 	"reasonix/internal/taskmonitor"
@@ -95,7 +96,7 @@ type Controller struct {
 	// pauses instead of defaulting to continue.
 	evaluator goaleval.Evaluator
 	// goalUsageTee accounts billable usage events into the active goal turn's
-	// token budget. It wraps the public sink when the caller didn't provide one.
+	// observational token total. It wraps the public sink when the caller didn't provide one.
 	goalUsageTee *goalUsageTee
 	sink         event.Sink
 	policy       permission.Policy
@@ -269,6 +270,10 @@ type Controller struct {
 	autosaveWG  sync.WaitGroup
 	planMode    bool
 	sessionPath string
+	// sessionTemp owns the logical-session private temporary directory shared
+	// by Bash calls. Retained for this Controller's lifetime; rotated on
+	// /new, /clear, resume of another session, and branch switches.
+	sessionTemp *sessiontemp.Manager
 	// recoveryDepthCapNotices records session paths that already surfaced the
 	// depth-cap recovery warning. Repeated saves on the same conflict copy are
 	// diagnostic noise for the UI; keep logging/diagnostics, but emit the user
@@ -521,6 +526,11 @@ type Options struct {
 	// Ablation switches subsystems off for a benchmark arm. The zero value runs
 	// everything.
 	Ablation ablation.Set
+	// SessionTemp is the logical-session private temporary directory manager
+	// shared by sandboxed Bash calls. Nil creates a fresh Manager owned by this
+	// Controller. Hot rebuilds pass the previous Controller's Manager so the
+	// temporary directory survives model/settings swaps.
+	SessionTemp *sessiontemp.Manager
 }
 
 // New builds a Controller. A nil Sink is replaced with event.Discard. When the
@@ -595,6 +605,16 @@ func New(opts Options) *Controller {
 		providerResolver:                  opts.ProviderResolver,
 		approval:                          newApprovalManager(opts.Policy, ToolApprovalAsk, opts.ApprovalTimeout),
 	}
+	// Session-private temporary directory: reuse a shared Manager on hot
+	// rebuild, otherwise create one. Retain so ReleaseResources/Close drop the
+	// owner reference without racing a replacement Controller.
+	if opts.SessionTemp != nil {
+		c.sessionTemp = opts.SessionTemp
+	} else {
+		c.sessionTemp = sessiontemp.New()
+	}
+	c.sessionTemp.Retain()
+
 	if strings.TrimSpace(opts.WorkspaceRoot) != "" {
 		c.autoResearch = autoresearch.NewStore(opts.WorkspaceRoot)
 	}
@@ -774,10 +794,12 @@ func (c *Controller) markEditedForNewUser(startMessages int, original string) {
 		msgs[i].Edited = true
 		msgs[i].Original = original
 		// A periodic autosave may already contain this user message without its
-		// local edit metadata. Classify the prefix mutation atomically so the
-		// turn-end save performs an owned rewrite instead of forking a bogus
-		// same-revision recovery branch.
-		s.Rewrite(msgs)
+		// local edit metadata. Classify the mutation atomically so the turn-end
+		// save performs an owned rewrite instead of forking a bogus
+		// same-revision recovery branch. Edited/Original are local-only display
+		// metadata (provider requests ignore them), so this must not report a
+		// cache-prefix change — ReplaceLocalMetadata, not Rewrite.
+		s.ReplaceLocalMetadata(msgs)
 		return
 	}
 }
@@ -1581,7 +1603,7 @@ func (c *Controller) applyGoalCommand(input, display string) bool {
 		rt := c.GoalRuntime()
 		c.notice(fmt.Sprintf(i18n.M.GoalCurrentFmt, goal))
 		c.notice(fmt.Sprintf(i18n.M.GoalRuntimeFmt,
-			rt.TurnsUsed, rt.TurnsLimit, rt.TokensUsed, rt.TokensLimit,
+			rt.TurnsUsed, rt.TurnsLimit, rt.TokensUsed,
 			rt.NoProgressTurns, rt.NoProgressLimit, rt.BudgetExtensions))
 		if rt.LastReason != "" {
 			c.noticeDetail(i18n.M.GoalRuntimeLastReason, rt.LastReason)
@@ -3191,6 +3213,7 @@ func (c *Controller) NewSession() error {
 	freshPath := c.SessionPath()
 	c.rebindCheckpoints(freshPath)
 	c.resetRecoveryForNewSession(freshPath)
+	c.rotateSessionTemp()
 	c.snapshotMu.Unlock()
 	// A new session starts with no active goal: without this, a running goal's
 	// text kept injecting into the fresh session's first turns. The old
@@ -3274,6 +3297,7 @@ func (c *Controller) ClearSession() error {
 	freshPath := c.SessionPath()
 	c.rebindCheckpoints(freshPath)
 	c.resetRecoveryForNewSession(freshPath)
+	c.rotateSessionTemp()
 	c.snapshotMu.Unlock()
 	// Same contract as NewSession: the fresh session starts with no active goal.
 	c.ClearGoal()
@@ -3494,6 +3518,8 @@ func (c *Controller) forkNamed(turn int, name string, switchToFork bool) (string
 		if c.guardianSess != nil {
 			c.guardianSess.Reset()
 		}
+		// Switching into the fork is a new logical session for temporary files.
+		c.rotateSessionTemp()
 		c.snapshotMu.Unlock()
 	}
 	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
@@ -3574,6 +3600,7 @@ func (c *Controller) Branch(name string) (string, error) {
 		c.guardianSess.Reset()
 	}
 	c.carryRecoveryState(newPath)
+	c.rotateSessionTemp()
 	c.snapshotMu.Unlock()
 	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
 		Text: fmt.Sprintf("created branch %s", agent.BranchID(newPath))})
@@ -3635,6 +3662,7 @@ func (c *Controller) SwitchBranch(ref string) (agent.BranchInfo, error) {
 	c.restoreTerminalGoalTodos(match.Path)
 	c.loadGuardianSession()
 	c.loadRecoveryState(match.Path)
+	c.rotateSessionTemp()
 	c.snapshotMu.Unlock()
 	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
 		Text: fmt.Sprintf("switched to branch %s", branchDisplayName(match))})
@@ -3738,10 +3766,16 @@ func (c *Controller) summarizeAt(ctx context.Context, turn int, from bool) error
 
 // Resume seeds the session from a loaded transcript and pins the active file to
 // its path so auto-save keeps appending there.
+//
+// When the controller already has a different non-empty session path, Resume
+// rotates the private temporary generation so the loaded conversation cannot
+// see the previous session's temporary files. Same-path Resume (hot rebuild
+// migration via AdoptHistory) keeps the generation.
 func (c *Controller) Resume(s *agent.Session, path string) {
 	// See snapshotMu: the swap must not interleave with an in-flight save.
 	// recoverInterruptedTurn and maybeColdResumePrune snapshot on their own,
 	// so they stay outside the locked section (snapshotMu is not reentrant).
+	prevPath := c.SessionPath()
 	c.snapshotMu.Lock()
 	if c.executor != nil {
 		c.executor.SetSession(s)
@@ -3753,13 +3787,21 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	c.mu.Unlock()
 	c.setActiveJobSession(path)
 	c.rebindCheckpoints(path)
-	c.goals.restoreFromState(path)
+	if migPath, migData, migrated := c.goals.restoreFromState(path); migrated {
+		// Persist legacy budget_tokens → running (and tokensLimit=0) so the
+		// next cold start does not re-enter the removed hard-limit pause.
+		// restoreFromState never issues a provider request.
+		c.persistGoalState(migPath, migData, true)
+	}
 	if c.executor != nil {
 		c.executor.RestoreDeliveryCheckpoint(c.goals.deliveryState())
 	}
 	c.restoreTerminalGoalTodos(path)
 	c.loadGuardianSession()
 	c.loadRecoveryState(path)
+	if shouldRotateSessionTempOnResume(prevPath, path) {
+		c.rotateSessionTemp()
+	}
 	c.snapshotMu.Unlock()
 	c.recoverCheckpointTransactions()
 	c.recoverInterruptedTurn(path)
@@ -3771,6 +3813,15 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	if err := c.extensionSessionPhase(context.Background(), extension.PointSessionLoad, dispatch.PhaseLoad, path); err != nil {
 		c.extensionWarn("session policy failed at session.load", err)
 	}
+}
+
+func shouldRotateSessionTempOnResume(prevPath, nextPath string) bool {
+	prevPath = strings.TrimSpace(prevPath)
+	nextPath = strings.TrimSpace(nextPath)
+	if prevPath == "" || nextPath == "" {
+		return false
+	}
+	return filepath.Clean(prevPath) != filepath.Clean(nextPath)
 }
 
 func (c *Controller) loadGuardianSession() {
@@ -4844,6 +4895,10 @@ func (c *Controller) setSessionPath(p string, fresh bool) {
 	c.rebindCheckpoints(p)
 	if fresh {
 		c.resetRecoveryForNewSession(p)
+		// A newly-created conversation must not share the previous logical
+		// session's temporary files (e.g. after EnsureSessionPath on a
+		// controller that already ran commands).
+		c.rotateSessionTemp()
 	} else {
 		c.loadRecoveryState(p)
 	}
@@ -5661,7 +5716,33 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 		if c.cleanup != nil {
 			c.cleanup()
 		}
+		// Drop the Controller owner reference last so background job leases
+		// that outlive close still pin retired generations until they exit.
+		if c.sessionTemp != nil {
+			c.sessionTemp.Release()
+		}
 	})
+}
+
+// SessionTemp returns the logical-session private temporary directory manager.
+// Hot rebuilds pass this to the replacement Controller so the directory survives
+// model/settings swaps. Nil only when the Controller was constructed without one
+// (should not happen after New).
+func (c *Controller) SessionTemp() *sessiontemp.Manager {
+	if c == nil {
+		return nil
+	}
+	return c.sessionTemp
+}
+
+// rotateSessionTemp advances the private temporary generation so a new logical
+// session cannot see the previous session's temporary files. In-flight command
+// leases keep the old generation alive until they release.
+func (c *Controller) rotateSessionTemp() {
+	if c == nil || c.sessionTemp == nil {
+		return
+	}
+	c.sessionTemp.Rotate()
 }
 
 // Jobs returns the still-running background jobs for the status bar (nil when

@@ -6,6 +6,17 @@ branch.
 
 ## Unreleased
 
+### Fixed
+
+- **Issue #7575:** Linux Bash under bubblewrap no longer mounts a fresh empty
+  `--tmpfs /tmp` on every call. Consecutive commands in the same logical session
+  now share a private temporary directory (bound at `/tmp` on Linux, exported via
+  `TMPDIR`/`TMP`/`TEMP` on all platforms) without exposing the host public
+  temporary root. `/new`, `/clear`, resume of another session, and branch
+  switches rotate the directory; model/settings hot rebuilds keep it. Sub-agent
+  runs get independent directories. Temporary files are not durable across process
+  restarts.
+
 ### Added
 
 - **Serve defaults tool approval to `auto`** (desktop parity): a freshly
@@ -85,6 +96,8 @@ branch.
   grows to fill the freed height), and `applyStaticI18n` now translates
   `aria-label` attributes too.
 
+- Added `[ui].show_turn_usage` so CLI/TUI users can hide per-request token and
+  cost receipts from transcript scrollback without disabling usage accounting.
 - Added Extension Protocol v1 and the unified extension kernel: installed or
   linked sidecars can contribute tools, skills, commands, hooks, MCP servers,
   providers, interceptors, and structured UI surfaces through a versioned

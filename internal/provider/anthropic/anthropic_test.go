@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -31,7 +32,7 @@ func TestBuildRequest(t *testing.T) {
 		},
 		Tools: []provider.ToolSchema{{Name: "get_weather", Description: "w", Parameters: json.RawMessage(`{"type":"object"}`)}},
 	}
-	r := c.buildRequest(req)
+	r := c.buildRequest(context.Background(), req)
 
 	if r.Model != "claude-opus-4-8" {
 		t.Fatalf("model = %q", r.Model)
@@ -82,7 +83,7 @@ func TestBuildRequest(t *testing.T) {
 // there is no system message.
 func TestBuildRequestNoSystem(t *testing.T) {
 	c := &client{model: "claude-opus-4-8"}
-	r := c.buildRequest(provider.Request{
+	r := c.buildRequest(context.Background(), provider.Request{
 		Messages:  []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
 		Tools:     []provider.ToolSchema{{Name: "a"}, {Name: "b"}},
 		MaxTokens: 1000,
@@ -99,6 +100,79 @@ func TestBuildRequestNoSystem(t *testing.T) {
 	}
 }
 
+func lastBlockCacheControl(r anthRequest) *cacheControl {
+	last := r.Messages[len(r.Messages)-1]
+	return last.Content[len(last.Content)-1].CacheControl
+}
+
+func TestBuildRequestDefaultsToShortCacheTTL(t *testing.T) {
+	c := &client{model: "claude-opus-4-8"}
+	r := c.buildRequest(context.Background(), provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
+	got := lastBlockCacheControl(r)
+	if got == nil || got.TTL != "" {
+		t.Fatalf("cache_control = %+v, want empty TTL with no gap hint", got)
+	}
+}
+
+func TestBuildRequestUsesLongCacheTTLOnLargeGap(t *testing.T) {
+	c := &client{model: "claude-opus-4-8"}
+	ctx := provider.WithCacheGapHint(context.Background(), 3*time.Minute)
+	r := c.buildRequest(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
+	got := lastBlockCacheControl(r)
+	if got == nil || got.TTL != "1h" {
+		t.Fatalf("cache_control = %+v, want ttl=1h for a 3-minute gap", got)
+	}
+}
+
+func TestBuildRequestKeepsShortCacheTTLBelowThreshold(t *testing.T) {
+	c := &client{model: "claude-opus-4-8"}
+	ctx := provider.WithCacheGapHint(context.Background(), 10*time.Second)
+	r := c.buildRequest(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
+	got := lastBlockCacheControl(r)
+	if got == nil || got.TTL != "" {
+		t.Fatalf("cache_control = %+v, want default ttl for a 10s gap", got)
+	}
+}
+
+func TestCacheControlOmitsTTLByDefault(t *testing.T) {
+	b, err := json.Marshal(ephemeral(""))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(b) != `{"type":"ephemeral"}` {
+		t.Fatalf("default cache_control = %s, want byte-identical to every prior release", b)
+	}
+	b, err = json.Marshal(ephemeral("1h"))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(b) != `{"type":"ephemeral","ttl":"1h"}` {
+		t.Fatalf("1h cache_control = %s", b)
+	}
+}
+
+func TestUseLongCacheTTL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		gap  time.Duration
+		hint bool
+		want bool
+	}{
+		{"no hint", 0, false, false},
+		{"below threshold", cacheGapLongTTLThreshold - time.Second, true, false},
+		{"at threshold", cacheGapLongTTLThreshold, true, true},
+		{"above threshold", cacheGapLongTTLThreshold + time.Minute, true, true},
+	} {
+		ctx := context.Background()
+		if tc.hint {
+			ctx = provider.WithCacheGapHint(ctx, tc.gap)
+		}
+		if got := useLongCacheTTL(ctx); got != tc.want {
+			t.Errorf("%s: useLongCacheTTL = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestConfiguredMaxOutputTokensRespectsMandatoryAnthropicFallback(t *testing.T) {
 	configured, err := New(provider.Config{
 		Name: "anthropic", Model: "claude-opus-4-8",
@@ -107,7 +181,7 @@ func TestConfiguredMaxOutputTokensRespectsMandatoryAnthropicFallback(t *testing.
 	if err != nil {
 		t.Fatalf("New configured provider: %v", err)
 	}
-	if got := configured.(*client).buildRequest(provider.Request{}).MaxTokens; got != 8192 {
+	if got := configured.(*client).buildRequest(context.Background(), provider.Request{}).MaxTokens; got != 8192 {
 		t.Fatalf("configured max_tokens = %d, want 8192", got)
 	}
 
@@ -118,7 +192,7 @@ func TestConfiguredMaxOutputTokensRespectsMandatoryAnthropicFallback(t *testing.
 	if err != nil {
 		t.Fatalf("New disabled provider: %v", err)
 	}
-	if got := disabled.(*client).buildRequest(provider.Request{}).MaxTokens; got != defaultMaxTokens {
+	if got := disabled.(*client).buildRequest(context.Background(), provider.Request{}).MaxTokens; got != defaultMaxTokens {
 		t.Fatalf("mandatory max_tokens fallback = %d, want %d", got, defaultMaxTokens)
 	}
 }
@@ -151,12 +225,12 @@ func TestBuildRequestScopesLegacyTupleMigrationToMiMo(t *testing.T) {
 	legacy := json.RawMessage(`{"type":"object","properties":{"pair":{"type":"array","items":[{"type":"string"},{"type":"number"}]}}}`)
 	req := provider.Request{Tools: []provider.ToolSchema{{Name: "tuple", Parameters: legacy}}}
 
-	mimo := (&client{mimo: true}).buildRequest(req)
+	mimo := (&client{mimo: true}).buildRequest(context.Background(), req)
 	if got := string(mimo.Tools[0].InputSchema); !strings.Contains(got, `"prefixItems"`) || strings.Contains(got, `"items":[`) {
 		t.Fatalf("MiMo parameters = %s, want Draft 2020-12 tuple keywords", got)
 	}
 
-	other := (&client{}).buildRequest(req)
+	other := (&client{}).buildRequest(context.Background(), req)
 	if got := string(other.Tools[0].InputSchema); got != string(legacy) {
 		t.Fatalf("non-MiMo parameters changed:\n got: %s\nwant: %s", got, legacy)
 	}
@@ -375,7 +449,7 @@ func TestReadStreamError(t *testing.T) {
 // thinking block is replayed first (before its tool_use).
 func TestBuildRequestThinking(t *testing.T) {
 	c := &client{model: "claude-opus-4-8", thinking: "adaptive", effort: "high"}
-	r := c.buildRequest(provider.Request{
+	r := c.buildRequest(context.Background(), provider.Request{
 		Messages: []provider.Message{
 			{Role: provider.RoleUser, Content: "weather?"},
 			{Role: provider.RoleAssistant, ReasoningContent: "Let me check.", ReasoningSignature: "sig-abc",
@@ -404,7 +478,7 @@ func TestBuildRequestThinking(t *testing.T) {
 func TestBuildRequestOmitsResolvedToolCallMetadata(t *testing.T) {
 	readOnly := false
 	c := &client{model: "claude-opus-4-8"}
-	req := c.buildRequest(provider.Request{Messages: []provider.Message{{
+	req := c.buildRequest(context.Background(), provider.Request{Messages: []provider.Message{{
 		Role: provider.RoleAssistant,
 		ToolCalls: []provider.ToolCall{{
 			ID: "call_1", Name: "use_capability", Arguments: `{}`,
@@ -428,7 +502,7 @@ func TestBuildRequestOmitsResolvedToolCallMetadata(t *testing.T) {
 
 func TestBuildRequestThinkingEnabledGateway(t *testing.T) {
 	c := &client{model: "LongCat-2.0", thinking: "enabled", effort: "disabled"}
-	r := c.buildRequest(provider.Request{
+	r := c.buildRequest(context.Background(), provider.Request{
 		Messages: []provider.Message{
 			{Role: provider.RoleUser, Content: "hi"},
 			{Role: provider.RoleAssistant, Content: "ok", ReasoningContent: "signed reasoning", ReasoningSignature: "sig"},
@@ -449,7 +523,7 @@ func TestBuildRequestThinkingEnabledGateway(t *testing.T) {
 
 func TestBuildRequestDeepSeekThinking(t *testing.T) {
 	c := &client{model: "deepseek-v4-flash", deepseek: true, thinking: "enabled", effort: "max"}
-	r := c.buildRequest(provider.Request{
+	r := c.buildRequest(context.Background(), provider.Request{
 		Messages: []provider.Message{
 			{Role: provider.RoleSystem, Content: "stable system"},
 			{Role: provider.RoleUser, Content: "weather?"},
@@ -515,7 +589,7 @@ func TestBuildRequestDeepSeekReplaysOnlyToolCallReasoningFromHistory(t *testing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &client{model: "deepseek-v4-flash", deepseek: true, thinking: tc.thinking, effort: tc.effort}
-			r := c.buildRequest(provider.Request{Messages: toolTurn})
+			r := c.buildRequest(context.Background(), provider.Request{Messages: toolTurn})
 			if len(r.Tools) != 0 {
 				t.Fatalf("current request tools = %+v, want none", r.Tools)
 			}
@@ -531,7 +605,7 @@ func TestBuildRequestDeepSeekReplaysOnlyToolCallReasoningFromHistory(t *testing.
 
 	t.Run("reasoning without a tool call stays omitted", func(t *testing.T) {
 		c := &client{model: "deepseek-v4-flash", deepseek: true, thinking: "enabled", effort: "high"}
-		r := c.buildRequest(provider.Request{
+		r := c.buildRequest(context.Background(), provider.Request{
 			Messages: []provider.Message{
 				{Role: provider.RoleUser, Content: "hello"},
 				{Role: provider.RoleAssistant, Content: "hi", ReasoningContent: "private scratchpad"},
@@ -559,14 +633,14 @@ func TestBuildRequestDeepSeekThinkingModes(t *testing.T) {
 		{name: "unknown model falls back to Flash", model: "unknown-model", input: "xhigh", want: "high"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := (&client{model: tc.model, deepseek: true, effort: tc.input}).buildRequest(provider.Request{})
+			r := (&client{model: tc.model, deepseek: true, effort: tc.input}).buildRequest(context.Background(), provider.Request{})
 			if r.Thinking == nil || r.Thinking.Type != "enabled" || r.OutputConfig == nil || r.OutputConfig.Effort != tc.want {
 				t.Fatalf("DeepSeek thinking = %+v / %+v, want enabled/%s", r.Thinking, r.OutputConfig, tc.want)
 			}
 		})
 	}
 	t.Run("provider default", func(t *testing.T) {
-		r := (&client{model: "deepseek-v4-flash", deepseek: true}).buildRequest(provider.Request{})
+		r := (&client{model: "deepseek-v4-flash", deepseek: true}).buildRequest(context.Background(), provider.Request{})
 		if r.Thinking == nil || r.Thinking.Type != "enabled" || r.OutputConfig != nil {
 			t.Fatalf("default DeepSeek thinking = %+v / %+v, want enabled/provider-default effort", r.Thinking, r.OutputConfig)
 		}
@@ -574,7 +648,7 @@ func TestBuildRequestDeepSeekThinkingModes(t *testing.T) {
 
 	t.Run("disabled", func(t *testing.T) {
 		c := &client{model: "deepseek-v4-flash", deepseek: true, thinking: "enabled", effort: "disabled"}
-		r := c.buildRequest(provider.Request{
+		r := c.buildRequest(context.Background(), provider.Request{
 			Messages: []provider.Message{{Role: provider.RoleAssistant, ReasoningContent: "do not replay"}},
 			Tools:    []provider.ToolSchema{{Name: "tool"}},
 		})
@@ -592,7 +666,7 @@ func TestBuildRequestDeepSeekThinkingModes(t *testing.T) {
 
 func TestBuildRequestDeepSeekPreservesCallerTemperature(t *testing.T) {
 	zero := provider.TemperaturePtr(0)
-	r := (&client{model: "deepseek-v4-flash", deepseek: true}).buildRequest(provider.Request{Temperature: zero})
+	r := (&client{model: "deepseek-v4-flash", deepseek: true}).buildRequest(context.Background(), provider.Request{Temperature: zero})
 	if r.Temperature == nil || *r.Temperature != 0 {
 		t.Fatalf("DeepSeek temperature = %v, want explicit zero", r.Temperature)
 	}
@@ -604,7 +678,7 @@ func TestBuildRequestDeepSeekPreservesCallerTemperature(t *testing.T) {
 		t.Fatalf("DeepSeek request omitted explicit temperature: %s", b)
 	}
 
-	native := (&client{model: "claude-opus-4-8"}).buildRequest(provider.Request{Temperature: provider.TemperaturePtr(0.5)})
+	native := (&client{model: "claude-opus-4-8"}).buildRequest(context.Background(), provider.Request{Temperature: provider.TemperaturePtr(0.5)})
 	if native.Temperature != nil {
 		t.Fatalf("native Anthropic temperature = %v, want omitted", native.Temperature)
 	}
@@ -621,7 +695,7 @@ func TestBuildRequestDeepSeekPreservesCallerTemperature(t *testing.T) {
 // NOT replayed (even with a signature present) since the model wasn't asked to think.
 func TestBuildRequestThinkingOff(t *testing.T) {
 	c := &client{model: "claude-opus-4-8"}
-	r := c.buildRequest(provider.Request{Messages: []provider.Message{
+	r := c.buildRequest(context.Background(), provider.Request{Messages: []provider.Message{
 		{Role: provider.RoleUser, Content: "hi"},
 		{Role: provider.RoleAssistant, Content: "ok", ReasoningContent: "x", ReasoningSignature: "sig"},
 	}})
@@ -637,7 +711,7 @@ func TestBuildRequestThinkingOff(t *testing.T) {
 
 func TestBuildRequestDropsLocalMetadata(t *testing.T) {
 	c := &client{model: "claude-opus-4-8"}
-	r := c.buildRequest(provider.Request{Messages: []provider.Message{
+	r := c.buildRequest(context.Background(), provider.Request{Messages: []provider.Message{
 		{Role: provider.RoleUser, Content: "continue"},
 		{Role: provider.RoleUser, Content: "edited prompt", Edited: true, Original: "original prompt"},
 		{Role: provider.RoleAssistant, Content: "done", WorkDurationMs: 24_000, MemoryCitations: []provider.MemoryCitation{{

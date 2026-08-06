@@ -694,6 +694,7 @@ export interface GoalRuntime {
   turnsUsed: number;
   turnsLimit: number;
   tokensUsed: number;
+  /** @deprecated Goal has no hard token limit; retained as 0 for old hosts/clients. */
   tokensLimit: number;
   noProgressTurns: number;
   noProgressLimit: number;

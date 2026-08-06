@@ -2357,7 +2357,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.taskModeResumeGoal": "恢復目標",
   "composer.goalPaused": "目標已暫停",
   "composer.goalBlocked": "目標被阻擋 — 恢復後繼續",
-  "composer.goalRuntimeLine": "輪次 {turnsUsed}/{turnsLimit} · token {tokensUsed}/{tokensLimit} · 無進展 {noProgressTurns}/{noProgressLimit} · 追加 {extensions}",
+  "composer.goalRuntimeLine": "輪次 {turnsUsed}/{turnsLimit} · token {tokensUsed} · 無進展 {noProgressTurns}/{noProgressLimit} · 追加 {extensions}",
   "composer.accessMenuTitle": "工具權限（{shortcut} 切換 Yolo）",
   "composer.accessAsk": "需要批准",
   "composer.accessAskTitle": "需審批的工具呼叫會先詢問；詢問不是唯讀模式",
