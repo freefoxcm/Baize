@@ -107,20 +107,26 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		now:      time.Now,
 	}
 	s.tokenMode = boot.TokenModeFull
-	s.applyDesktopDefaultApprovalMode(ctrl)
 	s.initTitleProvider()
 	return s
 }
 
-// applyDesktopDefaultApprovalMode applies the desktop-default tool approval
+// ApplyDesktopDefaultApprovalMode applies the desktop-default tool approval
 // posture to a freshly constructed controller — desktop parity: new sessions
 // default to auto (config desktop.default_tool_approval_mode, "auto" unless
 // configured otherwise) instead of the kernel's conservative ask. Runtime
 // switches (modebar, model/work-mode rebuilds) keep whatever the user picked;
-// only initial construction gets the default.
-func (s *Server) applyDesktopDefaultApprovalMode(ctrl control.SessionAPI) {
+// only initial construction gets the default. When the field is not set at
+// all, the controller's existing posture is left alone (tests and embedded
+// use construct controllers with their own approval policy). Called by the
+// serve CLI entrypoint, not by New, so tests and embedded use are unaffected
+// by the operator's machine config.
+func ApplyDesktopDefaultApprovalMode(ctrl control.SessionAPI) {
 	cfg, err := config.Load()
 	if err != nil {
+		return
+	}
+	if cfg.Desktop.DefaultToolApprovalMode == "" {
 		return
 	}
 	ctrl.SetToolApprovalMode(cfg.DesktopDefaultToolApprovalMode())
@@ -897,7 +903,16 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ch, unsubscribe := s.bc.Subscribe()
+	var ch <-chan []byte
+	var unsubscribe func()
+	// Subscribe and replay as one handoff. Prompt producers are serialized with
+	// this operation, so no original event can land between the two steps.
+	s.ctl().ReplayPendingPromptsWith(func() event.Sink {
+		ch, unsubscribe = s.bc.Subscribe()
+		return event.FuncSink(func(e event.Event) {
+			s.bc.EmitTo(ch, e)
+		})
+	})
 	defer unsubscribe()
 
 	fmt.Fprint(w, ": connected\n\n") // open the stream immediately

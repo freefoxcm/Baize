@@ -231,50 +231,50 @@ func TestServeEffortEndpoints(t *testing.T) {
 // serve controller defaults to the config desktop.default_tool_approval_mode
 // (auto under the default config), and an explicit ask config keeps ask.
 func TestServeDefaultToolApprovalMode(t *testing.T) {
-	// Default config → auto (desktop parity).
-	ctrl, _ := testCtrlWithWorkspace(t)
-	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
-	defer srv.Close()
-	resp, err := http.Get(srv.URL + "/status")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var st struct {
-		ToolApprovalMode string `json:"toolApprovalMode"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
-		t.Fatal(err)
-	}
-	if st.ToolApprovalMode != "auto" {
-		t.Fatalf("default toolApprovalMode = %q, want auto", st.ToolApprovalMode)
+	// The serve CLI entrypoint applies the configured desktop default; New()
+	// itself must not touch the controller posture (tests and embedded use
+	// construct their own policy). Isolate via REASONIX_HOME so the operator's
+	// machine config cannot leak in.
+	t.Setenv("REASONIX_HOME", t.TempDir())
+
+	mode := func(t *testing.T) string {
+		t.Helper()
+		ctrl, _ := testCtrlWithWorkspace(t)
+		ApplyDesktopDefaultApprovalMode(ctrl)
+		return ctrl.ToolApprovalMode()
 	}
 
-	// Explicit ask config → ask preserved (persisted before the server reads it).
+	// No explicit desktop default → the config default (auto, desktop parity).
+	if got := mode(t); got != "auto" {
+		t.Fatalf("default mode = %q, want auto", got)
+	}
+
+	// Explicit auto → auto.
 	editPath := config.UserConfigPath()
 	if editPath == "" {
 		t.Skip("no user config path in this test environment")
 	}
 	edit := config.LoadForEdit(editPath)
-	if err := edit.SetDesktopDefaultToolApprovalMode("ask"); err != nil {
+	if err := edit.SetDesktopDefaultToolApprovalMode("auto"); err != nil {
 		t.Fatal(err)
 	}
 	if err := edit.SaveTo(editPath); err != nil {
 		t.Fatal(err)
 	}
-	ctrl2, _ := testCtrlWithWorkspace(t)
-	srv2 := httptest.NewServer(New(ctrl2, NewBroadcaster(), config.ServeConfig{}).Handler())
-	defer srv2.Close()
-	resp2, err := http.Get(srv2.URL + "/status")
-	if err != nil {
+	if got := mode(t); got != "auto" {
+		t.Fatalf("configured auto mode = %q, want auto", got)
+	}
+
+	// Explicit ask → ask.
+	edit2 := config.LoadForEdit(editPath)
+	if err := edit2.SetDesktopDefaultToolApprovalMode("ask"); err != nil {
 		t.Fatal(err)
 	}
-	defer resp2.Body.Close()
-	if err := json.NewDecoder(resp2.Body).Decode(&st); err != nil {
+	if err := edit2.SaveTo(editPath); err != nil {
 		t.Fatal(err)
 	}
-	if st.ToolApprovalMode != "ask" {
-		t.Fatalf("configured toolApprovalMode = %q, want ask", st.ToolApprovalMode)
+	if got := mode(t); got != "ask" {
+		t.Fatalf("configured ask mode = %q, want ask", got)
 	}
 }
 

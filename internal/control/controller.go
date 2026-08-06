@@ -2479,8 +2479,10 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	c.approval.promptMu.Lock()
 	defer c.approval.promptMu.Unlock()
 
+	c.approval.promptEmitMu.Lock()
 	id, reply := c.approval.registerAsk(questions)
 	c.sink.Emit(event.Event{Kind: event.AskRequest, Ask: event.Ask{ID: id, Questions: questions}})
+	c.approval.promptEmitMu.Unlock()
 
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()
@@ -2571,16 +2573,52 @@ func askAnswersHaveSelection(answers []event.AskAnswer) bool {
 // requestApproval, so in practice at most one prompt is outstanding; the loops
 // stay general so a future concurrent prompt would still replay correctly.
 func (c *Controller) ReplayPendingPrompts() {
+	c.approval.promptEmitMu.Lock()
+	noApprovals := c.replayPendingPromptsTo(c.sink)
+	c.approval.promptEmitMu.Unlock()
+	if noApprovals {
+		// Retained compatibility hook; live Auto Guard cards are ordinary approvals.
+		c.ReplayUnresolvedRecoveries()
+	}
+}
+
+// ReplayPendingPromptsTo re-emits pending prompts to one frontend sink. Serve
+// uses this for a newly attached SSE client so existing browsers do not receive
+// duplicate approval/ask cards when another client reconnects.
+func (c *Controller) ReplayPendingPromptsTo(sink event.Sink) {
+	c.approval.promptEmitMu.Lock()
+	defer c.approval.promptEmitMu.Unlock()
+	c.replayPendingPromptsTo(sink)
+}
+
+// ReplayPendingPromptsWith performs an SSE connection handoff while prompt
+// registration and emission are paused. The factory must subscribe the new
+// client and return a sink that targets it; this closes the attach race where
+// the original prompt could otherwise land between Subscribe and replay.
+func (c *Controller) ReplayPendingPromptsWith(sinkFactory func() event.Sink) {
+	if sinkFactory == nil {
+		return
+	}
+	c.approval.promptEmitMu.Lock()
+	defer c.approval.promptEmitMu.Unlock()
+	c.replayPendingPromptsTo(sinkFactory())
+}
+
+func (c *Controller) replayPendingPromptsTo(sink event.Sink) bool {
 	approvals, asks := c.approval.snapshotPrompts()
+	c.emitPendingPrompts(sink, approvals, asks)
+	return len(approvals) == 0
+}
+
+func (c *Controller) emitPendingPrompts(sink event.Sink, approvals []event.Approval, asks []event.Ask) {
+	if sink == nil {
+		return
+	}
 	for _, a := range approvals {
-		c.sink.Emit(c.approvalRequestEvent(a))
+		sink.Emit(c.approvalRequestEvent(a))
 	}
 	for _, a := range asks {
-		c.sink.Emit(event.Event{Kind: event.AskRequest, Ask: a})
-	}
-	// Retained compatibility hook; live Auto Guard cards are ordinary approvals.
-	if len(approvals) == 0 {
-		c.ReplayUnresolvedRecoveries()
+		sink.Emit(event.Event{Kind: event.AskRequest, Ask: a})
 	}
 }
 
@@ -6628,6 +6666,7 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 		}
 	}
 
+	c.approval.promptEmitMu.Lock()
 	var id string
 	var reply chan approvalReply
 	if opts.fresh || opts.requireHuman || tool == planApprovalTool {
@@ -6641,6 +6680,7 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 	}
 
 	c.sink.Emit(c.approvalRequestEvent(event.Approval{ID: id, Tool: tool, Subject: subject, Reason: reason, RawInput: append(json.RawMessage(nil), args...), Fresh: opts.fresh}))
+	c.approval.promptEmitMu.Unlock()
 	// The agent now needs the user's attention; a Notification hook can ping an
 	// external channel (desktop notice, phone) while the run blocks on the reply.
 	go c.hooks.Notification(ctx, approvalNotificationText(tool, subject), "permission_prompt")

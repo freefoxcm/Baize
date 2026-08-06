@@ -955,6 +955,9 @@ func runServe(args []string) int {
 
 	srv := serve.New(ctrl, bc, serveCfg)
 	srv.SetSessionLeases(leases)
+	// Desktop parity for the standalone serve process: apply the configured
+	// desktop default tool-approval mode (auto unless configured otherwise).
+	serve.ApplyDesktopDefaultApprovalMode(ctrl)
 
 	// With --port-file the supervisor needs the real bound port (--addr may be
 	// 127.0.0.1:0), so listen first, record the address, then serve on the
