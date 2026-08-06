@@ -381,6 +381,92 @@ func TestReadStream(t *testing.T) {
 	}
 }
 
+// TestReadStreamIgnoresTransportErrorAfterMessageStop: a complete stream that
+// already received message_stop must finalize successfully even if the
+// connection resets while draining the rest of the body.
+func TestReadStreamIgnoresTransportErrorAfterMessageStop(t *testing.T) {
+	// message_stop arrives; the body then ends abruptly. We must not surface
+	// StreamInterruptedError after a clean terminal.
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = io.WriteString(pw, `event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":5}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`)
+		// Simulate a post-terminal reset while the client might still be reading.
+		_ = pw.CloseWithError(io.ErrUnexpectedEOF)
+	}()
+	c := &client{name: "anthropic"}
+	resp := &http.Response{Body: pr}
+	ch := make(chan provider.Chunk)
+	go c.readStream(context.Background(), resp, ch)
+
+	var text strings.Builder
+	var sawDone, sawErr bool
+	for ck := range ch {
+		switch ck.Type {
+		case provider.ChunkText:
+			text.WriteString(ck.Text)
+		case provider.ChunkDone:
+			sawDone = true
+		case provider.ChunkError:
+			sawErr = true
+			t.Fatalf("post-terminal transport error must not surface: %v", ck.Err)
+		}
+	}
+	if text.String() != "ok" || !sawDone || sawErr {
+		t.Fatalf("text=%q done=%v err=%v", text.String(), sawDone, sawErr)
+	}
+}
+
+// TestReadStreamRequiresMessageStop: EOF after a complete tool block but before
+// message_stop must surface StreamInterruptedError so the attempt stays
+// uncommitted (tool calls remain speculative).
+func TestReadStreamRequiresMessageStop(t *testing.T) {
+	sse := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"bash"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"cmd\":\"ls\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+`
+	c := &client{name: "anthropic"}
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(sse))}
+	ch := make(chan provider.Chunk)
+	go c.readStream(context.Background(), resp, ch)
+
+	var gotInterrupted bool
+	var sawDone bool
+	for ck := range ch {
+		switch ck.Type {
+		case provider.ChunkDone:
+			sawDone = true
+		case provider.ChunkError:
+			var interrupted *provider.StreamInterruptedError
+			gotInterrupted = errors.As(ck.Err, &interrupted)
+		}
+	}
+	if sawDone {
+		t.Fatal("must not emit ChunkDone without message_stop")
+	}
+	if !gotInterrupted {
+		t.Fatal("EOF before message_stop must surface StreamInterruptedError")
+	}
+}
+
 // LongCat's Anthropic-compatible SSE stream can omit message_start.usage and
 // report the complete usage object in message_delta. Those input/cache counters
 // must not disappear from Reasonix metrics and billing estimates.

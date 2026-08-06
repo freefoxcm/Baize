@@ -4253,6 +4253,18 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		m.retryMax = e.RetryMax
 		return
 	}
+	if e.Kind == event.StreamAttempt {
+		// Body-phase replay: clear any in-progress tool presentation and surface
+		// a reconnect marker. Text already in terminal scrollback is left as-is.
+		if e.StreamAttempt.Action == event.StreamAttemptDiscard {
+			m.toolPartial = ""
+			m.toolTail = nil
+			m.toolStreamIdx = -1
+			m.toolLineCount = 0
+			m.commitLine(dim("  ↻ stream interrupted — reconnecting…"))
+		}
+		return
+	}
 	// Any other event means the connection got past the retry window (or the turn
 	// ended), so the transient "retrying" indicator clears.
 	m.retryAttempt = 0

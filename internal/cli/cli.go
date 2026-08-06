@@ -54,7 +54,16 @@ var (
 )
 
 // Run is the CLI entry point; it returns a process exit code.
+// Prefer RunWithBuildInfo when git commit / build time are available from ldflags.
 func Run(args []string, version string) int {
+	return RunWithBuildInfo(args, BuildInfo{Version: version})
+}
+
+// RunWithBuildInfo is the full CLI entry with optional build metadata for
+// `reasonix version --verbose` / `--json`.
+func RunWithBuildInfo(args []string, info BuildInfo) int {
+	info = info.withDefaults()
+	version := info.Version
 	// Usage recording is asynchronous so provider/UI paths never wait on disk.
 	// Drain records accepted by this process before a normal CLI exit.
 	defer func() {
@@ -169,9 +178,14 @@ func Run(args []string, version string) int {
 	case "upgrade", "update":
 		configureCLIThemeFromConfig()
 		return upgradeCommand(rest, version)
-	case "version", "--version", "-v":
-		fmt.Println("reasonix", version)
-		return 0
+	case "version":
+		// Detailed identity: version --verbose / --json. Top-level --version/-v
+		// stay single-line for script compatibility (Integration D/E).
+		return versionCommand(rest, info, true)
+	case "--version", "-v":
+		return versionCommand(nil, info, false)
+	case "completion":
+		return completionCommand(rest)
 	case "docs-manifest":
 		return docsManifestCommand(rest, version)
 	case "help", "--help", "-h":

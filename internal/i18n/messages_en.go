@@ -619,10 +619,13 @@ Usage:
   reasonix session show|status <machine-session-id> --json [--dir PATH]  query one redacted session
   reasonix session recovery [<machine-session-id>] --json [--dir PATH]  query redacted recovery state
   reasonix hook list|status --json [--dir PATH]         inspect redacted hook state
-  reasonix task list|show --json [--dir PATH]           inspect redacted task state
+  reasonix task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
+                                                         inspect or control redacted tasks
   reasonix bot start|doctor|weixin-login                multi-channel IM bot gateway
   reasonix upgrade [--check] [--force]                   update to the latest official release (also: reasonix update)
-  reasonix version
+  reasonix completion bash|zsh|fish                     print a shell completion script to stdout
+  reasonix version [--verbose|--json]                   print version (single line) or build metadata
+  reasonix --version | -v                               single-line version (script-safe)
   reasonix help
 
 Examples:

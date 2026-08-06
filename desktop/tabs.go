@@ -930,6 +930,25 @@ func (t *WorkspaceTab) recordTurnDone(now int64) {
 	t.telemMu.Unlock()
 }
 
+// contextTelemetryFromUsage returns the latest-attempt context shape for
+// rebind-surviving Last* telemetry fields. Prefer Context* when set (multi-
+// attempt sampling recovery); otherwise fall back to billable totals / the
+// per-event cache delta already computed for this Usage event.
+//
+// When a Context shape is present, ContextCacheHit/Miss are kept even if both
+// are zero — many providers omit cache splits, and falling back to the
+// event's aggregated cache would re-inflate multi-attempt totals.
+func contextTelemetryFromUsage(u *provider.Usage, eventCacheHit, eventCacheMiss int) (prompt, completion, reasoning, hit, miss int) {
+	if u == nil {
+		return 0, 0, 0, eventCacheHit, eventCacheMiss
+	}
+	if u.ContextPromptTokens > 0 || u.ContextCompletionTokens > 0 {
+		return u.ContextPromptTokens, u.ContextCompletionTokens, u.ContextReasoningTokens,
+			u.ContextCacheHitTokens, u.ContextCacheMissTokens
+	}
+	return u.PromptTokens, u.CompletionTokens, u.ReasoningTokens, eventCacheHit, eventCacheMiss
+}
+
 func (t *WorkspaceTab) recordUsage(e event.Event) {
 	if e.Usage == nil {
 		return
@@ -954,12 +973,17 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 	}
 	t.usageTelemetry.RequestCount += requestCount
 	if source == event.UsageSourceExecutor {
-		t.usageTelemetry.LastUsedTokens = u.PromptTokens + u.CompletionTokens
-		t.usageTelemetry.LastPromptTokens = u.PromptTokens
-		t.usageTelemetry.LastCompletionTokens = u.CompletionTokens
-		t.usageTelemetry.LastReasoningTokens = u.ReasoningTokens
-		t.usageTelemetry.LastCacheHitTokens = cacheHitTokens
-		t.usageTelemetry.LastCacheMissTokens = cacheMissTokens
+		// Persist the latest-attempt context shape for rebind fallback — never
+		// the multi-attempt billable aggregate (PromptTokens/CompletionTokens
+		// after stream recovery). ContextSnapshot semantics are latest
+		// prompt+completion; Context* fields carry that shape.
+		prompt, completion, reasoning, hit, miss := contextTelemetryFromUsage(u, cacheHitTokens, cacheMissTokens)
+		t.usageTelemetry.LastUsedTokens = prompt + completion
+		t.usageTelemetry.LastPromptTokens = prompt
+		t.usageTelemetry.LastCompletionTokens = completion
+		t.usageTelemetry.LastReasoningTokens = reasoning
+		t.usageTelemetry.LastCacheHitTokens = hit
+		t.usageTelemetry.LastCacheMissTokens = miss
 		t.usageTelemetry.LastEstimated = u.Estimated
 	}
 	if t.usageTelemetry.Sources == nil {

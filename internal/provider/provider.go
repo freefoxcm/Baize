@@ -11,8 +11,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"sort"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"reasonix/internal/nilutil"
@@ -700,6 +703,41 @@ type Usage struct {
 	// aggregate. Zero means one request for backward compatibility. Recovery
 	// paths that merge multiple attempts set the exact count.
 	RequestCount int
+	// Context* fields describe the latest single-request shape for context
+	// gauges and rebind telemetry. When zero, consumers fall back to the
+	// billable Prompt/Completion/… fields. Multi-attempt sampling recovery
+	// sets PromptTokens (etc.) to the billable aggregate and fills Context*
+	// from the final attempt only.
+	ContextPromptTokens     int
+	ContextCompletionTokens int
+	ContextReasoningTokens  int
+	ContextCacheHitTokens   int
+	ContextCacheMissTokens  int
+}
+
+// ContextFillTokens returns the latest-attempt context fill (prompt+completion)
+// used by status bars and context panels. Falls back to billable totals when
+// no Context* fields were set (single-attempt / legacy usage events).
+func (u *Usage) ContextFillTokens() int {
+	if u == nil {
+		return 0
+	}
+	if u.ContextPromptTokens > 0 || u.ContextCompletionTokens > 0 {
+		return u.ContextPromptTokens + u.ContextCompletionTokens
+	}
+	return u.PromptTokens + u.CompletionTokens
+}
+
+// ContextPromptForGauge returns the latest-attempt prompt size for context
+// displays. Falls back to PromptTokens when ContextPromptTokens is unset.
+func (u *Usage) ContextPromptForGauge() int {
+	if u == nil {
+		return 0
+	}
+	if u.ContextPromptTokens > 0 {
+		return u.ContextPromptTokens
+	}
+	return u.PromptTokens
 }
 
 // Pricing is a provider's per-1M-token rates, used to estimate spend. Currency
@@ -802,12 +840,24 @@ type Chunk struct {
 	Err             error           // ChunkError
 }
 
-// StreamInterruptedError marks a recoverable transport cut that happened after
-// the caller had already received model output. Providers must not replay these
-// requests themselves because doing so could duplicate visible text or tool
-// calls; the agent can append a tail recovery prompt instead.
+// Fixed stream-interrupt reasons for observability. Values are a closed enum
+// and must never carry URLs, tool arguments, file paths, or raw error text.
+const (
+	StreamInterruptConnectionReset = "connection_reset"
+	StreamInterruptPrematureEOF    = "premature_eof"
+	StreamInterruptIdleTimeout     = "idle_timeout"
+)
+
+// StreamInterruptedError marks that the current sampling attempt never reached
+// a clean provider terminal event and is therefore uncommitted. The Agent may
+// replay the exact same provider request. Providers must not perform body-phase
+// request replay themselves — that lives at the Agent layer so retry budgets,
+// UI rollback, and tool execution stay single-owner. context.Canceled, auth,
+// 4xx/schema errors, and unparseable complete protocol payloads must not use
+// this type.
 type StreamInterruptedError struct {
-	Err error
+	Err    error
+	Reason string // one of the StreamInterrupt* constants; may be empty for older callers
 }
 
 func (e *StreamInterruptedError) Error() string {
@@ -822,6 +872,50 @@ func (e *StreamInterruptedError) Unwrap() error {
 		return nil
 	}
 	return e.Err
+}
+
+// StreamInterrupt wraps err as a StreamInterruptedError with a fixed reason.
+func StreamInterrupt(err error, reason string) error {
+	if err == nil {
+		return nil
+	}
+	return &StreamInterruptedError{Err: err, Reason: reason}
+}
+
+// StreamInterruptReason returns the fixed reason when err is a stream
+// interruption, or empty otherwise.
+func StreamInterruptReason(err error) string {
+	var interrupted *StreamInterruptedError
+	if !errors.As(err, &interrupted) || interrupted == nil {
+		return ""
+	}
+	if interrupted.Reason != "" {
+		return interrupted.Reason
+	}
+	return ClassifyStreamInterrupt(interrupted.Err)
+}
+
+// ClassifyStreamInterrupt maps a transport error onto a fixed reason enum.
+// Prefer attaching Reason at the emit site; this is a best-effort fallback.
+func ClassifyStreamInterrupt(err error) string {
+	if err == nil {
+		return StreamInterruptPrematureEOF
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "stalled") || strings.Contains(msg, "idle timeout") || strings.Contains(msg, "no data for"):
+		return StreamInterruptIdleTimeout
+	case errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || strings.Contains(msg, "before completion") || strings.Contains(msg, "unexpected eof"):
+		return StreamInterruptPrematureEOF
+	case errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
+		strings.Contains(msg, "connection reset") || strings.Contains(msg, "forcibly closed") || strings.Contains(msg, "broken pipe"):
+		return StreamInterruptConnectionReset
+	default:
+		if IsConnReset(err) {
+			return StreamInterruptConnectionReset
+		}
+		return StreamInterruptPrematureEOF
+	}
 }
 
 func IsStreamInterrupted(err error) bool {
