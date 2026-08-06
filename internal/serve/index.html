@@ -1784,7 +1784,7 @@ let currentTurn = 0; // incremented by turn_started; user messages claim turn+1
 let historyPending = false;
 const turnEls = new Map(); // turn number -> { el, tools: Map, summary }
 function genItemId() { return 'it' + (nextItemId++); }
-function resetItems() { items = []; nextItemId = 1; liveAssistant = null; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
+function resetItems() { items = []; nextItemId = 1; liveAssistant = null; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; jumpScrollPinned = true; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
 function hasVisibleItems() {
   return items.some(it => it.kind === 'user' || it.kind === 'assistant' || it.kind === 'tool');
 }
@@ -2034,6 +2034,7 @@ let jumpBarEl = null;
 let jumpActiveId = null; // last jumped / newest question id (accent dot)
 let jumpHoverIdx = -1;   // hovered dot index, -1 when none
 let jumpPreviewTop = 0;
+let jumpScrollPinned = true; // rail follows the newest question; manual scroll-up detaches
 
 function questionAnchors() {
   const anchors = [];
@@ -2152,6 +2153,18 @@ function jumpToQuestion(q) {
   const top = node.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 12;
   smoothScrollToTop(top);
   updateJumpDots(questionAnchors());
+  // Reveal the jumped dot if it sits outside the rail's 240px window.
+  const idx = questionAnchors().findIndex((x) => x.id === q.id);
+  if (idx >= 0) revealJumpItem(idx);
+}
+
+function revealJumpItem(idx) {
+  const scroll = jumpBarEl && jumpBarEl.querySelector('.jump-scroll');
+  if (!scroll) return;
+  const item = scroll.children[idx];
+  if (!item) return;
+  const maxTop = scroll.scrollHeight - scroll.clientHeight;
+  scroll.scrollTop = Math.max(0, Math.min(item.offsetTop - scroll.clientHeight / 2, maxTop));
 }
 
 function buildQuestionJumpBar(questions) {
@@ -2186,6 +2199,11 @@ function buildQuestionJumpBar(questions) {
     jumpHoverIdx = -1;
     updateJumpDots(questions);
     updateJumpPreview(questions, false, -1);
+  });
+  scroll.addEventListener('scroll', () => {
+    // Follow-the-newest pin: detached while the user scrolls up the rail,
+    // re-attached once they return to the bottom (mirrors pinnedToBottom).
+    jumpScrollPinned = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 8;
   });
   scroll.addEventListener('mousedown', (e) => {
     e.preventDefault();
@@ -2222,6 +2240,13 @@ function syncQuestionNav() {
   // an absolutely-positioned bar inside it would ride the content and vanish
   // when scrolled down. Desktop mounts on the non-scrolling .transcript-shell.
   (log.parentElement || log).appendChild(jumpBarEl);
+  // Start (and re-pin after a new question) at the newest entry; the user
+  // can scroll the rail upward to reach older questions. Must run after the
+  // mount: a detached element has no layout, so scrollHeight would be 0.
+  if (jumpScrollPinned) {
+    const scroll = jumpBarEl.querySelector('.jump-scroll');
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  }
 }
 function appendUserMsg(text) {
   const it = { id: genItemId(), kind: 'user', text, turn: currentTurn + 1 };
