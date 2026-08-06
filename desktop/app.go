@@ -5538,12 +5538,15 @@ type HistoryMessage struct {
 	ToolName           string                    `json:"toolName,omitempty"`
 	ToolResultArchived bool                      `json:"toolResultArchived,omitempty"`
 	ToolResultError    string                    `json:"toolResultError,omitempty"`
-	Pending            bool                      `json:"pending,omitempty"`
-	Trigger            string                    `json:"trigger,omitempty"`
-	Messages           int                       `json:"messages,omitempty"`
-	Summary            string                    `json:"summary,omitempty"`
-	Archive            string                    `json:"archive,omitempty"`
-	DecisionReceipt    *provider.DecisionReceipt `json:"decisionReceipt,omitempty"`
+	// Execution is local shell metadata restored onto ToolCards after history
+	// reload. Omitted when absent so older frontends ignore it safely.
+	Execution       *provider.ToolExecution   `json:"execution,omitempty"`
+	Pending         bool                      `json:"pending,omitempty"`
+	Trigger         string                    `json:"trigger,omitempty"`
+	Messages        int                       `json:"messages,omitempty"`
+	Summary         string                    `json:"summary,omitempty"`
+	Archive         string                    `json:"archive,omitempty"`
+	DecisionReceipt *provider.DecisionReceipt `json:"decisionReceipt,omitempty"`
 }
 
 type HistoryToolCall struct {
@@ -5966,6 +5969,7 @@ func historyMessagesWithPlannerDisplaysAndLookups(
 			hm.ToolCallID = m.ToolCallID
 			hm.ToolName = m.Name
 			hm.Content, hm.ToolResultArchived, hm.ToolResultError = historyToolResultContent(m.Content, m.ToolCallID != "")
+			hm.Execution = m.ToolExecution
 		}
 		hasVisibleLocalContent := strings.TrimSpace(hm.Content) != "" || strings.TrimSpace(hm.Reasoning) != "" || len(hm.ToolCalls) > 0 || (!m.LocalOnly && m.Role == provider.RoleTool)
 		if !m.LocalOnly || hasVisibleLocalContent {

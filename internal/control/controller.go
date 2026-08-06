@@ -11,16 +11,13 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -51,11 +48,11 @@ import (
 	"reasonix/internal/nilutil"
 	"reasonix/internal/permission"
 	"reasonix/internal/plugin"
-	"reasonix/internal/proc"
 	"reasonix/internal/provider"
 	"reasonix/internal/recovery"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/sessiontemp"
+	"reasonix/internal/shellrun"
 	"reasonix/internal/skill"
 	"reasonix/internal/store"
 	"reasonix/internal/taskmonitor"
@@ -1733,15 +1730,6 @@ const shellTimeout = 120 * time.Second
 // the child's pipes to drain, matching the bash tool's WaitDelay.
 const shellWaitDelay = 5 * time.Second
 
-// shellWriter forwards each chunk of shell output to a callback, so RunShell
-// can stream live progress to the frontend as the command produces output.
-type shellWriter struct{ emit func(string) }
-
-func (w *shellWriter) Write(p []byte) (int, error) {
-	w.emit(string(p))
-	return len(p), nil
-}
-
 func shellCommandPreview(command string) string {
 	command = strings.TrimSpace(strings.ReplaceAll(command, "\n", " "))
 	const max = 48
@@ -1776,6 +1764,7 @@ func (c *Controller) RunShell(command string) {
 		}
 		id := "shell-" + string(preview)
 		diagnosticPreview := shellCommandPreview(command)
+		desc := shellrun.DescriptorFromShell(sh)
 
 		c.sink.Emit(event.Event{
 			Kind: event.ToolDispatch,
@@ -1783,60 +1772,77 @@ func (c *Controller) RunShell(command string) {
 				ID:   id,
 				Name: "bash",
 				Args: fmt.Sprintf(`{"command":%q}`, command),
+				Execution: &event.ShellExecution{
+					Kind: desc.Kind, Shell: desc.Shell, ShellVersion: desc.ShellVersion,
+					Platform: desc.Platform, SupportsAndAnd: desc.SupportsAndAnd,
+					State: tool.ShellStateRunning,
+				},
 			},
 		})
 
-		ctx, cancel := context.WithTimeout(ctx, shellTimeout)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		cmd.WaitDelay = shellWaitDelay
-		cmd.Dir = c.workspaceRoot
-		var buf bytes.Buffer
-		w := io.MultiWriter(&buf, &shellWriter{emit: func(chunk string) {
-			c.sink.Emit(event.Event{
-				Kind: event.ToolProgress,
-				Tool: event.Tool{ID: id, Output: chunk},
-			})
-		}})
-		cmd.Stdout = w
-		cmd.Stderr = w
 		start := time.Now()
-		_, err := proc.RunCommand(ctx, cmd, proc.RunOptions{
-			Track:           true,
-			CancelWaitGrace: shellWaitDelay + time.Second,
-			Source:          "user_shell",
-			ShellKind:       sh.Kind.String(),
-			ShellPath:       sh.Path,
-			CommandPreview:  diagnosticPreview,
+		res := shellrun.RunForeground(ctx, shellrun.Request{
+			Argv:           argv,
+			Dir:            c.workspaceRoot,
+			Timeout:        shellTimeout,
+			WaitDelay:      shellWaitDelay,
+			CommandPreview: diagnosticPreview,
+			ShellKind:      sh.Kind.String(),
+			ShellPath:      sh.Path,
+			Source:         "user_shell",
+			Track:          true,
+			Progress: func(chunk string) {
+				c.sink.Emit(event.Event{
+					Kind: event.ToolProgress,
+					Tool: event.Tool{ID: id, Output: chunk},
+				})
+			},
 		})
 		durationMs := time.Since(start).Milliseconds()
-		out := buf.String()
+		ex := &event.ShellExecution{
+			Kind: desc.Kind, Shell: desc.Shell, ShellVersion: desc.ShellVersion,
+			Platform: desc.Platform, SupportsAndAnd: desc.SupportsAndAnd,
+			State: res.State, FailurePhase: res.FailurePhase,
+			OutputTail: res.OutputTail, DurationMs: durationMs,
+			MutationRisk: tool.ShellMutationNone,
+			Verification: tool.ShellVerificationNotVerification,
+		}
+		if res.ExitCode != nil {
+			code := *res.ExitCode
+			ex.ExitCode = &code
+		}
+		switch res.State {
+		case tool.ShellStateCompleted:
+			ex.MutationRisk = tool.ShellMutationNone
+		case tool.ShellStateNotRun:
+			ex.MutationRisk = tool.ShellMutationNotStarted
+		case tool.ShellStateFailed:
+			if res.FailurePhase == tool.ShellPhaseLaunch {
+				ex.MutationRisk = tool.ShellMutationNotStarted
+			} else {
+				ex.MutationRisk = tool.ShellMutationMayBePartial
+			}
+		case tool.ShellStateTimedOut, tool.ShellStateCancelled:
+			ex.MutationRisk = tool.ShellMutationMayBePartial
+		}
 
-		if ctx.Err() == context.Canceled {
-			c.sink.Emit(event.Event{
-				Kind: event.ToolResult,
-				Tool: event.Tool{ID: id, Name: "bash", Output: out, Err: i18n.M.TurnCancelled, DurationMs: durationMs},
-			})
-			return nil
-		}
-		if ctx.Err() == context.DeadlineExceeded {
-			c.sink.Emit(event.Event{
-				Kind: event.ToolResult,
-				Tool: event.Tool{ID: id, Name: "bash", Output: out, Err: fmt.Sprintf(i18n.M.ShellExecTimeoutFmt, shellTimeout), DurationMs: durationMs},
-			})
-			return nil
-		}
-		if err != nil {
-			c.sink.Emit(event.Event{
-				Kind: event.ToolResult,
-				Tool: event.Tool{ID: id, Name: "bash", Output: out, Err: fmt.Sprintf(i18n.M.ShellExecFailedFmt, err), DurationMs: durationMs},
-			})
-			return nil
+		errText := ""
+		switch res.State {
+		case tool.ShellStateCancelled:
+			errText = i18n.M.TurnCancelled
+		case tool.ShellStateTimedOut:
+			errText = fmt.Sprintf(i18n.M.ShellExecTimeoutFmt, shellTimeout)
+		case tool.ShellStateFailed, tool.ShellStateNotRun:
+			if res.Err != nil {
+				errText = fmt.Sprintf(i18n.M.ShellExecFailedFmt, res.Err)
+			}
 		}
 		c.sink.Emit(event.Event{
 			Kind: event.ToolResult,
-			Tool: event.Tool{ID: id, Name: "bash", Output: out, DurationMs: durationMs},
+			Tool: event.Tool{
+				ID: id, Name: "bash", Output: res.Combined, Err: errText,
+				DurationMs: durationMs, Execution: ex,
+			},
 		})
 		return nil
 	})
@@ -5077,8 +5083,9 @@ func (c *Controller) Todos() []evidence.TodoItem {
 // ToolResultData holds the full arguments and output for one tool call, loaded
 // on demand when a frontend expands a collapsed tool card.
 type ToolResultData struct {
-	Args   string `json:"args"`
-	Output string `json:"output"`
+	Args      string                  `json:"args"`
+	Output    string                  `json:"output"`
+	Execution *provider.ToolExecution `json:"execution,omitempty"`
 }
 
 // ToolResult looks up a tool call by its ID in the session history and returns
@@ -5097,8 +5104,9 @@ func (c *Controller) ToolResult(toolID string) *ToolResultData {
 			continue
 		}
 		out := &ToolResultData{
-			Args:   "",
-			Output: msgs[i].Content,
+			Args:      "",
+			Output:    msgs[i].Content,
+			Execution: msgs[i].ToolExecution,
 		}
 		// Walk back to find the assistant turn that issued this call.
 		for j := i; j >= 0; j-- {

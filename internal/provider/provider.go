@@ -100,6 +100,27 @@ type Message struct {
 	// ModelMessages strips the field before handing requests to providers.
 	DecisionReceipts []*DecisionReceipt       `json:"decision_receipts,omitempty"`
 	InterruptedTurn  *InterruptedTurnRecovery `json:"interrupted_turn,omitempty"`
+	// ToolExecution is local shell UI metadata on tool-result messages. It is
+	// persisted for Desktop/CLI/Serve cards and stripped by ModelMessages before
+	// any provider request so tool schemas and prompt-cache prefixes stay stable.
+	ToolExecution *ToolExecution `json:"tool_execution,omitempty"`
+}
+
+// ToolExecution is host-local shell metadata mirrored from tool.ShellExecution.
+// Provider serializers must never emit this object on the wire.
+type ToolExecution struct {
+	Kind           string `json:"kind,omitempty"`
+	Shell          string `json:"shell,omitempty"`
+	ShellVersion   string `json:"shellVersion,omitempty"`
+	Platform       string `json:"platform,omitempty"`
+	SupportsAndAnd bool   `json:"supportsAndAnd"`
+	State          string `json:"state,omitempty"`
+	FailurePhase   string `json:"failurePhase,omitempty"`
+	ExitCode       *int   `json:"exitCode,omitempty"`
+	OutputTail     string `json:"outputTail,omitempty"`
+	MutationRisk   string `json:"mutationRisk,omitempty"`
+	Verification   string `json:"verification,omitempty"`
+	DurationMs     int64  `json:"durationMs,omitempty"`
 }
 
 // DecisionReceipt is durable, provider-excluded evidence of a user-owned
@@ -253,7 +274,7 @@ func SanitizeToolPairing(msgs []Message) []Message { return NormalizeMessages(ms
 func ModelMessages(msgs []Message) []Message {
 	needsCopy := false
 	for _, m := range msgs {
-		if m.LocalOnly || m.RawContent != "" || m.ProviderContent != "" || m.DecisionReceipt != nil || len(m.DecisionReceipts) > 0 {
+		if m.LocalOnly || m.RawContent != "" || m.ProviderContent != "" || m.DecisionReceipt != nil || len(m.DecisionReceipts) > 0 || m.ToolExecution != nil {
 			needsCopy = true
 			break
 		}
@@ -273,6 +294,8 @@ func ModelMessages(msgs []Message) []Message {
 		candidate.RawContent = ""
 		candidate.DecisionReceipt = nil
 		candidate.DecisionReceipts = nil
+		// Local shell metadata must never enter provider request bytes.
+		candidate.ToolExecution = nil
 		out = append(out, candidate)
 	}
 	return out

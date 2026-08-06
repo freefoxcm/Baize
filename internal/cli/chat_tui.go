@@ -4377,7 +4377,13 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		}
 		if e.Tool.Err != "" {
 			m.finalizeStreamed()
-			m.commitLine("  " + red("●") + " " + bold(toolDisplayName(e.Tool.Name)) + " " + red("⊘ "+e.Tool.Err))
+			label := shellToolDisplayName(e.Tool.Name, e.Tool.Execution)
+			detail := shellFailureDetail(e.Tool.Execution)
+			errText := e.Tool.Err
+			if detail != "" {
+				errText = detail + " · " + errText
+			}
+			m.commitLine("  " + red("●") + " " + bold(label) + " " + red("⊘ "+errText))
 		}
 
 	case event.Usage:

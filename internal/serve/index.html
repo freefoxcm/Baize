@@ -2662,6 +2662,13 @@ function renderToolDispatch(tool) {
   updateTurnSummaryForItem(it);
   scrollDown();
 }
+function shellDisplayName(ex){
+  if(!ex||!ex.shell)return 'bash';
+  if(ex.shell==='git-bash')return 'Git Bash';
+  if(ex.shell==='powershell')return 'Windows PowerShell';
+  if(ex.shell==='pwsh')return 'PowerShell 7+';
+  return ex.shell;
+}
 function renderToolResult(tool) {
   const found = findToolItem(tool.id);
   if (!found) return;
@@ -2673,11 +2680,28 @@ function renderToolResult(tool) {
   const card = cardForTool(it, t);
   if (!card) return;
   const elapsed = Math.max(0, Date.now() - Number(card.dataset.startedAt || Date.now()));
+  const ex = tool.execution || null;
+  if (ex && tool.name === 'bash') {
+    const title = card.querySelector('.card-title .name');
+    if (title) title.textContent = shellDisplayName(ex);
+  }
   setToolStatus(card, t.err ? 'danger' : 'success', t.err ? __('tool_failed') : __('tool_done'));
   const body = card.querySelector('.card-body');
+  let meta = toolResultMeta(t, elapsed);
+  if (ex) {
+    const bits = [];
+    if (typeof ex.exitCode === 'number') bits.push('exit ' + ex.exitCode);
+    if (ex.failurePhase) bits.push(ex.failurePhase);
+    if (ex.verification && ex.verification !== 'not_verification') bits.push(ex.verification);
+    if (bits.length) meta = bits.join(' · ') + ' · ' + meta;
+  }
   if (t.err) {
     // Collapsible error detail: three lines preview, click to expand.
     const errBody = el('div', 'err-body');
+    if (ex && ex.outputTail) {
+      const pre = el('pre', 'err-stderr', ex.outputTail.slice(0, 16000));
+      errBody.appendChild(pre);
+    }
     const full = String(t.err);
     const preview = full.split('\n').slice(0, 3).join('\n');
     let expanded = false;
@@ -2688,7 +2712,7 @@ function renderToolResult(tool) {
       errBody.classList.toggle('err-body--expanded', expanded);
     };
     card.appendChild(errBody);
-    updateToolMeta(card, toolResultMeta(t, elapsed));
+    updateToolMeta(card, meta);
   }
   else if (t.diff || card.dataset.hasDiff) {
     // Diff-driven card: result doesn't replace the diff body; refresh the stat.

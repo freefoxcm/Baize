@@ -156,6 +156,14 @@ jobs:
         timeout-minutes: 3
         run: go test -timeout=2m -run '^TestBashSharesSessionTempAcrossCalls$' ./internal/tool/builtin
 
+      # Shell execution contract: PowerShell identity, Chinese workspace paths,
+      # UTF-8 output, and ExitCode retention must gate PRs on native Windows.
+      # Keep this focused (not full ./internal/tool) so the smoke budget holds.
+      - name: test (Windows shell execution contract)
+        if: env.RUN_STEPS == 'true' && runner.os == 'Windows' && github.event_name == 'pull_request'
+        timeout-minutes: 5
+        run: go test -timeout=3m -run '^TestBashPowerShellExecuteDetailedContract$|^TestBashPowerShell51PreflightRejectsAndAndDetailed$|^TestBashPowerShellOutputIsUTF8$|^TestBashPowerShellSurfacesNonZeroExit$|^TestBashPowerShellRejectsChaining$' ./internal/tool/builtin
+
       - name: test (full)
         if: env.RUN_STEPS == 'true' && runner.os == 'Windows' && github.event_name != 'pull_request'
         timeout-minutes: 10
