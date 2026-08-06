@@ -43,9 +43,9 @@ body{font:14px/1.6 var(--sans);color:var(--fg);background:var(--bg);-webkit-font
 button{cursor:pointer;font:inherit;border:none;background:none;color:inherit}
 input,textarea{font:inherit;color:inherit}
 
-.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr auto;height:100vh}
+.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr auto;height:100vh;position:relative}
 .sidebar{grid-row:1/3;background:var(--bg-2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.transcript{overflow-y:auto;padding:24px 28px}
+.transcript{overflow-y:auto;padding:24px 28px;position:relative}
 .footer{border-top:1px solid var(--border);background:var(--bg);padding:12px 28px 16px;display:flex;flex-direction:column;gap:8px;position:relative}
 .footer::before{content:'';position:absolute;inset:-20px 0 auto 0;height:20px;background:linear-gradient(to top,var(--bg),transparent);pointer-events:none}
 
@@ -123,6 +123,19 @@ input,textarea{font:inherit;color:inherit}
 .turn-summary--folded{color:var(--fg-2)}
 .turn-summary::after{content:'▾';margin-left:4px;color:var(--muted-2);font-size:10px;transition:transform .2s}
 .turn-summary--folded::after{transform:rotate(-90deg)}
+/* question jump bar (desktop QuestionJumpBar parity) — right-edge rail that
+   marks each user question; click a dot to jump to it */
+.app > .jump-bar{position:absolute;top:50%;right:0;z-index:30;max-width:none;margin:0;transform:translate(4px,-50%)}
+.jump-bar{z-index:30;display:flex;flex-direction:column;align-items:flex-end;width:56px;height:240px;padding:0 12px;opacity:0;pointer-events:none;animation:jump-bar-in .18s ease-out .08s forwards}
+.jump-scroll{display:flex;flex-direction:column;align-items:center;gap:6px;max-height:100%;padding:8px 0;overflow-y:auto;cursor:pointer;pointer-events:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 16%,#000 84%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,#000 16%,#000 84%,transparent 100%)}
+.jump-scroll::-webkit-scrollbar{display:none}
+.jump-item{position:relative;display:flex;flex-shrink:0;align-items:center;justify-content:flex-end;width:32px;min-height:14px;padding:0;border:0;background:transparent;cursor:pointer;pointer-events:none}
+.jump-item:focus{outline:none}
+.jump-item:focus-visible .jump-dot{box-shadow:0 0 0 3px var(--accent-soft)}
+.jump-dot{pointer-events:none;height:3px;border-radius:2px;background:var(--border);transition:background 200ms,width 400ms cubic-bezier(.34,1.56,.64,1),box-shadow 150ms}
+.jump-preview{position:absolute;right:100%;top:0;max-width:240px;margin-right:12px;padding:4px 8px;overflow:hidden;border:1px solid var(--border);border-radius:6px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.18);color:var(--fg);font-size:12px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;transform:translateY(-50%)}
+.jump-text{display:block;overflow:hidden;text-overflow:ellipsis}
+@keyframes jump-bar-in{to{opacity:1;transform:translate(0,-50%)}}
 .msg__text--md{white-space:normal}
 .msg__text--md .md-tail{white-space:pre-wrap;word-break:break-word}
 .md-sections>p{margin:0 0 .55em}
@@ -569,6 +582,7 @@ input,textarea{font:inherit;color:inherit}
   .menu-btn svg{width:16px;height:16px}
   .footer{padding:10px 16px 12px}
   .transcript{padding:16px}
+  .jump-bar{display:none} /* narrow layout: the 56px rail would cover right-aligned messages */
   .slash-menu__item{grid-template-columns:minmax(78px,auto) 1fr auto}
   .slash-menu__sig{grid-column:2 / -1}
   .slash-menu__foot{display:none}
@@ -1148,6 +1162,8 @@ const __T = {
     'hint_mode': 'Plan',
     'hint_yolo': 'YOLO',
     'hint_rewind': 'Esc×2 rewind',
+    'question_nav_label': 'Question navigation',
+    'question_nav_jump': 'Jump to question {n}',
     'example_explain': 'Explain the project structure',
     'example_fix': 'Find and fix any bugs',
     'example_test': 'Write tests for the main module',
@@ -1374,6 +1390,8 @@ const __T = {
     'hint_mode': '计划',
     'hint_yolo': 'YOLO',
     'hint_rewind': 'Esc×2 回退',
+    'question_nav_label': '问题导航',
+    'question_nav_jump': '跳转到问题 {n}',
     'example_explain': '解释项目结构',
     'example_fix': '查找并修复错误',
     'example_test': '为主模块编写测试',
@@ -1755,7 +1773,7 @@ let currentTurn = 0; // incremented by turn_started; user messages claim turn+1
 let historyPending = false;
 const turnEls = new Map(); // turn number -> { el, tools: Map, summary }
 function genItemId() { return 'it' + (nextItemId++); }
-function resetItems() { items = []; nextItemId = 1; liveAssistant = null; currentTurn = 0; turnEls.clear(); }
+function resetItems() { items = []; nextItemId = 1; liveAssistant = null; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
 function hasVisibleItems() {
   return items.some(it => it.kind === 'user' || it.kind === 'assistant' || it.kind === 'tool');
 }
@@ -1835,6 +1853,7 @@ function startEdit(it, d) {
       post('/edit', { display: v, input: v, original: it.text }).then(r => {
         if (r.ok) {
           it.text = v;
+          syncQuestionNav();
           const sec = d.querySelector('.md-sections');
           if (sec) { sec.innerHTML = renderMarkdown(v); fixImageSrcs(sec); }
           let note = d.querySelector('.msg__edited');
@@ -1958,6 +1977,7 @@ function appendItem(it, dom) {
 function renderItem(it) {
   if (it.kind === 'user') {
     const d = el('div', 'msg msg--user');
+    d.id = 'question-anchor-' + it.id; // jump-bar scroll target (desktop parity)
     const wrap = el('div', 'msg__text msg__text--md');
     const sections = el('div', 'md-sections');
     const tail = el('span', 'md-tail');
@@ -1994,12 +2014,211 @@ function renderItem(it) {
   }
   return null;
 }
+// ── question jump bar (desktop QuestionJumpBar parity) ──
+// A thin rail on the transcript's right edge marks each user question.
+// Hover ripples the nearest dots; clicking (or pressing the rail) smooth-
+// scrolls to that question and detaches auto-pin, mirroring desktop.
+const QUESTION_NAV_MIN_COUNT = 2;
+let jumpBarEl = null;
+let jumpActiveId = null; // last jumped / newest question id (accent dot)
+let jumpHoverIdx = -1;   // hovered dot index, -1 when none
+let jumpPreviewTop = 0;
+
+function questionAnchors() {
+  const anchors = [];
+  let turn = 0;
+  for (const it of items) {
+    if (it.kind !== 'user') continue;
+    anchors.push({ id: it.id, text: compactText(it.text, 80), turn });
+    turn += 1;
+  }
+  return anchors;
+}
+
+function jumpQuestionById(id) {
+  return questionAnchors().find((q) => q.id === id) || null;
+}
+
+function updateJumpDots(questions) {
+  if (!jumpBarEl) return;
+  const dots = jumpBarEl.querySelectorAll('.jump-item .jump-dot');
+  dots.forEach((dot, idx) => {
+    const q = questions[idx];
+    const isActive = q && q.id === jumpActiveId;
+    let width = isActive ? '18px' : '12px';
+    let background = isActive ? 'var(--accent)' : '';
+    let delay = '0ms';
+    if (jumpHoverIdx >= 0) {
+      const d = Math.abs(idx - jumpHoverIdx);
+      width = d === 0 ? '32px' : d === 1 ? '20px' : d === 2 ? '14px' : width;
+      // Desktop color ladder (.jump-dot[data-d="0/1/2"] in styles.css):
+      // hovered dot = full accent, neighbors = 60% / 35% accent.
+      if (d <= 2) {
+        background = d === 0 ? 'var(--accent)'
+          : d === 1 ? 'color-mix(in srgb, var(--accent) 60%, transparent)'
+          : 'color-mix(in srgb, var(--accent) 35%, transparent)';
+      }
+      delay = (d * 20) + 'ms';
+    }
+    dot.style.width = width;
+    dot.style.background = background;
+    dot.style.transitionDelay = delay;
+  });
+}
+
+function updateJumpPreview(questions, show, idx) {
+  if (!jumpBarEl) return;
+  const preview = jumpBarEl.querySelector('.jump-preview');
+  if (!preview) return;
+  if (!show || idx < 0 || idx >= questions.length) { preview.style.display = 'none'; return; }
+  preview.style.top = jumpPreviewTop + 'px';
+  const text = preview.querySelector('.jump-text');
+  if (text) text.textContent = questions[idx].text;
+  preview.style.display = '';
+}
+
+function closestJumpQuestion(questions, clientY) {
+  if (!jumpBarEl) return null;
+  const markers = jumpBarEl.querySelectorAll('.jump-item');
+  const barRect = jumpBarEl.getBoundingClientRect();
+  let closest = -1, closestDist = Infinity, closestY = 0;
+  markers.forEach((item, index) => {
+    const rect = item.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const dist = Math.abs(clientY - midY);
+    if (dist < closestDist) { closestDist = dist; closest = index; closestY = midY - barRect.top; }
+  });
+  const question = questions[closest];
+  if (!question) return null;
+  return { question, index: closest, previewY: closestY };
+}
+
+// smoothScrollToTop animates #log's scrollTop with the same parameters the
+// desktop uses (desktop/frontend/src/lib/gsapAnimations.ts: DUR_FAST*2 =
+// 0.24s, EASE_OUT = "power2.out" ≈ cubic-bezier(0.2, 0.72, 0.2, 1)), so the
+// two frontends share the same scroll feel without bundling gsap. Honors
+// prefers-reduced-motion with an instant jump. A new call cancels any
+// in-flight animation (desktop: gsap.killTweensOf). Scroll events fire on
+// each frame, so pinnedToBottom stays in sync automatically.
+let scrollAnimFrame = null;
+function smoothScrollToTop(targetTop) {
+  if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; }
+  const el = log;
+  const to = Math.max(0, targetTop);
+  const from = el.scrollTop;
+  if (Math.abs(to - from) < 0.5) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.scrollTop = to;
+    return;
+  }
+  const DUR = 0.24; // desktop DUR_FAST (0.12) * 2
+  const easeOut = (t) => 1 - Math.pow(1 - t, 2); // gsap "power2.out"
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / (DUR * 1000));
+    el.scrollTop = from + (to - from) * easeOut(t);
+    if (t < 1) scrollAnimFrame = requestAnimationFrame(step);
+    else scrollAnimFrame = null;
+  };
+  scrollAnimFrame = requestAnimationFrame(step);
+}
+
+function jumpToQuestion(q) {
+  const node = document.getElementById('question-anchor-' + q.id);
+  if (!node) return;
+  pinnedToBottom = false; // detach auto-pin so the jump is not overridden
+  jumpActiveId = q.id;
+  // Unfold the target turn so its work is visible. Desktop equivalence: it
+  // loads the turn's cold page (warmColdPageForTurn / warmLayerWithColdPageAtLeast)
+  // and expands it (warmLayerWithExpandedTurn) before scrolling; webui renders
+  // the whole history, so the only remaining "hidden work" state is a folded
+  // turn — expanding it here keeps the jump semantics identical.
+  const turnWrap = node.closest('.turn');
+  if (turnWrap) {
+    const t = turnEls.get(Number(turnWrap.dataset.turn));
+    if (t && t.folded) { t.folded = false; applyTurnFold(t); }
+  }
+  const top = node.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 12;
+  smoothScrollToTop(top);
+  updateJumpDots(questionAnchors());
+}
+
+function buildQuestionJumpBar(questions) {
+  const nav = el('nav', 'jump-bar');
+  nav.setAttribute('aria-label', __('question_nav_label'));
+  const scroll = el('div', 'jump-scroll');
+  questions.forEach((q, idx) => {
+    const item = el('button', 'jump-item');
+    item.type = 'button';
+    item.dataset.id = q.id;
+    item.setAttribute('aria-label', __('question_nav_jump').replace('{n}', String(idx + 1)));
+    item.appendChild(el('span', 'jump-dot'));
+    scroll.appendChild(item);
+  });
+  nav.appendChild(scroll);
+  const preview = el('div', 'jump-preview');
+  preview.style.display = 'none';
+  preview.appendChild(el('span', 'jump-text'));
+  nav.appendChild(preview);
+
+  nav.addEventListener('mousemove', (e) => {
+    const questions = questionAnchors();
+    const closest = closestJumpQuestion(questions, e.clientY);
+    if (!closest) return;
+    jumpHoverIdx = closest.index;
+    jumpPreviewTop = closest.previewY;
+    updateJumpDots(questions);
+    updateJumpPreview(questions, true, closest.index);
+  });
+  nav.addEventListener('mouseleave', () => {
+    const questions = questionAnchors();
+    jumpHoverIdx = -1;
+    updateJumpDots(questions);
+    updateJumpPreview(questions, false, -1);
+  });
+  scroll.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const questions = questionAnchors();
+    const item = e.target.closest ? e.target.closest('.jump-item') : null;
+    const q = item ? jumpQuestionById(item.dataset.id) : (closestJumpQuestion(questions, e.clientY) || {}).question;
+    if (!q) return;
+    jumpToQuestion(q);
+  });
+  scroll.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const item = e.target.closest ? e.target.closest('.jump-item') : null;
+    if (item && e.detail === 0) { // keyboard activation (Enter/Space)
+      const q = jumpQuestionById(item.dataset.id);
+      if (q) jumpToQuestion(q);
+    }
+  });
+  return nav;
+}
+
+// syncQuestionNav rebuilds (or removes) the jump bar from the items model.
+// Call after any change that alters the set/text of user messages.
+function syncQuestionNav() {
+  if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; }
+  jumpHoverIdx = -1;
+  const questions = questionAnchors();
+  if (questions.length < QUESTION_NAV_MIN_COUNT) { jumpActiveId = null; return; }
+  if (jumpActiveId === null || !questions.some((q) => q.id === jumpActiveId)) {
+    jumpActiveId = questions[questions.length - 1].id;
+  }
+  jumpBarEl = buildQuestionJumpBar(questions);
+  updateJumpDots(questions);
+  // Mount on the non-scrolling .app (log's parent): #log itself scrolls, so
+  // an absolutely-positioned bar inside it would ride the content and vanish
+  // when scrolled down. Desktop mounts on the non-scrolling .transcript-shell.
+  (log.parentElement || log).appendChild(jumpBarEl);
+}
 function appendUserMsg(text) {
   const it = { id: genItemId(), kind: 'user', text, turn: currentTurn + 1 };
   items.push(it);
   hasVisibleHistory = true; updateActionAvailability(); hideWelcome();
   const d = renderItem(it); if (d) appendItem(it, d);
   scrollDown(true);
+  syncQuestionNav();
   liveAssistant = null;
   return it;
 }
@@ -3275,6 +3494,7 @@ function renderHistoryMessages(ms){
   // messages would collide with turn 1's container (and be hidden when that
   // turn folds). histTurn is the last turn number the rebuild produced.
   currentTurn = histTurn;
+  syncQuestionNav();
   scrollDown(true); updateActionAvailability(); return true;
 }
 // reloadHistory fetches and rebuilds the transcript from /history, guarding
