@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	fileencoding "reasonix/internal/fileutil/encoding"
@@ -291,14 +292,6 @@ type NotificationsConfig struct {
 	TurnDone        bool `toml:"turn_done"`
 	ApprovalRequest bool `toml:"approval_request"`
 	AskRequest      bool `toml:"ask_request"`
-}
-
-// EnvironmentConfig controls the stable startup environment block injected into
-// the model-facing prompt. Enabled nil means the default (enabled); Tools maps a
-// tool name to an explicit executable path when PATH probing is not enough.
-type EnvironmentConfig struct {
-	Enabled *bool             `toml:"enabled"`
-	Tools   map[string]string `toml:"tools"`
 }
 
 // EnvironmentEnabled reports whether startup environment probing should feed the
@@ -1358,17 +1351,17 @@ type ProviderEntry struct {
 	WebSearch *bool `toml:"web_search"`
 	// ReasoningProtocol selects the request shape for OpenAI-compatible reasoning
 	// models. Empty/auto uses the model capability registry plus endpoint
-	// heuristics; glm selects GLM's thinking.type toggle; none disables automatic
-	// reasoning controls for this provider.
+	// heuristics. Explicit values select DeepSeek, GLM, Kimi K3, or standard
+	// OpenAI reasoning contracts; none disables automatic reasoning controls.
 	ReasoningProtocol string `toml:"reasoning_protocol"`
 	// SupportedEfforts lists the /effort levels this provider/model exposes.
-	// When non-empty, it overrides the built-in defaults derived from
-	// Kind/BaseURL and makes /effort configurable. "auto" is the implicit
-	// prefix — always accepted. DefaultEffort resolves it; omit DefaultEffort
-	// (or set one outside this list) to fall back to SupportedEfforts[0].
+	// Non-empty values override built-in Kind/BaseURL defaults except for fixed
+	// Kimi K3 reasoning. "auto" is the implicit prefix — always accepted.
+	// DefaultEffort resolves it; omit DefaultEffort (or set one outside this
+	// list) to fall back to SupportedEfforts[0].
 	SupportedEfforts []string `toml:"supported_efforts"`
 	// DefaultEffort is the /effort level used when the user picks "auto" or
-	// has not set Effort. Ignored when SupportedEfforts is empty.
+	// has not set Effort. Ignored for empty SupportedEfforts or fixed Kimi K3.
 	DefaultEffort string `toml:"default_effort"`
 	// ModelOverrides customizes capability metadata after ResolveModel selects a
 	// concrete model from a multi-model provider. Use it when a gateway exposes
@@ -1492,12 +1485,7 @@ func (e *ProviderEntry) DefaultModel() string {
 
 // HasModel reports whether m is one of the provider's models.
 func (e *ProviderEntry) HasModel(m string) bool {
-	for _, x := range e.ModelList() {
-		if x == m {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(e.ModelList(), m)
 }
 
 // PriceForModel returns the configured per-1M-token price for model. Per-model

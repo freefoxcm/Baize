@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -36,7 +37,7 @@ import (
 // the exception: they go to Reasonix's global .env (upsertDotEnv), since config
 // stores only the env-var name, not the key.
 
-// --- read ---
+// read
 
 type ProviderView struct {
 	Name              string                      `json:"name"`
@@ -1299,7 +1300,7 @@ func botDomainOrDefault(domain string) string {
 	return "feishu"
 }
 
-// --- apply (write config, then rebuild the controller so it's live) ---
+// apply (write config, then rebuild the controller so it's live)
 
 // applyConfigChange mutates the user-global config and rebuilds the controller so
 // the change takes effect this session. Desktop settings such as providers and
@@ -1687,13 +1688,13 @@ func configDeclaresProviderAccess(path string) bool {
 	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(string(body), "\n") {
+	for line := range strings.SplitSeq(string(body), "\n") {
 		if before, _, ok := strings.Cut(line, "#"); ok {
 			line = before
 		}
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "provider_access") {
-			rest := strings.TrimSpace(strings.TrimPrefix(line, "provider_access"))
+		if after, ok := strings.CutPrefix(line, "provider_access"); ok {
+			rest := strings.TrimSpace(after)
 			return strings.HasPrefix(rest, "=")
 		}
 	}
@@ -1876,7 +1877,8 @@ func (a *App) rebuildSettingTurnLocked(setting string, tab *WorkspaceTab, admiss
 	a.supersedeTabBuildLocked(tab)
 	a.saveTabsLocked()
 	a.mu.Unlock()
-	if oldCtrl != nil {
+	// True subgraph rebuilds reuse the same controller pointer — never Close it.
+	if oldCtrl != nil && oldCtrl != ctrl {
 		oldCtrl.Close()
 	}
 	a.persistTabSessionPath(tab, path)
@@ -1919,12 +1921,10 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		if !ok {
 			return nil, normalizedTabRuntime{}, "", fmt.Errorf("reload runtime: controller is %T, want *control.Controller", oldCtrl)
 		}
-		res, err := boot.Rebuild(a.bootContext(), old, opts)
+		res, err := rebuildTabRuntime(a, tab, old, opts)
 		if err != nil {
 			return nil, normalizedTabRuntime{}, "", err
 		}
-		// The stage-3a runtime set is always empty; when stage 5 binds
-		// sidecar processes it must retire with the controller it belongs to.
 		ctrl := res.Controller
 		a.bindControllerDisplayRecorder(ctrl)
 		// boot.Rebuild migrated history (same session file, fresh system
@@ -2321,10 +2321,8 @@ func providerVisionModels(models, visionModels []string) []string {
 func providerDefaultForModels(currentDefault string, models []string) string {
 	currentDefault = strings.TrimSpace(currentDefault)
 	if currentDefault != "" {
-		for _, model := range models {
-			if model == currentDefault {
-				return currentDefault
-			}
+		if slices.Contains(models, currentDefault) {
+			return currentDefault
 		}
 	}
 	if len(models) > 0 {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/boot"
 	"reasonix/internal/command"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -111,7 +113,6 @@ type chatTUI struct {
 	// Persists across turns until the work completes or a new session starts.
 	todoArgs string
 
-	// planMode mirrors the agent's plan-first workflow (Shift+Tab toggles it). The
 	// marker rides in outgoing user messages so the cache-stable prompt prefix is
 	// left untouched.
 	planMode bool
@@ -359,7 +360,8 @@ type chatTUI struct {
 	// migrates inside the boot layer. Set by chatREPL (it must NOT touch
 	// this model — the swap happens on the running copy); nil disables
 	// /reload.
-	rebuildRuntime runtimeRebuilder
+	rebuildRuntime  runtimeRebuilder
+	lastBuildResult *boot.BuildResult
 	// pendingReload coalesces /reload requests made while a turn or a runtime
 	// switch is in flight; the TurnDone drain runs it once the TUI is idle.
 	pendingReload  bool
@@ -709,7 +711,6 @@ func configureChatTextarea(ti *textarea.Model) {
 	// Linux terminals send Ctrl+arrows for the same intent.
 	ti.KeyMap.WordForward = key.NewBinding(key.WithKeys("alt+right", "alt+f", "ctrl+right"))
 	ti.KeyMap.WordBackward = key.NewBinding(key.WithKeys("alt+left", "alt+b", "ctrl+left"))
-	// mirrors the word-motion convention: macOS uses Alt+Backspace, Windows and
 	// Linux terminals send Ctrl+Backspace to delete the word behind the cursor.
 	ti.KeyMap.DeleteWordBackward = key.NewBinding(key.WithKeys("alt+backspace", "ctrl+w", "ctrl+backspace"))
 	ti.Focus()
@@ -874,10 +875,11 @@ func suspendWithMouseReset() tea.Cmd {
 }
 
 func (m chatTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Feed the startup/stall watchdog so freezes leave a goroutine dump and
-	// recover the terminal instead of a zero-byte log (#7435).
+	// Confirm booting → idle on the first Update. User input (keys/mouse/focus)
+	// must NOT refresh the active-turn heartbeat; only elapsedTick and work
+	// events do, so interaction cannot mask a stuck event loop (#7809).
 	if m.diagnostics != nil {
-		m.diagnostics.markProgress()
+		m.diagnostics.NoteBooted()
 	}
 	logFirstFrame := false
 	if m.diagnostics != nil && !m.firstFrameLogged {
@@ -1491,6 +1493,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.ctrl.Running() {
 					m.state = tuiIdle
 					m.confirmBubbleSent()
+					m.noteWatchdogIdle()
 				}
 			default:
 				// Idle (any mode): a double-Esc on an empty composer opens the
@@ -1667,8 +1670,8 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// "!<cmd>" runs a shell command directly, bypassing the model.
-			if strings.HasPrefix(line, "!") {
-				cmd := strings.TrimPrefix(line, "!")
+			if after, ok := strings.CutPrefix(line, "!"); ok {
+				cmd := after
 				if strings.TrimSpace(cmd) == "" {
 					m.input.Reset()
 					m.pastedBlocks = nil
@@ -1690,6 +1693,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.bubblePending = true
 				m.turnDiscarded = false
 				m.confirmBubbleSent() // shell events arrive instantly
+				m.noteWatchdogRunning()
 				m.ctrl.RunShell(cmd)
 				return m, tea.Batch(m.spinner.Tick, elapsedTick())
 			}
@@ -1730,6 +1734,9 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case agentEventMsg:
 		e := event.Event(msg)
+		// Agent/shell/controller work events prove the event loop is servicing
+		// the active turn. Record before ingest so TurnDone still counts.
+		m.noteWatchdogHeartbeat(watchdogAgentSource(e.Kind))
 		m.ingestEvent(e)
 		turnDone := e.Kind == event.TurnDone
 		gitMaybeChanged := e.Kind == event.ToolResult && !e.Tool.ReadOnly
@@ -1740,9 +1747,10 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// when bash output or reasoning floods in. Capped so a sustained flood
 		// still yields to render periodically.
 	drain:
-		for drained := 0; drained < maxEventDrain; drained++ {
+		for range maxEventDrain {
 			select {
 			case e2 := <-m.eventCh:
+				m.noteWatchdogHeartbeat(watchdogAgentSource(e2.Kind))
 				m.ingestEvent(e2)
 				if e2.Kind == event.TurnDone {
 					turnDone = true
@@ -1822,6 +1830,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.followSessionLease()
 		} else {
 			m.ctrl = msg.ctrl
+			m.updateWatchdogStatusProvider()
 			m.label = msg.label
 			m.commands = msg.commands
 			m.skills = msg.skills
@@ -1831,11 +1840,8 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.runtimeProfile = msg.profile
 			}
 			m.refreshEffortStatus()
-			// Stash the old controller for cleanup at exit. It cannot be
-			// closed here or in the build goroutine — Close() runs
-			// SessionEnd hooks and kills plugin subprocesses, both of
-			// which corrupt bubbletea's terminal raw mode.
-			if msg.oldCtrl != nil {
+			// Defer Close to exit; skip when subgraph rebuild reused the pointer.
+			if msg.oldCtrl != nil && msg.oldCtrl != msg.ctrl {
 				m.oldControllers = append(m.oldControllers, msg.oldCtrl)
 			}
 			// The lease follows the controller's session file. Normally a
@@ -1970,6 +1976,9 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case elapsedTickMsg:
 		if m.state == tuiRunning {
+			// elapsedTick is the primary active-turn heartbeat: long turns that
+			// emit no agent events still prove the Bubble Tea loop is alive.
+			m.noteWatchdogHeartbeat("elapsed_tick")
 			m.elapsed = int(time.Since(m.runStart).Seconds())
 			m.tickToolRunning()
 			m.tickSubagentProgress()
@@ -2078,10 +2087,7 @@ func chunkLines(s string, n int) []string {
 	}
 	var out []string
 	for i := 0; i < len(lines); i += n {
-		end := i + n
-		if end > len(lines) {
-			end = len(lines)
-		}
+		end := min(i+n, len(lines))
 		out = append(out, strings.Join(lines[i:end], "\n"))
 	}
 	return out
@@ -2304,13 +2310,10 @@ func (m *chatTUI) streamReasoning(chunk string) {
 // positive maxLines keeps only the trailing visual lines (the live view); 0
 // renders all (verbose collapse).
 func reasoningBlock(raw string, width, maxLines int) string {
-	w := width - len([]rune(connector))
-	if w < 8 {
-		w = 8
-	}
+	w := max(width-len([]rune(connector)), 8)
 	var lines []string
-	for _, ln := range strings.Split(strings.TrimRight(raw, "\n"), "\n") {
-		for _, wl := range strings.Split(ansi.Wrap(expandTabs(ln), w, ""), "\n") {
+	for ln := range strings.SplitSeq(strings.TrimRight(raw, "\n"), "\n") {
+		for wl := range strings.SplitSeq(ansi.Wrap(expandTabs(ln), w, ""), "\n") {
 			lines = append(lines, dim(wl))
 		}
 	}
@@ -2606,18 +2609,15 @@ func (m *chatTUI) subagentProgressBlock(id string, sp *cliSubagentProgress) stri
 // subagentPreviewBlock renders a bounded trailing window of a preview channel
 // as dim, width-wrapped lines carrying a small glyph marker.
 func subagentPreviewBlock(glyph, raw string, width, maxLines int) string {
-	w := width - len([]rune(connector))
-	if w < 8 {
-		w = 8
-	}
+	w := max(width-len([]rune(connector)), 8)
 	var lines []string
 	first := true
-	for _, ln := range strings.Split(strings.TrimRight(raw, "\n"), "\n") {
+	for ln := range strings.SplitSeq(strings.TrimRight(raw, "\n"), "\n") {
 		if first {
 			ln = glyph + " " + ln
 			first = false
 		}
-		for _, wl := range strings.Split(ansi.Wrap(expandTabs(ln), w, ""), "\n") {
+		for wl := range strings.SplitSeq(ansi.Wrap(expandTabs(ln), w, ""), "\n") {
 			lines = append(lines, dim(wl))
 		}
 	}
@@ -2701,7 +2701,7 @@ func (m *chatTUI) collapseToolOutput(id, resultOutput string) {
 				total := len(lines)
 				if total > shellPreviewLines {
 					preview := make([]string, shellPreviewLines+1)
-					for i := 0; i < shellPreviewLines; i++ {
+					for i := range shellPreviewLines {
 						preview[i] = dim(clampPlain(lines[i], m.width-len([]rune(connector))))
 					}
 					preview[shellPreviewLines] = dim(fmt.Sprintf("… %d more lines (Ctrl+B)", total-shellPreviewLines))
@@ -2790,7 +2790,7 @@ func (m *chatTUI) collapseShellSlot(id string, idx int, resultOutput string) {
 		total := len(lines)
 		if total > shellPreviewLines {
 			preview := make([]string, shellPreviewLines+1)
-			for i := 0; i < shellPreviewLines; i++ {
+			for i := range shellPreviewLines {
 				preview[i] = dim(clampPlain(lines[i], m.width-len([]rune(connector))))
 			}
 			preview[shellPreviewLines] = dim(fmt.Sprintf("… %d more lines (Ctrl+B)", total-shellPreviewLines))
@@ -2840,7 +2840,7 @@ func (m *chatTUI) toggleShellOutput() {
 		m.shellExpanded[lastID] = false
 		if total > shellPreviewLines {
 			preview := make([]string, shellPreviewLines+1)
-			for i := 0; i < shellPreviewLines; i++ {
+			for i := range shellPreviewLines {
 				preview[i] = dim(clampPlain(lines[i], innerW))
 			}
 			preview[shellPreviewLines] = dim(fmt.Sprintf("… %d more lines (Ctrl+B)", total-shellPreviewLines))
@@ -2849,12 +2849,9 @@ func (m *chatTUI) toggleShellOutput() {
 	} else {
 		// Expand: show up to shellExpandMaxLines lines.
 		m.shellExpanded[lastID] = true
-		show := total
-		if show > shellExpandMaxLines {
-			show = shellExpandMaxLines
-		}
+		show := min(total, shellExpandMaxLines)
 		rendered := make([]string, show)
-		for i := 0; i < show; i++ {
+		for i := range show {
 			rendered[i] = dim(clampPlain(lines[i], innerW))
 		}
 		if total > shellExpandMaxLines {
@@ -3129,7 +3126,7 @@ func approvalChoiceLabels(a *event.Approval) []string {
 		choices = fmt.Sprintf(i18n.M.BashPrefixChoices, prefixRule, prefixRule)
 	}
 	var labels []string
-	for _, line := range strings.Split(choices, "\n") {
+	for line := range strings.SplitSeq(choices, "\n") {
 		line = strings.TrimSpace(line)
 		if len(line) < 3 || line[0] < '1' || line[0] > '9' || line[1] != '.' {
 			continue
@@ -3320,10 +3317,7 @@ func (m chatTUI) View() tea.View {
 		}
 		return v
 	}
-	boxW := m.width
-	if boxW < 10 {
-		boxW = 10
-	}
+	boxW := max(m.width, 10)
 	hideComposer := m.hideComposer()
 	shellMode := strings.HasPrefix(strings.TrimSpace(m.input.Value()), "!")
 	cancelRequested := m.cancelRequested()
@@ -3511,7 +3505,7 @@ func compactionCardLines(c event.Compaction) []string {
 	}
 	header := fmt.Sprintf("%s · %d %s · %s", i18n.M.CompactionTitle, c.Messages, i18n.M.CompactionUnit, trigger)
 	lines := []string{accent("◆ " + header)}
-	for _, ln := range strings.Split(strings.TrimRight(c.Summary, "\n"), "\n") {
+	for ln := range strings.SplitSeq(strings.TrimRight(c.Summary, "\n"), "\n") {
 		lines = append(lines, dim("  │ "+ln))
 	}
 	if c.Archive != "" {
@@ -3545,10 +3539,7 @@ func (m chatTUI) contextTag() string {
 	}
 	threshold := int(ratio * 100)
 	// Headroom to the compaction point, as a percentage of the window (clamped at 0).
-	left := threshold - pct
-	if left < 0 {
-		left = 0
-	}
+	left := max(threshold-pct, 0)
 	body := fmt.Sprintf("%s ctx (%d%%) · %d%% to compact", shortTokens(used), pct, left)
 	switch {
 	case pct >= threshold:
@@ -3663,10 +3654,7 @@ func shortTokens(n int) string {
 // renderApprovalBanner is the slim notice shown above the input while a tool
 // call (or a plan) awaits the user's decision.
 func (m chatTUI) renderApprovalBanner() string {
-	w := m.width
-	if w < 10 {
-		w = 10
-	}
+	w := max(m.width, 10)
 	if m.pendingApproval == nil {
 		return ""
 	}
@@ -3725,10 +3713,7 @@ func approvalSubjectBody(full, preview string, width int) string {
 	if full == "" || full == preview {
 		return ""
 	}
-	wrapWidth := width - 4
-	if wrapWidth < 20 {
-		wrapWidth = 20
-	}
+	wrapWidth := max(width-4, 20)
 	lines := strings.Split(wrapStatusLine(full, wrapWidth), "\n")
 	if len(lines) > maxApprovalSubjectLines {
 		lines = lines[:maxApprovalSubjectLines]
@@ -3867,10 +3852,7 @@ func todoPanelWindow(todos []todoPanelTodo) (int, int) {
 	if active < 0 {
 		return 0, todoPanelMaxRows
 	}
-	start := active - todoPanelMaxRows/2
-	if start < 0 {
-		start = 0
-	}
+	start := max(active-todoPanelMaxRows/2, 0)
 	if maxStart := len(todos) - todoPanelMaxRows; start > maxStart {
 		start = maxStart
 	}
@@ -3999,13 +3981,7 @@ func (m *chatTUI) growInputToFit() {
 	if m.input.DynamicHeight {
 		return
 	}
-	lines := strings.Count(m.input.Value(), "\n") + 1
-	if lines < 1 {
-		lines = 1
-	}
-	if lines > maxInputRows {
-		lines = maxInputRows
-	}
+	lines := min(max(strings.Count(m.input.Value(), "\n")+1, 1), maxInputRows)
 	if lines != m.input.Height() {
 		m.input.SetHeight(lines)
 	}
@@ -4210,6 +4186,7 @@ func (m *chatTUI) startControllerTurn(displayed, restore string, start func()) t
 	m.turnTokens = 0
 	// The controller owns the run goroutine, its context, and cancellation; it
 	// streams events to eventCh and emits TurnDone when the turn settles.
+	m.noteWatchdogRunning()
 	start()
 	return tea.Batch(m.spinner.Tick, elapsedTick())
 }
@@ -4275,6 +4252,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		if e.Kind == event.TurnDone {
 			m.turnDiscarded = false
 			m.state = tuiIdle
+			m.noteWatchdogIdle()
 		}
 		return
 	}
@@ -4508,6 +4486,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		// just clear the un-sendable flag.
 		m.confirmBubbleSent()
 		m.state = tuiIdle
+		m.noteWatchdogIdle()
 		m.queueEditCursor = -1
 		m.queueEditDraft = ""
 		m.clearSubmittedPastes()
@@ -4938,7 +4917,7 @@ func (m *chatTUI) runCopyCommand(input string) tea.Cmd {
 
 // firstLine returns the first non-empty line of s, truncated to 80 runes.
 func firstLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if t := strings.TrimSpace(line); t != "" {
 			runes := []rune(t)
 			if len(runes) > 80 {
@@ -4955,8 +4934,8 @@ func firstLine(s string) string {
 // The result is chronological (oldest first).
 func copyAssistantParts(msgs []provider.Message) []string {
 	lastUserIdx := -1
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == provider.RoleUser {
+	for i, v := range slices.Backward(msgs) {
+		if v.Role == provider.RoleUser {
 			lastUserIdx = i
 			break
 		}

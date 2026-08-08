@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -498,6 +499,7 @@ func runAgent(args []string, version string) int {
 	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
 	showThinking := fs.Bool("show-thinking", false, "show thinking text instead of the collapsed thinking marker")
 	metricsPath := fs.String("metrics", "", "write a JSON token/cache/cost summary of the run to this path")
+	trajectoryPath := fs.String("trajectory", "", "append a timestamped JSONL trajectory of the run's full event stream (tool calls, reasoning, decisions) to this path")
 	ablateFlag := fs.String("ablate", "", "benchmark arm: comma-separated subsystems to switch off (evidence, planner, subagent, retrieval, compaction; none|all)")
 	dir := fs.String("dir", "", "change to this directory first (project root); config, sandbox and file tools resolve from here")
 	cont := registerContinueFlag(fs)
@@ -664,38 +666,12 @@ func runAgent(args []string, version string) int {
 	defer stop()
 	started := time.Now()
 
-	// Live run: render the agent's event stream to stdout. Markdown post-stream
-	// redraw (cursor moves) is enabled only on a TTY; piped / captured output
-	// keeps the raw stream.
-	var sink event.Sink
-	var resultOutput *runOutputSink
-	if *printOnly || format != runOutputText {
-		resultOutput = newRunOutputSink(os.Stdout, format)
-		sink = resultOutput
-	} else {
-		var renderer agent.Renderer
-		termW := 80
-		if isTTY(os.Stdout) {
-			if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
-				termW = w
-			}
-			renderer = newMarkdownRenderer(termW)
-		}
-		textSink := agent.NewTextSink(os.Stdout, renderer, termW)
-		textSink.SetShowReasoning(*showThinking)
-		sink = textSink
+	chain, err := buildRunSink(format, *printOnly, *showThinking, *metricsPath, *trajectoryPath, cfg, reporter)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
 	}
-	var metrics *metricsSink
-	if *metricsPath != "" {
-		metrics = &metricsSink{
-			inner:         sink,
-			partialPath:   partialMetricsPath(*metricsPath),
-			snapshotEvery: 2 * time.Second,
-		}
-		sink = metrics
-	}
-	sink = withNotifications(sink, cfg)
-	sink = reporter.Wrap(sink)
+	sink, resultOutput, metrics := chain.sink, chain.resultOutput, chain.metrics
 	if resumePath != "" {
 		*model = modelForResumePath(*model, resumePath, cfg)
 	}
@@ -788,6 +764,11 @@ func runAgent(args []string, version string) int {
 			}
 		}
 		if err := writeMetrics(*metricsPath, final); err != nil {
+			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		}
+	}
+	if chain.trajectory != nil {
+		if err := chain.trajectory.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		}
 	}
@@ -1277,6 +1258,7 @@ func chatREPL(args []string, version string) int {
 
 	m := newChatTUI(ctrl, missing, eventCh, termW)
 	m.diagnostics = diagnostics
+	m.updateWatchdogStatusProvider()
 	m.planMode = permissions.plan
 	m.leases = leases
 	if cfg != nil {
@@ -1326,24 +1308,7 @@ func chatREPL(args []string, version string) int {
 	// goal/recovery state, lifecycle). Same construction inputs as
 	// buildController so the replacement matches this session's launch wiring;
 	// the CLI holds no SharedHost, so each rebuild owns its plugin host.
-	m.rebuildRuntime = func(ctx context.Context, spec controllerBuildSpec, old *control.Controller) (*boot.BuildResult, error) {
-		effectiveOverrides := overrides
-		if spec.EffortOverride != nil {
-			effectiveOverrides.Effort = spec.EffortOverride
-		}
-		res, err := boot.Rebuild(ctx, old, cliProfileBuildOptions(spec.ModelRef, *maxSteps, false, sink, spec.RuntimeProfile, effectiveOverrides))
-		if err != nil {
-			return nil, err
-		}
-		// The interactive approval gate and the --yolo posture are frontend
-		// wiring boot.Rebuild deliberately leaves to the caller (it carries
-		// the Ask/Auto/Yolo tool-approval mode, not the launch flag).
-		res.Controller.EnableInteractiveApproval()
-		if *yolo {
-			res.Controller.SetAutoApproveTools(true)
-		}
-		return res, nil
-	}
+	m.bindRuntimeRebuilder(*maxSteps, sink, *yolo, overrides, cliProfileBuildOptions)
 	m.runtimeProfile = profile
 	if effortOverride != nil {
 		m.effortLevel = *effortOverride
@@ -1449,7 +1414,7 @@ func prepareNativeScrollback(w io.Writer, rows int) {
 }
 
 func reserveNativeScrollbackFrame(w io.Writer, rows int) {
-	for i := 0; i < rows; i++ {
+	for range rows {
 		fmt.Fprintln(w)
 	}
 }
@@ -1786,12 +1751,7 @@ func buildFamilyEntry(probe config.ProviderEntry, selected []string) config.Prov
 }
 
 func containsString(xs []string, v string) bool {
-	for _, x := range xs {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, v)
 }
 
 // filterStaleCustomEntries drops the wizard's own magic-name entries
@@ -2320,7 +2280,7 @@ func appendEnv(path string, lines []string) error {
 
 	var kept []string
 	if data, err := fileencoding.ReadFileUTF8(path); err == nil {
-		for _, raw := range strings.Split(string(data), "\n") {
+		for raw := range strings.SplitSeq(string(data), "\n") {
 			trimmed := strings.TrimSpace(raw)
 			check := strings.TrimPrefix(trimmed, "export ")
 			if k, _, ok := strings.Cut(check, "="); ok && target[strings.TrimSpace(k)] {

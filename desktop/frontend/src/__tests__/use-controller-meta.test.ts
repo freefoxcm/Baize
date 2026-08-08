@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/use-controller-meta.test.ts
 
-import { currentTurnWaitMs, effortSwitchNoticeText, foregroundRunningFromRuntimeMeta, historyMessagesToItems, initialState, localizedBackendNoticeText, localizedNoticeText, metaFromTab, modelSwitchNoticeText, reducer, sameMeta, shouldReconcileStaleTurn, tokenModeSwitchNoticeText } from "../lib/useController";
+import { currentTurnWaitMs, effortSwitchNoticeText, foregroundRunningFromRuntimeMeta, historyMessagesToItems, initialState, localizedBackendNoticeText, localizedNoticeText, metaFromTab, modelSwitchNoticeText, reducer, sameMeta, shouldReconcileStaleTurn, tokenModeSwitchNoticeText, type Item } from "../lib/useController";
 import { parseTodos } from "../lib/tools";
 import { resolveTodoPanelTodos } from "../lib/todoVisibility";
 import type { HistoryMessage, Meta, TabMeta, WireUsage } from "../lib/types";
@@ -424,7 +424,9 @@ console.log("\nuse controller meta");
     ],
   });
   const hydrated = reducer({ ...initialState, meta: delayedLiveMeta }, { type: "meta", meta: delayedLiveMeta });
-  const noLiveTodo = hydrated.items.find((item) => item.kind === "tool" && item.name === "todo_write");
+  const noLiveTodo = hydrated.items.find(
+    (item): item is Extract<Item, { kind: "tool" }> => item.kind === "tool" && item.name === "todo_write",
+  );
   eq(
     resolveTodoPanelTodos(hydrated.meta?.canonicalTodos, noLiveTodo ? parseTodos(noLiveTodo.args) : undefined),
     delayedLiveMeta.canonicalTodos,
@@ -452,7 +454,9 @@ console.log("\nuse controller meta");
     type: "event",
     e: { kind: "tool_result", tool: { id: "todo-live", name: "todo_write", readOnly: true, output: "Todos updated" } },
   });
-  const liveTodo = liveState.items.find((item) => item.kind === "tool" && item.name === "todo_write");
+  const liveTodo = liveState.items.find(
+    (item): item is Extract<Item, { kind: "tool" }> => item.kind === "tool" && item.name === "todo_write",
+  );
   eq(
     JSON.stringify(resolveTodoPanelTodos(liveState.meta?.canonicalTodos, liveTodo ? parseTodos(liveTodo.args) : undefined)),
     JSON.stringify(JSON.parse(liveArgs).todos),

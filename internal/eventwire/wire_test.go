@@ -96,7 +96,7 @@ func TestToWireNoticeCarriesDecisionReceipt(t *testing.T) {
 }
 
 func TestKindNamesComplete(t *testing.T) {
-	for k := event.Kind(0); k < event.KindCount; k++ {
+	for k := range event.KindCount {
 		if ToWire(event.Event{Kind: k}).Kind == "" {
 			t.Fatalf("kind %d has no wire name", k)
 		}
@@ -105,7 +105,7 @@ func TestKindNamesComplete(t *testing.T) {
 
 func TestDesktopWireEventKindTypeCoversSharedKinds(t *testing.T) {
 	ts := readDesktopTypes(t)
-	for k := event.Kind(0); k < event.KindCount; k++ {
+	for k := range event.KindCount {
 		kind := ToWire(event.Event{Kind: k}).Kind
 		if !strings.Contains(ts, `"`+kind+`"`) {
 			t.Fatalf("desktop WireEvent EventKind is missing %q", kind)
@@ -254,6 +254,7 @@ func TestToWireToolPayloadJSON(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
 		ID: "call-1", Name: "task", Args: `{"prompt":"x"}`, Output: "ignored",
 		Err: "blocked", ReadOnly: true, Truncated: true, DurationMs: 522,
+		StartedAt: 1754500000000, EndedAt: 1754500000522,
 		Partial: true, Refreshed: true, ParentID: "parent-1",
 		FileDiff: event.FileDiff{Diff: "@@ -1 +1 @@\n-old\n+new\n", Added: 1, Removed: 1},
 		Profile:  &event.Profile{Model: "deepseek-pro", Effort: "max"},
@@ -267,6 +268,7 @@ func TestToWireToolPayloadJSON(t *testing.T) {
 		`"kind":"tool_dispatch"`, `"id":"call-1"`, `"name":"task"`,
 		`"args":"{\"prompt\":\"x\"}"`, `"output":"ignored"`, `"err":"blocked"`,
 		`"readOnly":true`, `"truncated":true`, `"durationMs":522`, `"partial":true`, `"refreshed":true`,
+		`"startedAt":1754500000000`, `"endedAt":1754500000522`,
 		`"parentId":"parent-1"`, `"diff":"@@ -1 +1 @@\n-old\n+new\n"`,
 		`"added":1`, `"removed":1`, `"profile":{"model":"deepseek-pro","effort":"max"}`,
 	} {

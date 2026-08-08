@@ -370,7 +370,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 				fmt.Fprintf(&b, "web_search  = %t   # provider-executed web_search tool; omitted defaults on for supported official DeepSeek APIs\n", *p.WebSearch)
 			}
 			if p.ReasoningProtocol != "" {
-				fmt.Fprintf(&b, "reasoning_protocol = %q   # auto|deepseek|glm|openai|none; overrides model/endpoint reasoning detection\n", p.ReasoningProtocol)
+				fmt.Fprintf(&b, "reasoning_protocol = %q   # auto|deepseek|glm|kimi-k3|openai|none; overrides model/endpoint reasoning detection\n", p.ReasoningProtocol)
 			}
 			if len(p.SupportedEfforts) > 0 {
 				fmt.Fprintf(&b, "supported_efforts = %s   # custom /effort levels exposed by this provider; overrides the built-in Kind/BaseURL default\n", renderStringArray(p.SupportedEfforts))
@@ -1318,7 +1318,7 @@ func renderEnvironmentConfig(b *strings.Builder, cfg EnvironmentConfig) {
 	if cfg.Enabled != nil {
 		enabled = *cfg.Enabled
 	}
-	fmt.Fprintf(b, "enabled = %v   # inject a stable startup environment summary into the model prompt\n", enabled)
+	fmt.Fprintf(b, "enabled = %v   # inject a stable startup environment summary into the model prompt\noffline = %v   # declare that outbound network access is unavailable; prevents futile retries\n", enabled, cfg.Offline)
 	if len(cfg.Tools) == 0 {
 		b.WriteString("# [environment.tools]\n")
 		b.WriteString("# go = \"/opt/homebrew/bin/go\"   # trusted executable path; workspace-local paths are not auto-executed\n\n")
