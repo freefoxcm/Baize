@@ -5,6 +5,7 @@ import { DiffView } from "./DiffView";
 import { useT } from "../lib/i18n";
 import { diffsFor, languageForToolArgs, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
 import { useShellExpand } from "../lib/shellExpand";
+import { app } from "../lib/bridge";
 import { useGSAPCollapse } from "../lib/useGSAPCollapse";
 import { isTerminalSubagentPhase, type Item, type SubagentPhase } from "../lib/useController";
 import type { Translator } from "../lib/i18n";
@@ -258,11 +259,9 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   useEffect(() => {
     if (!open || !item.dataArchived || fullData || !tabId) return;
     let cancelled = false;
-    import("../lib/bridge").then(({ app }) =>
-      app.ToolResultForTab(tabId, item.id).then((d) => {
-        if (!cancelled && d) setFullData(d);
-      }).catch(() => {}),
-    ).catch(() => {});
+    void app.ToolResultForTab(tabId, item.id).then((d) => {
+      if (!cancelled && d) setFullData(d);
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [open, item.id, item.dataArchived, fullData, tabId]);
 

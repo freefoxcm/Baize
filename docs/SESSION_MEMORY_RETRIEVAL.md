@@ -80,6 +80,8 @@ Each fact is a Markdown file with:
 - `created_at` and `updated_at` timestamps;
 - a human-readable name, title, and description;
 - an independent `type` and `scope`;
+- optional search `keywords` — aliases and translations of key terms that let
+  a paraphrased or cross-language query reach the fact;
 - the Markdown body.
 
 `type` classifies the content:
@@ -118,7 +120,9 @@ not mutate the system prompt or tool schema.
 Recall is conservative:
 
 - generic turns such as "continue" do not trigger recall;
-- distinctive lexical matches are ranked with BM25;
+- distinctive lexical matches are ranked with BM25 (CJK text is matched by
+  character bigrams, so a hit needs a real word overlap, not scattered common
+  characters);
 - project facts receive a small relevance preference;
 - stale facts are down-ranked, not silently deleted;
 - equivalent project facts suppress global fallbacks for that recall;

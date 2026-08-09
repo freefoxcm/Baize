@@ -97,7 +97,7 @@ type Tool interface {
 外部插件是配置中声明的 MCP server。协议统一为 JSON-RPC 2.0，传输由 `transport` 接口抽象：
 
 - `stdio`：本地持久子进程，每行一条 JSON 消息。
-- `http` / `streamable-http`：向远程 `url` POST，支持 `application/json` 和 SSE 响应，并复用 `Mcp-Session-Id`。
+- `http` / `streamable-http`：向远程 `url` POST，支持 `application/json` 和 SSE 响应，并复用 `Mcp-Session-Id`。未配置静态 `Authorization` header 时，用户可发起 OAuth：客户端按 Protected Resource Metadata / Authorization Server Metadata 发现端点，使用动态客户端注册、PKCE S256、loopback callback、resource indicator 与 refresh token 轮换。客户端凭据和 token 以 `0600` 权限保存在工作区之外的 Reasonix 私有 MCP 状态目录，并绑定到配置的 resource URL；URL 改变后不会复用旧 token。OAuth 发现、注册和 token 请求遵守 Reasonix 解析后的网络代理设置。删除声明时会清理该状态；若之后生效的 fallback 使用同一 OAuth resource，则保留该状态。
 - `sse`：兼容旧版 2024-11-05 HTTP+SSE；持久 GET 接收 server 公布的相对 POST endpoint、JSON-RPC 响应与 server 消息。为避免静态 header 泄漏，会拒绝跨域 endpoint。
 
 `${VAR}` 与 `${VAR:-default}` 可用于 `command`、`args`、`env`、`url` 和 `headers`，使 secret 留在环境中。生命周期为 `initialize` → `notifications/initialized` → `tools/list`，调用使用 `tools/call`。
@@ -187,7 +187,7 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
 - 安装 MCP server 即授权其全部工具，不再有 server、raw tool、writer 或 destructive 的第二套审批策略；项目 `reasonix.toml` 与 `.mcp.json` 声明同样默认可信，不需要额外启动确认，显式全局 `deny` 仍然优先。全局安装写入用户 `config.toml`，项目声明保留在原项目文件；同名时项目覆盖全局，项目内部 `reasonix.toml` 高于 `.mcp.json`。编辑写回当前生效来源，删除高优先级声明后露出下一层。`readOnlyHint` 与 `destructiveHint` 仅用于调度、Plan/严格只读边界及缓存到实时安全分类复核，不会新增逐调用审批。严格只读子智能体 registry 仍仅暴露已授权且 `readOnlyHint: true`、无 `destructiveHint` 的 MCP；双模型 Planner 通过固定 `use_capability` 代理（从不暴露直接 `mcp__*` schema）调用已授权、非 destructive 的 MCP，不再要求 `readOnlyHint`，destructive 工具留给 Executor。Balanced 双模型的 Executor 使用独立 frontend 复用同一稳定代理，因此 Planner 发现的 capability ID 可在 handoff 后直接执行，同时保持两侧 ledger/audit 隔离。分发前代理会再次复核当前 controller 的 enable、授权和完整运行时连接身份；共享 Host 中仅 server 同名不构成复用权限。
 - Plan 是协作流程，不等于全工具只读。普通 built-in 与 Bash 仍走 Ask/Auto/YOLO 和 Sandbox；独立双模型 Planner 允许已授权、非 destructive 的 MCP（即使没有 `readOnlyHint`），但在规划阶段持续阻止 destructive 与未授权目标；没有独立 Planner 的单模型 Plan 仍阻止 MCP writer/destructive。
 - Plan 只能由用户显式选择进入，与当前工具审批姿态相互独立；普通聊天不会自动切换到 Plan。Auto/YOLO 不会回答 `ask`，也不会替用户批准 `exit_plan_mode`，获批计划的短期自动执行窗口也不会自动批准后续计划或嵌套/间接 Bash。
-- 桌面端协作模式分为 `normal`、`plan` 和 `goal`。Goal 会持续推进目标，直到完成、同一阻塞状态重复三次、用户停止或达到安全续跑边界。只有用户在输入框中选择 Goal 或运行 `/goal` 显式启动后，长周期研究、调试、优化或实现目标才可启用 AutoResearch；普通聊天不会隐式切换协作模式，也不会创建持久化 AutoResearch 状态。动态状态保存在 `.reasonix/autoresearch/.../`。
+- 桌面端协作模式分为 `normal`、`plan` 和 `goal`。Goal 会持续推进目标，直到完成、阻塞、用户停止或达到轮次/无进展安全边界，并按目标自动选择简单（10）、写入（20）或研究（40）轮预算。三类预算共用同一个 Goal FSM、宿主 receipt、Delivery readiness 和有界 evaluator，不再存在第二套研究协议或可写 sidecar。普通聊天不会隐式切换协作模式；旧 `.reasonix/autoresearch/.../` 目录只读，显式旧路径可恢复为普通 Goal。
 
 ### 3.8 Slash command
 
@@ -303,6 +303,6 @@ MCP 启动与单次工具调用使用不同生命周期。调用方只短暂等�
 ## 9. 路线图（当前范围之外）
 
 - 完成 Sandbox Phase 1 的 escape prompt：检测 sandbox 不可用或拒绝时，提供一次明确、受权限控制的非 sandbox 重试。
-- MCP long tail：OAuth 2.0、`headersHelper`、更多 `.mcp.json` scope、tool-search 延迟加载、`list_changed`、channel、elicitation、root，以及可提供 provider 的插件。
+- MCP long tail：`headersHelper`、更多 `.mcp.json` scope、tool-search 延迟加载、`list_changed`、channel、elicitation、root，以及可提供 provider 的插件。
 - 增加 Anthropic-native provider kind，用于验证 registry 不依赖单一 wire format，并支持原生 prompt cache control。
 - 把“始终允许”规则持久化到项目配置，以及为 `reasonix run` 提供 session 级权限覆盖。

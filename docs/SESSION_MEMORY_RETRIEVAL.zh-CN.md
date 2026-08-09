@@ -70,6 +70,8 @@ Reasonix 识别 `REASONIX.md`、`AGENTS.md`、`CLAUDE.md`，以及对应的 `.lo
 - `created_at`、`updated_at` 时间；
 - 便于阅读的 name、title 和 description；
 - 相互独立的 `type` 与 `scope`；
+- 可选的检索 `keywords` —— 关键词的同义词与双语别名，让换一种说法或换一种
+  语言的提问也能命中这条事实；
 - Markdown 正文。
 
 `type` 表示内容类别：
@@ -102,7 +104,8 @@ type 不推导 scope。项目反馈仍只属于项目，全局 reference 仍然�
 召回策略刻意保守：
 
 - “继续”这类泛化回合不触发召回；
-- 用 BM25 排序有区分度的词法命中；
+- 用 BM25 排序有区分度的词法命中（CJK 文本按双字 bigram 匹配，命中需要真实的
+  词语重叠，零散的常用字不算）；
 - 项目事实有轻微相关性加权；
 - 过期事实只降权，不静默删除；
 - 本轮存在等价项目事实时，不再注入对应的全局 fallback；

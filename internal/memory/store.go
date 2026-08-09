@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"reasonix/internal/config"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/frontmatter"
@@ -86,6 +84,7 @@ type Memory struct {
 	Description string // one-line summary used for the index and recall
 	Type        Type
 	Scope       FactScope // project by default; global only when explicitly requested
+	Keywords    string    // search aliases (bilingual synonyms, related commands); recall-only, never rendered into the index
 	Body        string    // the fact itself (Markdown)
 }
 
@@ -378,78 +377,6 @@ func repairOwnerWrite(root *os.Root, path string, dir bool) {
 		need = 0o700
 	}
 	_ = root.Chmod(path, info.Mode().Perm()|need)
-}
-
-// memoryFrontmatter is the YAML shape render emits, mirroring the auto-memory
-// shape (name / description / metadata.type) so the files are interchangeable
-// with that ecosystem and re-readable by loadMemory. Marshaled by yaml.v3 so a
-// title or description containing ": ", '#', or quotes is escaped instead of
-// corrupting the block — frontmatter.Split returns an EMPTY map for
-// unparseable YAML, which would silently drop the memory's name/title/type on
-// the next load. Plain values render byte-identically to the previous
-// hand-built format.
-type memoryFrontmatter struct {
-	ID        string `yaml:"id,omitempty"`
-	Revision  int    `yaml:"revision,omitempty"`
-	CreatedAt string `yaml:"created_at,omitempty"`
-	UpdatedAt string `yaml:"updated_at,omitempty"`
-	Name      string `yaml:"name"`
-	Title     string `yaml:"title,omitempty"`
-	Desc      string `yaml:"description"`
-	Metadata  struct {
-		Type     string `yaml:"type"`
-		FactType string `yaml:"fact_type,omitempty"`
-		Scope    string `yaml:"scope"`
-	} `yaml:"metadata"`
-}
-
-// render serializes a memory to frontmatter + body.
-func render(m Memory, name string) string {
-	fm := memoryFrontmatter{
-		ID: m.ID, Revision: m.Revision, Name: name, Title: oneLine(m.Title), Desc: oneLine(m.Description),
-	}
-	if !m.CreatedAt.IsZero() {
-		fm.CreatedAt = m.CreatedAt.UTC().Format(time.RFC3339Nano)
-	}
-	if !m.UpdatedAt.IsZero() {
-		fm.UpdatedAt = m.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	}
-	actualType := NormalizeType(string(m.Type))
-	scope := NormalizeFactScope(string(m.Scope))
-	compatType := previousReleaseRoutingType(actualType, scope)
-	fm.Metadata.Type = string(compatType)
-	if compatType != actualType {
-		fm.Metadata.FactType = string(actualType)
-	}
-	fm.Metadata.Scope = string(scope)
-	var b strings.Builder
-	b.WriteString("---\n")
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	// Encoding a flat struct of strings cannot fail.
-	_ = enc.Encode(fm)
-	_ = enc.Close()
-	b.WriteString("---\n\n")
-	b.WriteString(strings.TrimSpace(m.Body))
-	b.WriteString("\n")
-	return b.String()
-}
-
-// previousReleaseRoutingType keeps scope safe when an older Reasonix binary
-// shares the same state directory. Previous releases routed user/feedback to
-// GlobalDir and project/reference to Dir, so metadata.type remains a compatible
-// routing hint while metadata.fact_type preserves the independent new category.
-func previousReleaseRoutingType(actual Type, scope FactScope) Type {
-	if scope == FactScopeGlobal {
-		if actual == TypeUser || actual == TypeFeedback {
-			return actual
-		}
-		return TypeUser
-	}
-	if actual == TypeProject || actual == TypeReference {
-		return actual
-	}
-	return TypeProject
 }
 
 // indexLineRe matches a managed index line so reindex/Delete can target the line
@@ -783,6 +710,7 @@ func loadMemory(path string) (Memory, bool) {
 		Name:        fm["name"],
 		Title:       fm["title"],
 		Description: fm["description"],
+		Keywords:    fm["keywords"],
 		Type:        persistedFactType(fm),
 		Scope:       factScopeFromFrontmatter(fm["scope"]),
 		Body:        strings.TrimSpace(body),

@@ -2924,29 +2924,30 @@ func TestSetEffortForTabReanchorsDepthCapRecoveryBranch(t *testing.T) {
 	if err := app.SetEffortForTab(tab.ID, "max"); err != nil {
 		t.Fatalf("SetEffortForTab: %v", err)
 	}
-	if got := tab.Ctrl.SessionPath(); got != recoveryPath {
-		t.Fatalf("session path after effort switch = %q, want current recovery branch %q", got, recoveryPath)
+	isolatedPath := tab.Ctrl.SessionPath()
+	if isolatedPath == recoveryPath || !strings.Contains(isolatedPath, "-recovery-") {
+		t.Fatalf("session path after effort switch = %q, want an isolated recovery branch", isolatedPath)
 	}
-	if got := tab.currentSessionPath(); got != recoveryPath {
-		t.Fatalf("tab current session path = %q, want %q", got, recoveryPath)
+	if got := tab.currentSessionPath(); got != isolatedPath {
+		t.Fatalf("tab current session path = %q, want %q", got, isolatedPath)
 	}
-	if tab.sessionLease == nil || sessionRuntimeKey(tab.sessionLease.Path()) != sessionRuntimeKey(recoveryPath) {
-		t.Fatalf("tab lease path = %q, want %q", tab.sessionLeaseRuntimeKey(), recoveryPath)
+	if tab.sessionLease == nil || sessionRuntimeKey(tab.sessionLease.Path()) != sessionRuntimeKey(isolatedPath) {
+		t.Fatalf("tab lease path = %q, want %q", tab.sessionLeaseRuntimeKey(), isolatedPath)
 	}
 	matches, err := filepath.Glob(filepath.Join(dir, "*-recovery-*.jsonl"))
 	if err != nil {
 		t.Fatalf("glob recovery branches: %v", err)
 	}
 	matches = primarySessionFiles(matches)
-	if len(matches) != 1 || matches[0] != recoveryPath {
-		t.Fatalf("recovery branches after effort switch = %v, want only %q", matches, recoveryPath)
+	if len(matches) != 2 || !slices.Contains(matches, recoveryPath) || !slices.Contains(matches, isolatedPath) {
+		t.Fatalf("recovery branches after effort switch = %v, want canonical and isolated paths", matches)
 	}
 
 	lines := readConflictLogLines(t, store.SessionConflictLog(recoveryPath))
 	if len(lines) != 1 {
 		t.Fatalf("conflict log lines = %v, want one depth-cap diagnostic", lines)
 	}
-	if !strings.Contains(lines[0], `"outcome":"recovery_depth_cap_force_saved"`) {
+	if !strings.Contains(lines[0], `"outcome":"recovery_depth_cap_isolated"`) {
 		t.Fatalf("conflict diagnostic = %s, want depth-cap outcome", lines[0])
 	}
 	if strings.Contains(lines[0], dir) || strings.Contains(lines[0], recoveryPath) {
@@ -2965,8 +2966,8 @@ func TestSetEffortForTabReanchorsDepthCapRecoveryBranch(t *testing.T) {
 		t.Fatalf("glob recovery branches after snapshot: %v", err)
 	}
 	matches = primarySessionFiles(matches)
-	if len(matches) != 1 || matches[0] != recoveryPath {
-		t.Fatalf("recovery branches after follow-up snapshot = %v, want only %q", matches, recoveryPath)
+	if len(matches) != 2 || !slices.Contains(matches, recoveryPath) || !slices.Contains(matches, isolatedPath) {
+		t.Fatalf("recovery branches after follow-up snapshot = %v, want canonical and isolated paths", matches)
 	}
 }
 
@@ -5639,9 +5640,24 @@ func TestMetaForTabReportsImageInputCapability(t *testing.T) {
 	if err := app.SetModel("custom/vision-pro"); err != nil {
 		t.Fatalf("SetModel(custom/vision-pro): %v", err)
 	}
-	if got := app.Meta().ImageInputEnabled; !got {
-		t.Fatal("vision model meta should enable image input")
+	// ImageInputEnabled is served from the per-tab cache; the model change
+	// invalidates it and a background refresh repopulates it (tab:meta).
+	waitForMetaImageInput(t, app, true)
+}
+
+// waitForMetaImageInput polls until the cached image-input capability reaches
+// the expected value. MetaForTab serves the background-refreshed cache, so the
+// value flips asynchronously after a model/settings change.
+func waitForMetaImageInput(t *testing.T, app *App, want bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if app.Meta().ImageInputEnabled == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	t.Fatalf("Meta().ImageInputEnabled did not become %v", want)
 }
 
 func TestMetaForTabImageInputCapabilityUsesCurrentRef(t *testing.T) {

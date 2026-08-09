@@ -88,6 +88,19 @@ func (s Store) MigrateV2() (MigrationReport, error) {
 	return report, nil
 }
 
+// inheritOnUpdate keeps the update-omittable fields of an existing revision:
+// an update that leaves scope or keywords empty preserves them, it does not
+// clear them.
+func inheritOnUpdate(m Memory, existing Memory) Memory {
+	if strings.TrimSpace(string(m.Scope)) == "" {
+		m.Scope = existing.Scope
+	}
+	if strings.TrimSpace(m.Keywords) == "" {
+		m.Keywords = existing.Keywords
+	}
+	return m
+}
+
 func (s Store) SaveWithOptions(m Memory, opts SaveOptions) (SaveResult, error) {
 	memoryStoreMutationMu.Lock()
 	defer memoryStoreMutationMu.Unlock()
@@ -144,9 +157,7 @@ func (s Store) SaveWithOptions(m Memory, opts SaveOptions) (SaveResult, error) {
 		m.ID = existing.ID
 		m.Revision = existing.Revision + 1
 		m.CreatedAt = existing.CreatedAt
-		if strings.TrimSpace(string(m.Scope)) == "" {
-			m.Scope = existing.Scope
-		}
+		m = inheritOnUpdate(m, existing)
 	} else {
 		m.ID = newMemoryID(m.Name, now)
 		m.Revision = 1

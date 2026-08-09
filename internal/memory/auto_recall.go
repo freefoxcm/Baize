@@ -267,8 +267,12 @@ func matchedRecallTerms(queryTerms []string, counts map[string]int) []string {
 	return matched
 }
 
+// strongRecallMatch keeps automatic recall out of one-common-word territory.
+// Two matched terms are enough on their own: CJK terms are bigrams, so two of
+// them mean a shared two-character word pair or a three-character run — the
+// selectivity the retired per-rune "three matched runes" patch approximated.
 func strongRecallMatch(query string, queryTerms, matched []string) bool {
-	if len(matched) >= 2 && (!allCJKRecallTerms(matched) || len(matched) >= 3) {
+	if len(matched) >= 2 {
 		return true
 	}
 	if len(matched) != 1 {
@@ -281,18 +285,8 @@ func strongRecallMatch(query string, queryTerms, matched []string) bool {
 	return distinctiveQueryTerm(query, term)
 }
 
-func allCJKRecallTerms(terms []string) bool {
-	for _, term := range terms {
-		runes := []rune(term)
-		if len(runes) != 1 || !unicode.In(runes[0], unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) {
-			return false
-		}
-	}
-	return len(terms) > 0
-}
-
 func autoRecallSearchText(memory Memory) string {
-	return strings.Join([]string{memory.Name, memory.Title, memory.Description, memory.Body}, "\n")
+	return strings.Join([]string{memory.Name, memory.Title, memory.Description, memory.Keywords, memory.Body}, "\n")
 }
 
 func distinctiveQueryTerm(query, normalizedTerm string) bool {

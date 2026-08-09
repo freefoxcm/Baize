@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"net/http"
 	"reflect"
 	"regexp"
 	"sort"
@@ -131,16 +132,15 @@ type Spec struct {
 	LauncherLocator         string
 	LauncherResolvedVersion string
 	LauncherDigest          string
-	// ProcessMode selects how an authorized stdio MCP process is launched.
-	// Empty defaults to host (trusted host process, no command sandbox).
-	// confined is reserved for internal managed deployments and tests; it is
-	// never exposed in common settings and never used as an automatic fallback.
+	// ProcessMode selects host mode (default) or confined mode, which is reserved
+	// for internal managed deployments and tests, never an automatic fallback.
 	ProcessMode MCPProcessMode
 	// Sandbox is only applied when ProcessMode is confined. Host-mode servers
 	// keep private state/cache/temp dirs without wrapping the process in the
 	// agent command sandbox.
-	Sandbox  sandbox.Spec
-	StateDir string
+	Sandbox         sandbox.Spec
+	StateDir        string
+	OAuthHTTPClient *http.Client
 	// StripRawPrefix, when non-empty, removes this prefix from each MCP tool's
 	// raw name before namespacing. For example, StripRawPrefix="server_" turns
 	// "server_search" into "search", yielding "mcp__search__search" instead of

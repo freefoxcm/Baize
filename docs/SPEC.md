@@ -142,7 +142,16 @@ interface (`call` / `notify` / `close`) abstracts that, so the MCP-level logic
     response) or `text/event-stream` (an SSE stream carrying the response plus
     any server notifications). The `Mcp-Session-Id` response header, once seen,
     is echoed on subsequent requests. Static `headers` (e.g. a bearer token) are
-    sent on every request. OAuth is out of scope for now (see §9).
+    sent on every request. When no static `Authorization` header is configured,
+    user-initiated OAuth uses Protected Resource Metadata and Authorization
+    Server Metadata discovery, dynamic client registration, PKCE S256, a
+    loopback callback, resource indicators, and refresh-token rotation. Client
+    credentials and tokens are stored with mode `0600` in the server's private
+    Reasonix MCP state directory, outside the workspace; tokens are bound to the
+    configured resource URL and are never reused after that URL changes. OAuth
+    discovery, registration, and token requests honor Reasonix's resolved
+    network-proxy settings. Removing a declaration clears this state unless the
+    effective fallback uses the same OAuth resource.
   - `sse` — the legacy 2024-11-05 HTTP+SSE transport. A persistent GET stream
     receives an announced relative POST endpoint, JSON-RPC responses, and server
     messages. Cross-origin announced endpoints are rejected so static headers
@@ -477,16 +486,13 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
   assumption. Completion requires the concrete request, output format,
   constraints, and relevant verification expectations to be satisfied or
   explicitly reported as unverified.
-  Goals that look like long-horizon research, debugging, optimization, or
-  implementation work automatically add an AutoResearch protocol to the same
-  transient active-goal user block. AutoResearch is a Goal strategy, not a
-  standalone global skill: it writes project-local state under
-  `.reasonix/autoresearch/YYYYMMDD-HHMMSS-slug/` and keeps dynamic run state out
-  of `REASONIX.md`, `AGENTS.md`, project memory, tool schemas, and the
-  cache-stable system prompt. `/goal --research <objective>` forces that
-  strategy; `/goal --simple <objective>` forces lightweight Goal. Outside goal
-  mode, ordinary prompts never change collaboration mode or create durable
-  AutoResearch state; the user must choose Goal or use `/goal` explicitly.
+  Goal automatically selects a simple (10), write (20), or research (40) turn
+  budget from the objective. All classes use the same Goal FSM, host receipts,
+  Delivery readiness, and bounded evaluator; there is no second research
+  protocol or writable sidecar runtime. Legacy `.reasonix/autoresearch/...`
+  archives remain read-only and explicit old paths recover as ordinary Goals.
+  Outside goal mode, ordinary prompts never change collaboration mode; the user
+  must choose Goal or use `/goal` explicitly.
   `/goal clear` removes the active goal. Switching into plan/normal mode clears
   the active goal in the desktop UI so the collaboration mode remains one of
   the three choices, while the underlying tool approval posture is preserved.
@@ -876,8 +882,8 @@ behavior. The escape-prompt and broader OS support are Phase 1's remainder (§9)
   command just fails and the model adapts), which completes the "allow inside the
   box, prompt at its edge" model. With this in place, "always allow" rule
   persistence becomes optional rather than load-bearing.
-- MCP long tail (deferred deliberately — no consumer / no foundation yet): OAuth
-  2.0 + `headersHelper` auth for remote servers; the remaining `.mcp.json` scopes
+- MCP long tail (deferred deliberately): `headersHelper` auth for remote
+  servers; the remaining `.mcp.json` scopes
   (local / user — project scope shipped, see §5); tool-search deferral;
   `list_changed` live updates; channels / elicitation / roots; plugins that
   provide *providers*, not just tools.

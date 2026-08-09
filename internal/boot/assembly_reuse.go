@@ -12,11 +12,12 @@ import (
 // Populated on successful BuildRuntime so the next RebuildFrom can skip
 // skill/command/hook rediscovery and snapshot re-freeze when the plan allows.
 type ReusedAssembly struct {
-	SystemPrompt string
-	Skills       []skill.Skill
-	Commands     []command.Command
-	Hooks        []hook.ResolvedHook
-	Registry     *tool.Registry
+	SystemPrompt            string
+	Skills                  []skill.Skill
+	Commands                []command.Command
+	Hooks                   []hook.ResolvedHook
+	Registry                *tool.Registry
+	ImplicitSkillInvocation bool
 }
 
 // shouldReuseDiscovery reports whether rediscovery of skills/commands/hooks

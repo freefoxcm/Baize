@@ -9,7 +9,7 @@ Reasonix 的 Goal 模式（`/goal`）将目标推进（Goal）、验收（Delive
 | 结构化完成协议 | `update_goal` 工具 | 每轮目标 turn 结束时模型通过工具报告 continue/complete/blocked（含 reason 与 next_action），取代旧的 `[goal:*]` footer 文本标记 |
 | 完成校验 | 默认 | `complete` 声明必须通过 Delivery readiness（todos、验证、review、签收、能力门禁）才会真正完成；不满足时用缺失项开启下一轮 |
 | 独立评审 | 无报告时 | 模型未调用 `update_goal` 时，宿主调用一次独立 bounded evaluator 判定；评审不可用/出错/不确定时安全暂停，绝不默认继续 |
-| 执行预算 | 默认 | **轮次与无进展熔断**：简单 10 轮、写入型 20 轮、AutoResearch 40 轮；连续 4 轮无宿主可验证进展则暂停。累计 token 只做观测展示，**没有 token 硬上限**，也没有 provider 请求前预算准入 |
+| 执行预算 | 默认 | **轮次与无进展熔断**：简单 10 轮、写入型 20 轮、研究型 40 轮；连续 4 轮无宿主可验证进展则暂停。累计 token 只做观测展示，**没有 token 硬上限**，也没有 provider 请求前预算准入 |
 | 暂停/恢复 | `/goal pause` / `/goal resume` | 暂停保留 Goal、todo、Delivery checkpoint 与运行历史；轮次型暂停恢复时追加一档同类别**轮数**（`budget_extensions` 统计轮次追加次数） |
 | 立即阻塞 | `blocked` 报告 | 单个 blocked 报告立即结束目标，不再重复三轮确认 |
 | 并行调度 | `parallel_tasks` 工具 | 并发派发多个子 agent，各自独立显示结果 |
@@ -36,7 +36,7 @@ Reasonix 的 Goal 模式（`/goal`）将目标推进（Goal）、验收（Delive
 
 - **写入型（write，20 轮）**：含明确修改动词（修复/实现/更新…），或 Goal 中**不带问句/解释意图/只读诊断/否定修改约束**的故障陈述（如「数据模型管理器又出现历史 BUG 了」「应用打开设置时崩溃」）。
 - **简单型（simple，10 轮）**：咨询、解释、「为什么…」、只分析/诊断/复现定位且不要修复等。
-- **研究型（research，40 轮）**：AutoResearch 目标。
+- **研究型（research，40 轮）**：带有明显长周期信号或多个独立阶段的目标。
 
 普通 Delivery 的只读/咨询分类不变；上述「裸故障默认 write」只作用于 Goal 轮数类别。
 
@@ -140,7 +140,7 @@ Delivery 不再自行注入隐藏模型消息做 3/6 次 readiness 重试：普�
 
 ### 进展签名
 
-只有宿主可验证信息才能重置停滞计数：todo 状态变化、新的有效 mutation/verification/review/signoff receipt、Delivery checkpoint 变化、新接受的 AutoResearch evidence、终态 `update_goal` 报告。任意工具调用、重复读取、仅改变措辞的回答或重复 continue 理由都不能伪造进展。
+只有宿主可验证信息才能重置停滞计数：todo 状态变化、新的有效 mutation/verification/review/signoff receipt、Delivery checkpoint 变化、终态 `update_goal` 报告。任意工具调用、重复读取、仅改变措辞的回答或重复 continue 理由都不能伪造进展。
 
 ### Todo 状态流
 

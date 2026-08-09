@@ -188,7 +188,8 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "  %[1]s -profile delivery\n", strings.Replace(flag.CommandLine.Name(), "e2ebench", "go run ./cmd/e2ebench", 1))
 	}
 
-	mode := flag.String("mode", "suite", "suite | diff | swebench | compare | traj")
+	mode := flag.String("mode", "suite", "suite | diff | swebench | compare | traj | serve | fork")
+	addr := flag.String("addr", "127.0.0.1:7480", "serve mode: live dashboard listen address")
 	subset := flag.String("subset", "benchmarks/swebench/subset.json", "swebench mode: instance subset file")
 	namespace := flag.String("namespace", "swebench", "swebench mode: registry namespace holding the evaluation images")
 	runID := flag.String("run-id", "reasonix", "swebench mode: run id passed to the official harness")
@@ -204,6 +205,11 @@ func main() {
 	cacheArm := flag.String("cache", "cold", "suite mode: cold (fresh session per task) | warm (prefix-warming one-step run in the same workdir before the graded run)")
 	effort := flag.String("effort", "", "reasoning effort override passed to the agent (model-specific levels, e.g. disabled|low|high|max); empty = model default")
 	checkpoints := flag.Bool("checkpoints", false, "suite mode: snapshot the workdir on every change and grade each snapshot offline after the run, yielding first_correct_ms (TTFCS) and post_solve_waste_ms")
+	policyFlag := flag.String("policy", "", "suite mode: experiment arm — empty (baseline) | ebm (evidence-before-more-mutation nudge) | governor (exploration-phase reasoning governor)")
+	forkCapture := flag.String("fork-capture", "", "suite mode: capture a fork bundle per task at first EBM eligibility into <dir>/<task-id>")
+	bundles := flag.String("bundles", "", "fork mode: directory of captured bundles (<task-id>/bundle.json)")
+	forkArms := flag.String("arm", "control,treatment", "fork mode: comma-separated continuation arms (control | treatment)")
+	forkReps := flag.Int("reps", 1, "fork mode: continuation repetitions per bundle per arm")
 	bin := flag.String("bin", "reasonix", "path to the reasonix binary")
 	model := flag.String("model", "", "provider/model name (default: config default)")
 	profileFlag := flag.String("profile", benchmarkProfileBaseline, "prompt profile: baseline | delivery")
@@ -256,6 +262,20 @@ func main() {
 	case "traj":
 		emitTrajMode(*trajDir, *outMD)
 		return
+	case "serve":
+		if err := runServeMode(*trajDir, *suite, *addr); err != nil {
+			fmt.Fprintln(os.Stderr, "serve mode:", err)
+			os.Exit(1)
+		}
+		return
+	case "fork":
+		cfg := suiteConfig{bin: *bin, model: *model, profile: profile, arm: arm,
+			cacheArm: cache, effort: *effort, policy: *policyFlag}
+		if err := runForkMode(*bundles, *suite, *forkArms, *forkReps, cfg, *trajDir, *outMD, *outJSON); err != nil {
+			fmt.Fprintln(os.Stderr, "fork mode:", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if *mode == "diff" {
@@ -270,7 +290,8 @@ func main() {
 	runSuiteMode(suiteConfig{
 		bin: *bin, model: *model, profile: profile, arm: arm, budget: *budget,
 		trajDir: *trajDir, forcePlanner: *forcePlanner, attempts: *attempts,
-		cacheArm: cache, effort: *effort, checkpoints: *checkpoints,
+		cacheArm: cache, effort: *effort, checkpoints: *checkpoints, policy: *policyFlag,
+		forkCapture: *forkCapture,
 	}, *suite, *taskFilter, *outMD, *outJSON)
 }
 
@@ -402,6 +423,7 @@ func filterTasks(tasks []task, filter string) ([]task, error) {
 type suiteConfig struct {
 	bin, model, profile, cacheArm, effort string
 	arm                                   ablation.Set
+	policy, forkCapture                   string
 	trajDir                               string
 	forcePlanner, checkpoints             bool
 	attempts, budget                      int
@@ -487,6 +509,19 @@ func runTask(cfg suiteConfig, t task) result {
 
 	cmd := exec.CommandContext(ctx, cfg.bin, args...)
 	cmd.Dir = work
+	if cfg.policy != "" || cfg.forkCapture != "" {
+		env := os.Environ()
+		switch cfg.policy {
+		case "ebm":
+			env = append(env, "REASONIX_EXPERIMENT_EBM=1")
+		case "governor":
+			env = append(env, "REASONIX_EXPERIMENT_GOVERNOR=1")
+		}
+		if cfg.forkCapture != "" {
+			env = append(env, "REASONIX_EXPERIMENT_FORK_CAPTURE_DIR="+filepath.Join(cfg.forkCapture, t.ID))
+		}
+		cmd.Env = env
+	}
 	cmd.Stdout = os.Stderr // stream the run to the job log, keep stdout clean for the report
 	cmd.Stderr = os.Stderr
 	cmd.WaitDelay = 10 * time.Second // bound the wait for a stuck child after ctx timeout

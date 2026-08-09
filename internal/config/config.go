@@ -76,11 +76,36 @@ type Config struct {
 	pluginPackageOwners        map[string]string
 	pluginPackageSkillOwners   map[string][]string
 	pluginPackageAgentOwners   map[string][]string
-	editLoadErr                error
+	// explicitProjectSkillKeys records project-level skill fields that the
+	// settings UI intentionally owns even when their value equals the built-in
+	// default. It is transient edit metadata and is never serialized directly.
+	explicitProjectSkillKeys map[string]bool
+	editLoadErr              error
 	// loadWarnings are non-fatal issues observed while loading config (corrupt
 	// user/project files recovered via last-known-good or defaults). They never
 	// rewrite the original file; the UI may surface them for doctor repair.
 	loadWarnings []string
+}
+
+// KeepProjectSkillKey marks a skill field as an intentional project override.
+// An explicit empty/false project value must still be written so it can
+// override a non-default user setting in the layered configuration.
+func (c *Config) KeepProjectSkillKey(key string) error {
+	key = strings.TrimSpace(key)
+	switch key {
+	case "paths", "excluded_paths", "disabled_skills", "disable_implicit_invocation", "max_depth":
+	default:
+		return fmt.Errorf("unknown project skill key %q", key)
+	}
+	if c.explicitProjectSkillKeys == nil {
+		c.explicitProjectSkillKeys = make(map[string]bool)
+	}
+	c.explicitProjectSkillKeys[key] = true
+	return nil
+}
+
+func (c *Config) keepsProjectSkillKey(key string) bool {
+	return c != nil && c.explicitProjectSkillKeys[key]
 }
 
 type promptFileSource uint8
@@ -531,6 +556,9 @@ var defaultDesktopStatusBarItems = []string{
 	"cache_avg",
 	"session_tokens",
 	"turn_tokens",
+	"turn_tps",
+	"turn_output_tokens",
+	"turn_cache_tokens",
 	"turn_cost",
 	"session_turns",
 	"context",
@@ -1003,12 +1031,22 @@ func (c *Config) NetworkProxyMode() string {
 // the global roots. ExcludedPaths hides matching discovery roots without deleting
 // folders. ~, relative paths, and ${VAR} expansion are supported. DisabledSkills
 // hides named skills from the agent prompt, slash invocation, and skill tools
-// while keeping them manageable.
+// while keeping them manageable. DisableImplicitInvocation keeps skills
+// discoverable to the host for explicit /skill use and management, but hides
+// their index and model-facing invocation tools.
 type SkillsConfig struct {
-	Paths          []string `toml:"paths"`
-	ExcludedPaths  []string `toml:"excluded_paths"`
-	DisabledSkills []string `toml:"disabled_skills"`
-	MaxDepth       int      `toml:"max_depth"`
+	Paths                     []string `toml:"paths"`
+	ExcludedPaths             []string `toml:"excluded_paths"`
+	DisabledSkills            []string `toml:"disabled_skills"`
+	DisableImplicitInvocation bool     `toml:"disable_implicit_invocation"`
+	MaxDepth                  int      `toml:"max_depth"`
+}
+
+// ImplicitSkillInvocationEnabled reports whether the model may discover and
+// invoke skills without an explicit user slash command. The zero value keeps
+// the historical default enabled for old configs.
+func (c *Config) ImplicitSkillInvocationEnabled() bool {
+	return c == nil || !c.Skills.DisableImplicitInvocation
 }
 
 // SkillCustomPaths returns the configured custom skill roots with ${VAR}

@@ -225,4 +225,3 @@ issues get triaged.
 <p align="center">
   <img src=".github/sponsor/wechat-pay.jpg" alt="WeChat Pay QR code" width="180"/>
 </p>
-

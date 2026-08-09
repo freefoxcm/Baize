@@ -23,6 +23,7 @@ type rememberRequest struct {
 	Description      string `json:"description"`
 	Type             string `json:"type"`
 	Scope            string `json:"scope"`
+	Keywords         string `json:"keywords"`
 	Body             string `json:"body"`
 }
 
@@ -59,6 +60,7 @@ func (rememberTool) Schema() json.RawMessage {
 			"description": {"type": "string", "description": "One-line hook shown in the index — the phrase a future session reads to decide whether to open this memory. Make it specific."},
 			"type": {"type": "string", "enum": ["user", "feedback", "project", "reference"], "description": "Category of the fact."},
 			"scope": {"type": "string", "enum": ["project", "global"], "description": "Where the fact applies. For a new fact, omit for the safe default, project. When updating an existing name, omit to preserve its current scope. Use global only when it should affect every workspace."},
+			"keywords": {"type": "string", "description": "Space-separated search aliases a future query might use where the body's own words would miss: synonyms, translations of key terms (recall matching is lexical, so give Chinese facts English aliases and vice versa), related command or tool names. Omit when the body already carries the likely query words. When updating, omit to preserve existing keywords."},
 			"body": {"type": "string", "description": "The fact itself (Markdown). For feedback/project, include a \"**Why:**\" line and a \"**How to apply:**\" line; link related memories with [[their-name]]."}
 		},
 		"required": ["description", "body"]
@@ -87,6 +89,7 @@ func (t rememberTool) Execute(ctx context.Context, args json.RawMessage) (string
 		Description: in.Description,
 		Type:        NormalizeType(in.Type),
 		Scope:       factScope,
+		Keywords:    in.Keywords,
 		Body:        in.Body,
 	}, SaveOptions{
 		ExpectedRevision:        in.ExpectedRevision,
