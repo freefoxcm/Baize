@@ -72,10 +72,11 @@ tool_result_snip_ratio = 0.6       # shorten stale tool output before summary co
 
 [[providers]]
 name        = "deepseek-flash"
-kind        = "openai"
-base_url    = "https://api.deepseek.com"
+kind        = "anthropic"
+base_url    = "https://api.deepseek.com/anthropic"
 model       = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
+web_search  = true
 # also preset: deepseek-pro
 
 [tools]
@@ -356,10 +357,16 @@ Custom provider** for proxies, aggregators, or self-hosted services that speak
 the OpenAI-compatible chat API or Anthropic-compatible Messages API.
 
 For common providers, choose **Add model service -> Recommended preset** instead.
-The official DeepSeek service continues to use its specially adapted OpenAI Chat
-Completions path by default; add the optional **DeepSeek Anthropic** preset only
-when Anthropic Messages compatibility is needed. The two entries do not replace
-each other. Reasonix can prefill editable custom-provider entries for Kimi CN,
+New official DeepSeek entries use the Anthropic-compatible Messages endpoint by
+default and enable provider-side `web_search`; the same `DEEPSEEK_API_KEY` works
+for both protocols. On startup, Reasonix upgrades unmodified legacy
+`deepseek-flash` / `deepseek-pro` entries that still use the official endpoint
+and standard key/model settings. Customized official Chat Completions entries
+stay unchanged and show an **Upgrade protocol** action in Settings. Proxy
+endpoints, custom headers, model lists, and capability overrides are never
+migrated automatically. Existing
+separately named `deepseek-anthropic` entries remain compatible, but that
+redundant preset is no longer offered for new access. Reasonix can prefill editable custom-provider entries for Kimi CN,
 Kimi Global,
 Kimi Coding Plan, MiMo API, MiMo Anthropic, MiMo Token Plan CN/SGP/AMS and their
 Anthropic-compatible variants, MiniMax CN/Global API, MiniMax CN/Global

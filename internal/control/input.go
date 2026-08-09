@@ -8,6 +8,7 @@ import (
 
 	"reasonix/internal/ablation"
 	"reasonix/internal/agent"
+	"reasonix/internal/event"
 	"reasonix/internal/memory"
 	"reasonix/internal/planmode"
 	"reasonix/internal/skill"
@@ -200,7 +201,9 @@ func (c *Controller) composeWithGoal(
 		// stable system/tool prefix and keeps synthetic recovery turns free of
 		// accidental recall. A just-written fact already arrives in memory-update.
 		if len(notes) == 0 && !c.ablation.Off(ablation.Retrieval) {
-			if block := c.memory.recall(source).Block(); block != "" {
+			result := c.memory.recall(source)
+			event.RecordMemoryRecall(c.sink, memoryRecallAudit(result))
+			if block := result.Block(); block != "" {
 				text = strings.TrimRight(text, "\n") + "\n\n" + block
 			}
 		} else if len(notes) > 0 {

@@ -1861,9 +1861,9 @@ func (c *Controller) runRefTurnWithResolverSync(ctx context.Context, input, refL
 		sent = "Referenced context:\n\n" + block + "\n\n" + input
 	}
 	if strings.TrimSpace(original) != "" {
-		return c.runEditedGoalLoopWithRawDisplay(ctx, sent, input, display, original)
+		return c.runEditedGoalLoopWithImageRefsRawDisplay(ctx, sent, input, refLine, display, original)
 	}
-	return c.runGoalLoopWithRawDisplay(ctx, sent, input, display)
+	return c.runGoalLoopWithImageRefsRawDisplay(ctx, sent, input, refLine, display)
 }
 
 // notice emits an informational Notice event.
@@ -1889,8 +1889,8 @@ func (c *Controller) Run(ctx context.Context, input string) (err error) {
 	parentSession := c.parentSessionID()
 	ctx = agent.WithParentSession(ctx, parentSession)
 	ctx = jobs.WithSession(ctx, parentSession)
-	ctx = agent.WithUserImages(ctx, c.inputImages(input))
 	rawInput := input
+	ctx = c.withTurnImages(ctx, rawInput)
 	ctx = agent.WithRawUserInput(ctx, rawInput)
 	input = c.Compose(input)
 	// input.receive: same interception seam as the orchestrated turn — the
@@ -1960,7 +1960,7 @@ func (c *Controller) RunSubagentProfile(ctx context.Context, name, task string, 
 	parentSession := c.parentSessionID()
 	ctx = agent.WithParentSession(ctx, parentSession)
 	ctx = jobs.WithSession(ctx, parentSession)
-	ctx = agent.WithUserImages(ctx, c.inputImages(task))
+	ctx = c.withTurnImages(ctx, task)
 	ctx = agent.WithResponseLanguagePreference(ctx, c.responseLanguage)
 	ctx = agent.WithReasoningLanguagePreference(ctx, c.reasoningLanguage)
 	ctx = agent.WithSubagentDepth(ctx, 0)

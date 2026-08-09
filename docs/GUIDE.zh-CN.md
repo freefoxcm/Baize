@@ -66,10 +66,11 @@ tool_result_snip_ratio = 0.6       # 在摘要 compaction 前先缩短旧工具�
 
 [[providers]]
 name        = "deepseek-flash"
-kind        = "openai"
-base_url    = "https://api.deepseek.com"
+kind        = "anthropic"
+base_url    = "https://api.deepseek.com/anthropic"
 model       = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
+web_search  = true
 # 还有预设：deepseek-pro
 
 [tools]
@@ -305,9 +306,13 @@ Serve。认证失败或主机密钥错误属于终止性故障，此时会关闭
 在桌面端打开 **设置 -> 模型 -> 接入 -> 添加模型服务 -> 自定义供应商**，用于接入代理、
 聚合平台或自建 OpenAI-compatible chat API / Anthropic-compatible Messages API 服务。
 
-常用服务优先使用 **添加模型服务 -> 推荐预设**。DeepSeek 官方服务默认继续使用经过专项适配的
-OpenAI Chat Completions；需要 Anthropic Messages 兼容时，可单独添加 **DeepSeek Anthropic**
-可选预设，两者不会互相替换。Reasonix 还可以预填以下可编辑的自定义 provider：
+常用服务优先使用 **添加模型服务 -> 推荐预设**。新建的官方 DeepSeek provider 默认使用
+Anthropic-compatible Messages 端点，并开启 provider 侧 `web_search`；两种协议都复用同一个
+`DEEPSEEK_API_KEY`。启动时，Reasonix 会自动升级仍使用官方端点、标准密钥和标准模型设置且
+未修改过的旧 `deepseek-flash` / `deepseek-pro` 条目。修改过的官方 Chat Completions 配置保持
+原样，设置页会提供 **升级到推荐协议** 操作。代理地址、自定义 Headers、模型列表和能力覆盖
+都不会自动迁移。已有单独命名的 `deepseek-anthropic` 条目继续兼容，但新增
+接入不再展示这个重复预设。Reasonix 还可以预填以下可编辑的自定义 provider：
 Kimi CN、Kimi Global、Kimi Coding Plan、MiMo API、MiMo Anthropic、MiMo Token Plan
 CN/SGP/AMS 及其 Anthropic-compatible 变体、MiniMax CN/Global API、MiniMax
 CN/Global Anthropic、GLM CN、Z.AI Global、GLM/Z.AI Coding Plan 的

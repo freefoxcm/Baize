@@ -2,6 +2,607 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.21.4",
+      "date": "2026-08-09",
+      "channel": "stable",
+      "title": {
+        "en": "Reasonix v1.21.4: Memory Dimensions, Completion Contract, and Desktop Polish",
+        "zh": "Reasonix v1.21.4：记忆维度、完成契约与桌面体验优化"
+      },
+      "summary": {
+        "en": "This release introduces the completion contract, making goal claims checkable against receipts. Memory gains activation, volatility, subject keys, and CJK bigram retrieval. Desktop sees session switching performance, local file link handling, and IME-aware ESC behavior. Agent improvements include incremental fold digest carry, compaction bounding, and a reasoning governor shadow.",
+        "zh": "本次发布引入完成契约，使目标声明可对照收据进行核查。记忆功能新增激活、易变性、主题键和 CJK 双字检索。桌面端优化了会话切换性能、本地文件链接处理和输入法感知的 ESC 行为。智能体改进包括增量折叠摘要携带、压缩边界和推理调控器影子模式。"
+      },
+      "surfaces": [
+        "desktop"
+      ],
+      "guides": [
+        {
+          "title": {
+            "en": "Completion Contract",
+            "zh": "完成契约"
+          },
+          "body": {
+            "en": "Learn how the completion contract makes goal claims checkable by reconciling verified commands against session receipts.",
+            "zh": "了解完成契约如何通过将会话收据与已验证命令进行核对，使目标声明可核查。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/85afdd673c873e0a828fd37ab961303bf4e764f8/docs/SPEC.md"
+        },
+        {
+          "title": {
+            "en": "Memory Dimensions",
+            "zh": "记忆维度"
+          },
+          "body": {
+            "en": "Explore activation, volatility, subject keys, and CJK bigram retrieval in the memory system.",
+            "zh": "探索记忆系统中的激活、易变性、主题键和 CJK 双字检索。"
+          },
+          "href": "https://github.com/esengine/DeepSeek-Reasonix/blob/85afdd673c873e0a828fd37ab961303bf4e764f8/docs/SESSION_MEMORY_RETRIEVAL.md"
+        }
+      ],
+      "highlights": [
+        {
+          "kind": "new",
+          "title": {
+            "en": "Completion Contract: Checkable Goal Claims",
+            "zh": "完成契约：可核查的目标声明"
+          },
+          "body": {
+            "en": "Goal completion now carries a checkable claim. Verified commands are reconciled against session receipts; unbacked claims become gaps. The host-authored completion report surfaces missing proof without forcing verification loops.",
+            "zh": "目标完成现在携带可核查的声明。已验证的命令会与收据进行核对；无依据的声明会变成缺口。由主机生成的完成报告会显示缺失的证明，而不会强制进行验证循环。"
+          },
+          "refs": [
+            8036,
+            8035
+          ]
+        },
+        {
+          "kind": "new",
+          "title": {
+            "en": "Memory Dimensions: Activation, Volatility, and Subject Keys",
+            "zh": "记忆维度：激活、易变性与主题键"
+          },
+          "body": {
+            "en": "Facts can be pinned to the stable prefix or left as retrieval-only. Volatility windows (evergreen/stable/volatile) and expiry dates control freshness. Subject keys prevent silent contradictions by enforcing one active value per question.",
+            "zh": "事实可以固定到稳定前缀，或仅用于检索。易变性窗口（永久/稳定/易变）和过期日期控制新鲜度。主题键通过每个问题只允许一个活跃值来防止静默矛盾。"
+          },
+          "refs": [
+            7996,
+            7998,
+            8014
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": {
+            "en": "Desktop: Session Switching Performance and Local File Links",
+            "zh": "桌面端：会话切换性能与本地文件链接"
+          },
+          "body": {
+            "en": "Large session histories and rapid topic switches no longer block the renderer. Local file paths in agent output can be opened with a click, with right-click options for alternative apps and Finder/Explorer.",
+            "zh": "大型会话历史和快速主题切换不再阻塞渲染器。智能体输出中的本地文件路径可点击打开，右键菜单提供其他应用和文件管理器选项。"
+          },
+          "refs": [
+            7999,
+            7985
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": {
+            "en": "Agent: Incremental Fold Digest Carry and Compaction Bounding",
+            "zh": "智能体：增量折叠摘要携带与压缩边界"
+          },
+          "body": {
+            "en": "Incremental folding now carries prior digests verbatim, recovering 17 of 18 lost probes. Compaction input is bounded so long sessions can always fold, preventing wedged sessions.",
+            "zh": "增量折叠现在逐字携带之前的摘要，恢复了 18 个丢失探针中的 17 个。压缩输入有边界，确保长会话始终可以折叠，防止会话卡死。"
+          },
+          "refs": [
+            8031,
+            8021
+          ]
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Desktop: IME-Aware ESC and Transcript Selection Release",
+            "zh": "桌面端：输入法感知的 ESC 与选区释放"
+          },
+          "body": {
+            "en": "Pressing ESC while an IME candidate window is open no longer cancels the running agent turn. Stale transcript selections are released on new clicks, and the Add to Chat action preserves the range during activation.",
+            "zh": "在输入法候选窗口打开时按 ESC 不再取消正在运行的智能体回合。过时的聊天记录选区会在新点击时释放，添加到聊天操作在激活期间保留选区范围。"
+          },
+          "refs": [
+            7919,
+            7988
+          ]
+        }
+      ],
+      "changes": {
+        "new": [
+          {
+            "title": {
+              "en": "Completion Contract: Checkable Goal Claims",
+              "zh": "完成契约：可核查的目标声明"
+            },
+            "body": {
+              "en": "Goal completion now carries a checkable claim. Verified commands are reconciled against session receipts; unbacked claims become gaps. The host-authored completion report surfaces missing proof without forcing verification loops.",
+              "zh": "目标完成现在携带可核查的声明。已验证的命令会与收据进行核对；无依据的声明会变成缺口。由主机生成的完成报告会显示缺失的证明，而不会强制进行验证循环。"
+            },
+            "refs": [
+              8036,
+              8035
+            ]
+          },
+          {
+            "title": {
+              "en": "Memory Dimensions: Activation, Volatility, and Subject Keys",
+              "zh": "记忆维度：激活、易变性与主题键"
+            },
+            "body": {
+              "en": "Facts can be pinned to the stable prefix or left as retrieval-only. Volatility windows (evergreen/stable/volatile) and expiry dates control freshness. Subject keys prevent silent contradictions by enforcing one active value per question.",
+              "zh": "事实可以固定到稳定前缀，或仅用于检索。易变性窗口（永久/稳定/易变）和过期日期控制新鲜度。主题键通过每个问题只允许一个活跃值来防止静默矛盾。"
+            },
+            "refs": [
+              7996,
+              7998,
+              8014
+            ]
+          },
+          {
+            "title": {
+              "en": "CJK Bigram Retrieval and Write-Time Keywords",
+              "zh": "CJK 双字检索与写入时关键词"
+            },
+            "body": {
+              "en": "CJK text is now tokenized into overlapping bigrams for accurate retrieval. The remember tool accepts optional keywords for semantic bridging without rendering them in the index.",
+              "zh": "CJK 文本现在被分词为重叠双字以实现准确检索。记忆工具接受可选关键词用于语义桥接，而不在索引中渲染它们。"
+            },
+            "refs": [
+              7994
+            ]
+          },
+          {
+            "title": {
+              "en": "Explicit Context Compression Tool",
+              "zh": "显式上下文压缩工具"
+            },
+            "body": {
+              "en": "A model-callable compress tool allows explicit range compaction into context projections without rewriting the canonical transcript, preserving rewind and fork capabilities.",
+              "zh": "模型可调用的压缩工具允许将显式范围压缩到上下文投影中，而不重写规范记录，保留回退和分支能力。"
+            },
+            "refs": [
+              8000
+            ]
+          },
+          {
+            "title": {
+              "en": "MCP OAuth and Failure-Aware Routing",
+              "zh": "MCP OAuth 与故障感知路由"
+            },
+            "body": {
+              "en": "First-party OAuth authorization for remote Streamable HTTP MCP servers, with sandbox-safe private state. Failed or disabled MCP tools are excluded from capability routing.",
+              "zh": "为远程可流式 HTTP MCP 服务器提供第一方 OAuth 授权，具有沙箱安全的私有状态。失败或禁用的 MCP 工具被排除在能力路由之外。"
+            },
+            "refs": [
+              7932
+            ]
+          },
+          {
+            "title": {
+              "en": "Generation-Safe Runtime Composition",
+              "zh": "代际安全的运行时组合"
+            },
+            "body": {
+              "en": "Runtime composition with dependency graphs, lifecycle states, and atomic publish/commit. Each controller/session lineage gets an isolated RuntimeOwner for evidence and stream isolation.",
+              "zh": "具有依赖图、生命周期状态和原子发布/提交的运行时组合。每个控制器/会话谱系获得一个隔离的 RuntimeOwner，用于证据和流隔离。"
+            },
+            "refs": [
+              7902
+            ]
+          },
+          {
+            "title": {
+              "en": "Reasoning Governor Shadow",
+              "zh": "推理调控器影子模式"
+            },
+            "body": {
+              "en": "A shadow reasoning governor measures exploration-phase reasoning spend and triggers low-effort overrides under an environment gate, with fork counterfactuals showing pass parity and token reduction.",
+              "zh": "影子推理调控器测量探索阶段的推理消耗，并在环境开关下触发低努力覆盖，分支反事实显示通过率一致和令牌减少。"
+            },
+            "refs": [
+              7989,
+              7986,
+              7975
+            ]
+          },
+          {
+            "title": {
+              "en": "Evidence-Before-More-Mutation Nudge (Arm B)",
+              "zh": "先验证再变更提示（B 组）"
+            },
+            "body": {
+              "en": "An env-gated nudge encourages checking work after three blind mutations, with per-class exposure rates measured in the verification-stress suite.",
+              "zh": "环境开关控制的提示鼓励在三次盲目变更后检查工作，验证压力套件中测量了各类别的暴露率。"
+            },
+            "refs": [
+              7952,
+              7953
+            ]
+          },
+          {
+            "title": {
+              "en": "Per-Round Cognition Telemetry and Shadow Outcome Scorer",
+              "zh": "每轮认知遥测与影子结果评分器"
+            },
+            "body": {
+              "en": "Trajectory digests now include per-round token usage and slow-round census. A shadow outcome scorer decomposes progress by exploration, verification, and churn, with e2ebench dashboards.",
+              "zh": "轨迹摘要现在包括每轮令牌使用和慢轮统计。影子结果评分器将进展分解为探索、验证和变动，并配有 e2ebench 仪表板。"
+            },
+            "refs": [
+              7943,
+              7937,
+              7979
+            ]
+          },
+          {
+            "title": {
+              "en": "MemoryBench and Retrieval V2 Shadow",
+              "zh": "MemoryBench 与检索 V2 影子模式"
+            },
+            "body": {
+              "en": "A paired memory-effectiveness suite measures utility delta with counterfactual arms. Retrieval V2 shadow ranks with BM25F, code symbols, and mixed CJK grams, riding telemetry only.",
+              "zh": "配对记忆有效性套件通过反事实臂测量效用增量。检索 V2 影子模式使用 BM25F、代码符号和混合 CJK 词元进行排序，仅通过遥测传输。"
+            },
+            "refs": [
+              8017,
+              8025
+            ]
+          },
+          {
+            "title": {
+              "en": "Session Recall Index and Crash-Safe Writers",
+              "zh": "会话召回索引与崩溃安全写入器"
+            },
+            "body": {
+              "en": "Automatic recall now uses a prebuilt index for zero disk IO per turn. Memory file writes are atomic to prevent partial facts after a crash.",
+              "zh": "自动召回现在使用预构建索引，每轮零磁盘 IO。记忆文件写入是原子的，防止崩溃后出现部分事实。"
+            },
+            "refs": [
+              8028
+            ]
+          },
+          {
+            "title": {
+              "en": "Desktop: TPS, Cache Tokens, and Output Tokens in Status Bar",
+              "zh": "桌面端：状态栏中的 TPS、缓存令牌和输出令牌"
+            },
+            "body": {
+              "en": "Configurable status bar items show turn TPS, output tokens, and cache hit/miss counts. Streaming TPS appears in the composer run strip.",
+              "zh": "可配置的状态栏项目显示回合 TPS、输出令牌和缓存命中/未命中计数。流式 TPS 显示在编写器运行条中。"
+            },
+            "refs": [
+              6931
+            ]
+          },
+          {
+            "title": {
+              "en": "Lazy Thinking Summaries",
+              "zh": "懒加载思考摘要"
+            },
+            "body": {
+              "en": "Collapsed reasoning traces show a plain-text summary of the newest non-empty line, with full Markdown rendered only on expansion. A setting controls visibility.",
+              "zh": "折叠的推理轨迹显示最新非空行的纯文本摘要，仅在展开时渲染完整 Markdown。设置控制可见性。"
+            },
+            "refs": [
+              7966
+            ]
+          },
+          {
+            "title": {
+              "en": "Animated Logo Variants",
+              "zh": "动画徽标变体"
+            },
+            "body": {
+              "en": "Five animated SVG logo variants added, with the ghost-wave logo used as the README banner.",
+              "zh": "添加了五个动画 SVG 徽标变体，幽灵波浪徽标用作 README 横幅。"
+            },
+            "refs": [
+              7954
+            ]
+          }
+        ],
+        "improved": [
+          {
+            "title": {
+              "en": "Desktop: Session Switching Performance",
+              "zh": "桌面端：会话切换性能"
+            },
+            "body": {
+              "en": "Large session histories and rapid topic switches no longer block the renderer. A virtual list, worker-based Markdown parsing, and budgeted history slices keep the UI responsive.",
+              "zh": "大型会话历史和快速主题切换不再阻塞渲染器。虚拟列表、基于 Worker 的 Markdown 解析和预算历史切片保持 UI 响应。"
+            },
+            "refs": [
+              7999
+            ]
+          },
+          {
+            "title": {
+              "en": "Desktop: Local File Link Handling",
+              "zh": "桌面端：本地文件链接处理"
+            },
+            "body": {
+              "en": "Local file paths in agent output can be opened with a click, with right-click options for alternative apps and Finder/Explorer. Executable targets are rejected for safety.",
+              "zh": "智能体输出中的本地文件路径可点击打开，右键菜单提供其他应用和文件管理器选项。出于安全考虑，可执行目标被拒绝。"
+            },
+            "refs": [
+              7985
+            ]
+          },
+          {
+            "title": {
+              "en": "Agent: Incremental Fold Digest Carry",
+              "zh": "智能体：增量折叠摘要携带"
+            },
+            "body": {
+              "en": "Incremental folding now carries prior digests verbatim, recovering 17 of 18 lost probes. The summarizer sees only new work, keeping fold cost O(1).",
+              "zh": "增量折叠现在逐字携带之前的摘要，恢复了 18 个丢失探针中的 17 个。摘要器只看到新工作，保持折叠成本为 O(1)。"
+            },
+            "refs": [
+              8031
+            ]
+          },
+          {
+            "title": {
+              "en": "Agent: Compaction Bounding",
+              "zh": "智能体：压缩边界"
+            },
+            "body": {
+              "en": "Compaction input is bounded so long sessions can always fold. Oversized inputs are split or truncated, preventing wedged sessions.",
+              "zh": "压缩输入有边界，确保长会话始终可以折叠。超大输入被分割或截断，防止会话卡死。"
+            },
+            "refs": [
+              8021
+            ]
+          },
+          {
+            "title": {
+              "en": "Memory: Stable Index Scope Qualification",
+              "zh": "记忆：稳定索引作用域限定"
+            },
+            "body": {
+              "en": "The provider-visible index now shows scope-qualified references and override annotations, aligning with recall resolution.",
+              "zh": "提供者可见的索引现在显示作用域限定的引用和覆盖注释，与召回解析保持一致。"
+            },
+            "refs": [
+              8027
+            ]
+          },
+          {
+            "title": {
+              "en": "Goal: Sole Long-Task Runtime",
+              "zh": "目标：唯一长任务运行时"
+            },
+            "body": {
+              "en": "Goal is now the only long-running task state machine. AutoResearch is reduced to a read-only compatibility reader, with legacy archives migrated to Goal.",
+              "zh": "目标现在是唯一的长任务状态机。AutoResearch 被缩减为只读兼容读取器，旧存档迁移到目标。"
+            },
+            "refs": [
+              7959
+            ]
+          },
+          {
+            "title": {
+              "en": "DeepSeek Anthropic Access Recommendation",
+              "zh": "DeepSeek Anthropic 接入推荐"
+            },
+            "body": {
+              "en": "Fresh installs now use the official DeepSeek Anthropic Messages endpoint. Legacy configurations are conservatively migrated, and text-only models no longer serialize image payloads.",
+              "zh": "全新安装现在使用官方 DeepSeek Anthropic Messages 端点。旧配置被保守迁移，纯文本模型不再序列化图像负载。"
+            },
+            "refs": [
+              7945
+            ]
+          },
+          {
+            "title": {
+              "en": "Skills Settings Alignment",
+              "zh": "技能设置对齐"
+            },
+            "body": {
+              "en": "Desktop skills settings now match the MCP model with reversible enable/disable controls and persisted implicit invocation policy.",
+              "zh": "桌面技能设置现在与 MCP 模型匹配，具有可逆的启用/禁用控制和持久化的隐式调用策略。"
+            },
+            "refs": [
+              7981
+            ]
+          },
+          {
+            "title": {
+              "en": "CI Linter Locally Runnable",
+              "zh": "CI 检查器本地可运行"
+            },
+            "body": {
+              "en": "The CI linter can now be installed and run locally with a pinned version, matching CI behavior exactly.",
+              "zh": "CI 检查器现在可以在本地安装和运行，使用固定版本，与 CI 行为完全匹配。"
+            },
+            "refs": [
+              8033
+            ]
+          }
+        ],
+        "fixed": [
+          {
+            "title": {
+              "en": "Desktop: IME-Aware ESC",
+              "zh": "桌面端：输入法感知的 ESC"
+            },
+            "body": {
+              "en": "Pressing ESC while an IME candidate window is open no longer cancels the running agent turn. The composer now checks composition state before handling Escape.",
+              "zh": "在输入法候选窗口打开时按 ESC 不再取消正在运行的智能体回合。编写器现在在处理 Escape 之前检查输入法状态。"
+            },
+            "refs": [
+              7919
+            ]
+          },
+          {
+            "title": {
+              "en": "Desktop: Transcript Selection Release",
+              "zh": "桌面端：聊天记录选区释放"
+            },
+            "body": {
+              "en": "Stale transcript selections are released on new clicks. The Add to Chat action preserves the range during activation, and disabled states clear stale menus.",
+              "zh": "过时的聊天记录选区会在新点击时释放。添加到聊天操作在激活期间保留选区范围，禁用状态清除过时菜单。"
+            },
+            "refs": [
+              7988
+            ]
+          },
+          {
+            "title": {
+              "en": "Desktop: Edit Actions for Cancelled Turns",
+              "zh": "桌面端：已取消回合的编辑操作"
+            },
+            "body": {
+              "en": "Cancelled turns now restore edit, rewind, fork, and summary actions after rehydrating authoritative history and checkpoints.",
+              "zh": "已取消的回合现在在重新加载权威历史和检查点后恢复编辑、回退、分支和摘要操作。"
+            },
+            "refs": [
+              8001
+            ]
+          },
+          {
+            "title": {
+              "en": "Session Crash Recovery WAL-Aware and Conflict-Safe",
+              "zh": "会话崩溃恢复 WAL 感知与冲突安全"
+            },
+            "body": {
+              "en": "Session persistence is now CAS/WAL protected, preventing stale overwrites. Recovery prefers the authoritative WAL and preserves newer disk state.",
+              "zh": "会话持久化现在受 CAS/WAL 保护，防止过时覆盖。恢复优先使用权威 WAL 并保留较新的磁盘状态。"
+            },
+            "refs": [
+              7982
+            ]
+          },
+          {
+            "title": {
+              "en": "Goal: Contextual Tool and Migration Boundaries",
+              "zh": "目标：上下文工具与迁移边界"
+            },
+            "body": {
+              "en": "Contextual tools are gated before execution, child agents are isolated from parent state, and legacy AutoResearch migration retries across restarts.",
+              "zh": "上下文工具在执行前被门控，子智能体与父状态隔离，旧版 AutoResearch 迁移在重启后重试。"
+            },
+            "refs": [
+              8007
+            ]
+          },
+          {
+            "title": {
+              "en": "Memory: Recall Index and Crash-Safe Writers",
+              "zh": "记忆：召回索引与崩溃安全写入器"
+            },
+            "body": {
+              "en": "Automatic recall now uses a prebuilt index for zero disk IO per turn. Memory file writes are atomic to prevent partial facts after a crash.",
+              "zh": "自动召回现在使用预构建索引，每轮零磁盘 IO。记忆文件写入是原子的，防止崩溃后出现部分事实。"
+            },
+            "refs": [
+              8028
+            ]
+          },
+          {
+            "title": {
+              "en": "Compaction Fold Region Partition Fix",
+              "zh": "压缩折叠区域分区修复"
+            },
+            "body": {
+              "en": "The fold region is now a true partition, preventing user-stated constraints from being dropped when an oversized turn appears early.",
+              "zh": "折叠区域现在是真正的分区，防止在早期出现超大回合时丢弃用户声明的约束。"
+            },
+            "refs": [
+              8019
+            ]
+          },
+          {
+            "title": {
+              "en": "MemoryBench Pipeline Observability",
+              "zh": "MemoryBench 管道可观测性"
+            },
+            "body": {
+              "en": "Fixed seeding and audit forwarding bugs that caused the first MemoryBench baseline to return zeroes. The suite now produces real utility deltas.",
+              "zh": "修复了导致第一个 MemoryBench 基线返回零的种子和审计转发错误。套件现在产生真实的效用增量。"
+            },
+            "refs": [
+              8022
+            ]
+          },
+          {
+            "title": {
+              "en": "Windows Test Hardening",
+              "zh": "Windows 测试加固"
+            },
+            "body": {
+              "en": "Two timing-sensitive tests were hardened to prevent flaky failures on loaded Windows runners.",
+              "zh": "两个对时间敏感的测试被加固，以防止在负载较高的 Windows 运行器上出现不稳定的失败。"
+            },
+            "refs": [
+              8015
+            ]
+          },
+          {
+            "title": {
+              "en": "Horizontal Wordmark Sizing",
+              "zh": "横向文字标识尺寸"
+            },
+            "body": {
+              "en": "The homepage header logo no longer renders as a large square; intrinsic dimensions are declared for the horizontal SVG.",
+              "zh": "主页头部徽标不再渲染为大正方形；为横向 SVG 声明了固有尺寸。"
+            },
+            "refs": [
+              7997
+            ]
+          },
+          {
+            "title": {
+              "en": "Site Hero Install Redesign",
+              "zh": "网站首页安装区域重设计"
+            },
+            "body": {
+              "en": "The hero install section was redesigned with a two-column card, particle backgrounds, and unified Inter font.",
+              "zh": "首页安装区域重新设计为两栏卡片、粒子背景和统一的 Inter 字体。"
+            },
+            "refs": [
+              7984
+            ]
+          }
+        ]
+      },
+      "upgrade": [],
+      "risks": [],
+      "contributors": [
+        "esengine",
+        "chengoak",
+        "SivanCola",
+        "PMKang",
+        "Bernardxu123",
+        "HaoyueQin"
+      ],
+      "links": {
+        "github": "https://github.com/esengine/DeepSeek-Reasonix/releases/tag/desktop-v1.21.4",
+        "compare": "https://github.com/esengine/DeepSeek-Reasonix/compare/desktop-v1.21.3...desktop-v1.21.4",
+        "download": "https://reasonix.io/?download=desktop&channel=stable#start"
+      },
+      "releaseId": "1.21.4",
+      "baseVersion": "1.21.4",
+      "status": "reviewed",
+      "previousRelease": "1.21.3",
+      "builds": {
+        "cli": "v1.21.4",
+        "desktop": "v1.21.4",
+        "npm": "1.21.4"
+      }
+    },
+    {
       "version": "1.21.3",
       "date": "2026-08-08",
       "channel": "stable",

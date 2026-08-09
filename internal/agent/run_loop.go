@@ -938,7 +938,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *runLoopState, te
 	if readiness.applies {
 		event.RecordReadinessAudit(a.sink, readiness.audit(evidence.ReadinessAllowed, a.readinessRecovered))
 	}
-	a.emitContractShadow(state.input)
+	a.emitTurnShadows(state.input)
 	if !a.closeSteerIntakeIfIdle() {
 		return true, nil
 	}

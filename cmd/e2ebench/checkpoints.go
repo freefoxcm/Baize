@@ -381,3 +381,17 @@ func solutionFiles(seedDir, finalDir string) map[string]string {
 	})
 	return out
 }
+
+// attachSnapshotter starts per-change workdir snapshots when checkpoint grading
+// is on. It always returns a usable cleanup so the caller needs no branch; a
+// temp-dir failure degrades to no snapshots rather than failing the run.
+func attachSnapshotter(cfg suiteConfig, t task, work string, startedAt time.Time) (*snapshotter, func()) {
+	if !cfg.checkpoints {
+		return nil, func() {}
+	}
+	dir, err := os.MkdirTemp("", "e2ebench-cp-"+t.ID+"-")
+	if err != nil {
+		return nil, func() {}
+	}
+	return startSnapshotter(work, dir, startedAt), func() { _ = os.RemoveAll(dir) }
+}
