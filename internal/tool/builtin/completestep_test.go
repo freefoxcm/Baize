@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -383,6 +384,105 @@ func TestCompleteStepMatchesTodoByExplicitStepIndex(t *testing.T) {
 	}
 	if !strings.Contains(out, "Wire parser") {
 		t.Fatalf("ack should name the indexed todo, got %q", out)
+	}
+}
+
+func TestCompleteStepRequiresTitleAndIndexToMatch(t *testing.T) {
+	todos := []evidence.TodoItem{
+		{Content: "Cross rendering", Status: "in_progress"},
+		{Content: "Farmland", Status: "pending"},
+	}
+	ctx := evidence.WithTodoState(context.Background(), todos)
+
+	out, err := (completeStep{}).Execute(ctx, json.RawMessage(`{
+		"step":"Cross rendering",
+		"step_index":1,
+		"result":"rendering complete",
+		"evidence":[{"kind":"manual","summary":"checked"}]
+	}`))
+	if err != nil {
+		t.Fatalf("matching title and index rejected: %v", err)
+	}
+	if !strings.Contains(out, `todo-matched 1 ("Cross rendering")`) {
+		t.Fatalf("matching identity output = %q", out)
+	}
+
+	_, err = (completeStep{}).Execute(ctx, json.RawMessage(`{
+		"step":"Cross rendering",
+		"step_index":2,
+		"result":"rendering complete",
+		"evidence":[{"kind":"manual","summary":"checked"}]
+	}`))
+	if err == nil {
+		t.Fatal("conflicting title and index should be rejected")
+	}
+	for _, want := range []string{"conflicting complete_step identity", `todo 1 "Cross rendering"`, `todo 2 "Farmland"`, `Current signable todo: 1`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("conflict error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestCompleteStepReportsCanonicalLayeredAdvance(t *testing.T) {
+	todos := make([]evidence.TodoItem, 20)
+	for i := 0; i < 16; i++ {
+		todos[i] = evidence.TodoItem{Content: fmt.Sprintf("completed %d", i+1), Status: "completed"}
+	}
+	todos[16] = evidence.TodoItem{Content: "快捷栏 12 槽", Status: "pending"}
+	todos[17] = evidence.TodoItem{Content: "实现 12 槽", Status: "completed", Level: 1}
+	todos[18] = evidence.TodoItem{Content: "验证：12 槽初始化/滚轮/数字键 1-9/拾取入空槽", Status: "in_progress", Level: 1}
+	todos[19] = evidence.TodoItem{Content: "集成冒烟", Status: "pending"}
+	call := func(step string, index int) (string, error) {
+		args, err := json.Marshal(map[string]any{
+			"step":       step,
+			"step_index": index,
+			"result":     "done",
+			"evidence":   []map[string]any{{"kind": "manual", "summary": "checked"}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return (completeStep{}).Execute(evidence.WithTodoState(context.Background(), todos), args)
+	}
+
+	if _, err := call("集成冒烟", 21); err == nil || !strings.Contains(err.Error(), `index match=none`) || !strings.Contains(err.Error(), `Current signable todo: 19`) {
+		t.Fatalf("out-of-range step should report canonical current todo, got %v", err)
+	}
+	if _, err := call("集成冒烟", 20); err == nil || !strings.Contains(err.Error(), `finish todo 19`) {
+		t.Fatalf("pending final step should point at todo 19, got %v", err)
+	}
+
+	out, err := call(todos[18].Content, 19)
+	if err != nil {
+		t.Fatalf("todo 19 rejected: %v", err)
+	}
+	if !strings.Contains(out, `Next signable todo: 17 "快捷栏 12 槽" (phase sign-off)`) {
+		t.Fatalf("todo 19 output should name parent phase, got %q", out)
+	}
+	if !evidence.AdvanceSerialTodo(todos, 18) {
+		t.Fatal("failed to apply host advance for todo 19")
+	}
+
+	if _, err := call("集成冒烟", 20); err == nil || !strings.Contains(err.Error(), `finish todo 17 "快捷栏 12 槽" first`) {
+		t.Fatalf("pending final step should point at parent phase, got %v", err)
+	}
+	out, err = call("快捷栏 12 槽", 17)
+	if err != nil {
+		t.Fatalf("phase sign-off rejected: %v", err)
+	}
+	if !strings.Contains(out, `Next signable todo: 20 "集成冒烟"`) {
+		t.Fatalf("phase output should name integration step, got %q", out)
+	}
+	if !evidence.AdvanceSerialTodo(todos, 16) {
+		t.Fatal("failed to apply host advance for phase")
+	}
+
+	out, err = call("集成冒烟", 20)
+	if err != nil {
+		t.Fatalf("final step rejected: %v", err)
+	}
+	if !strings.Contains(out, "All canonical todos are completed") {
+		t.Fatalf("final output should report completion, got %q", out)
 	}
 }
 

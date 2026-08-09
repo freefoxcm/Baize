@@ -2601,10 +2601,17 @@ func stringField(fields map[string]json.RawMessage, key string) string {
 }
 
 func completeStepIdentity(fields map[string]json.RawMessage) string {
+	// Prefer the semantic title when a validated call contains both fields.
+	// New complete_step executions reject title/index conflicts, so this keeps
+	// persisted receipts tied to the canonical todo identity instead of a stale
+	// positional index. Index-only callers remain fully compatible.
+	if step := stringField(fields, "step"); step != "" {
+		return step
+	}
 	if n, ok := intField(fields, "step_index"); ok && n > 0 {
 		return strconv.Itoa(n)
 	}
-	return stringField(fields, "step")
+	return ""
 }
 
 func intField(fields map[string]json.RawMessage, key string) (int, bool) {

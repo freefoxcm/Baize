@@ -46,15 +46,15 @@ var validEvidenceKinds = map[string]bool{
 func (completeStep) Name() string { return "complete_step" }
 
 func (completeStep) Description() string {
-	return "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Fields: `step` (which step — its title or number, matching the task list), `result` (what is now true/changed), `evidence` (≥1 item, each with `kind` = verification|review|diff|files|manual and a `summary`, plus optional `command`/`paths`), and optional `notes`."
+	return "Record the evidence-backed completion of ONE current in_progress step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you and names the exact next signable todo; copy that title for the next call instead of guessing a later index. Prefer `step` with the verbatim current todo title. Use `step_index` only when the host has explicitly reported the canonical index. If both are supplied, they MUST identify the same todo or the call is rejected. Never skip ahead: after the last sub-step the next signable todo can be its parent phase. Fields: `step`, optional `step_index`, `result`, `evidence` (≥1 item, each with `kind` = verification|review|diff|files|manual and a `summary`, plus optional `command`/`paths`), and optional `notes`."
 }
 
 func (completeStep) Schema() json.RawMessage {
 	return json.RawMessage(`{
 "type":"object",
 "properties":{
-  "step":{"type":"string","description":"Which plan step this completes — its title or number, matching the task list."},
-  "step_index":{"type":"integer","minimum":1,"description":"Optional 1-based task-list item number. Prefer this when the step title is long or easy to mistype."},
+  "step":{"type":"string","description":"Verbatim title of the current in_progress todo. Prefer copying the exact title named by the previous host result."},
+  "step_index":{"type":"integer","minimum":1,"description":"Optional 1-based canonical task-list index. Use only when the host explicitly reported it. When step is also present, both must identify the same todo."},
   "result":{"type":"string","description":"What is now true or changed as a result of finishing this step."},
   "evidence":{
     "type":"array",
@@ -104,7 +104,8 @@ func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, 
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-	step := completeStepIdentity(p.Step, p.StepIndex)
+	stepText := strings.TrimSpace(p.Step)
+	step := completeStepIdentity(stepText, p.StepIndex)
 	if step == "" {
 		return "", fmt.Errorf("step or step_index is required — name the plan step you are completing, or cite its 1-based task-list number")
 	}
@@ -128,7 +129,11 @@ func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, 
 		kinds = append(kinds, e.Kind)
 	}
 
-	todoMatch, hasTodo, err := verifyTodoStep(ctx, step)
+	todos := currentTodoState(ctx)
+	if err := verifyCompleteStepIdentity(stepText, p.StepIndex, todos); err != nil {
+		return "", err
+	}
+	todoMatch, hasTodo, err := verifyTodoStepAgainst(todos, step)
 	if err != nil {
 		return "", err
 	}
@@ -158,16 +163,93 @@ func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, 
 	advanceStatus := " The host advanced the task list; continue with the next step."
 	if hasTodo && todoMatch.Status == "completed" {
 		advanceStatus = " The matched todo was already completed; the task list is unchanged."
+	} else if hasTodo {
+		advanceStatus = nextTodoStatus(todos, todoMatch)
 	}
 	return fmt.Sprintf("Step %q signed off with %d evidence item(s) [%s].%s%s",
 		step, len(p.Evidence), strings.Join(kinds, ", "), hostStatus+todoStatus+projectStatus, advanceStatus), nil
 }
 
 func completeStepIdentity(step string, stepIndex int) string {
+	if strings.TrimSpace(step) != "" {
+		return strings.TrimSpace(step)
+	}
 	if stepIndex > 0 {
 		return strconv.Itoa(stepIndex)
 	}
-	return strings.TrimSpace(step)
+	return ""
+}
+
+func currentTodoState(ctx context.Context) []evidence.TodoItem {
+	if ledger, ok := evidence.FromContext(ctx); ok {
+		if todos, found := ledger.LatestTodos(); found && len(todos) > 0 {
+			return todos
+		}
+	}
+	todos, _ := evidence.TodoStateFromContext(ctx)
+	return todos
+}
+
+func verifyCompleteStepIdentity(step string, stepIndex int, todos []evidence.TodoItem) error {
+	if step == "" || stepIndex <= 0 {
+		return nil
+	}
+	if len(todos) == 0 {
+		return fmt.Errorf("step and step_index were both supplied but there is no canonical todo list to prove they agree; send exactly one identifier")
+	}
+	titleMatch, titleFound := evidence.MatchStep(step, todos)
+	indexText := strconv.Itoa(stepIndex)
+	indexMatch, indexFound := evidence.MatchStep(indexText, todos)
+	if !titleFound || !indexFound {
+		return fmt.Errorf("step %q and step_index %d cannot be verified against the same canonical todo: title match=%s, index match=%s.%s Do not guess a later index; copy the exact current todo title reported by the host",
+			step, stepIndex, todoMatchLabel(titleMatch, titleFound), todoMatchLabel(indexMatch, indexFound), signableTodoHint(todos))
+	}
+	if titleMatch.Index != indexMatch.Index {
+		return fmt.Errorf("conflicting complete_step identity: step %q matches todo %d %q, but step_index %d matches todo %d %q.%s Do not guess a later index; copy the exact current todo title reported by the host",
+			step, titleMatch.Index, titleMatch.Content, stepIndex, indexMatch.Index, indexMatch.Content, signableTodoHint(todos))
+	}
+	return nil
+}
+
+func todoMatchLabel(match evidence.TodoStepMatch, found bool) string {
+	if !found {
+		return "none"
+	}
+	return fmt.Sprintf("todo %d %q", match.Index, match.Content)
+}
+
+func signableTodoHint(todos []evidence.TodoItem) string {
+	for i, todo := range todos {
+		if strings.TrimSpace(todo.Status) != "in_progress" {
+			continue
+		}
+		kind := "step"
+		if _, phase := evidence.FirstUnfinishedSubStep(todos, i); phase {
+			kind = "phase sign-off"
+		} else if todo.Level == 1 {
+			kind = "sub-step"
+		}
+		return fmt.Sprintf(" Current signable todo: %d %q (%s).", i+1, todo.Content, kind)
+	}
+	return " No todo is currently in_progress."
+}
+
+func nextTodoStatus(todos []evidence.TodoItem, match evidence.TodoStepMatch) string {
+	next := append([]evidence.TodoItem(nil), todos...)
+	if !evidence.AdvanceSerialTodo(next, match.Index-1) {
+		return " The host could not advance the canonical task list; refresh it before retrying."
+	}
+	for i, todo := range next {
+		if strings.TrimSpace(todo.Status) != "in_progress" {
+			continue
+		}
+		suffix := ""
+		if _, phase := evidence.FirstUnfinishedSubStep(next, i); phase {
+			suffix = " (phase sign-off)"
+		}
+		return fmt.Sprintf(" The host advanced the task list. Next signable todo: %d %q%s. Copy this exact title; do not guess a later index.", i+1, todo.Content, suffix)
+	}
+	return " The host advanced the task list. All canonical todos are completed."
 }
 
 func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified int, manualUnverified int, err error) {
@@ -272,14 +354,10 @@ func checkSource(check instruction.VerifyCheck) string {
 }
 
 func verifyTodoStep(ctx context.Context, step string) (evidence.TodoStepMatch, bool, error) {
-	ledger, ok := evidence.FromContext(ctx)
-	var todos []evidence.TodoItem
-	if ok {
-		todos, _ = ledger.LatestTodos()
-	}
-	if len(todos) == 0 {
-		todos, _ = evidence.TodoStateFromContext(ctx)
-	}
+	return verifyTodoStepAgainst(currentTodoState(ctx), step)
+}
+
+func verifyTodoStepAgainst(todos []evidence.TodoItem, step string) (evidence.TodoStepMatch, bool, error) {
 	if len(todos) == 0 {
 		return evidence.TodoStepMatch{}, false, nil
 	}
@@ -296,12 +374,12 @@ func verifyTodoStep(ctx context.Context, step string) (evidence.TodoStepMatch, b
 			last := len(todos) - 1
 			return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item and every current todo is already completed; this is a renewal sign-off, so retry complete_step with step_index %d (the final existing todo %q) and the fresh evidence — do not invent a new step or rewrite the completed list", step, last+1, todos[last].Content)
 		}
-		return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item in the current task list; cite a todo verbatim or by number: %s", step, todoListInventory(todos))
+		return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item in the current task list.%s Do not guess a later index; copy the exact current todo title reported by the host. Canonical list: %s", step, signableTodoHint(todos), todoListInventory(todos))
 	}
 	switch match.Status {
 	case "in_progress":
 		if unfinished, ok := evidence.FirstUnfinishedSubStep(todos, match.Index-1); ok && unfinished >= 0 {
-			return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q matches phase %d %q whose sub-steps are unfinished; complete sub-step %d %q first, then sign the phase off", step, match.Index, match.Content, unfinished+1, todos[unfinished].Content)
+			return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q matches phase %d %q whose sub-steps are unfinished; complete sub-step %d %q first, then sign the phase off.%s Do not guess a later index", step, match.Index, match.Content, unfinished+1, todos[unfinished].Content, signableTodoHint(todos))
 		}
 		return match, true, nil
 	case "completed":
@@ -309,17 +387,12 @@ func verifyTodoStep(ctx context.Context, step string) (evidence.TodoStepMatch, b
 	case "", "pending":
 		current := ""
 		for i, todo := range todos {
-			if strings.TrimSpace(todo.Status) != "in_progress" {
-				continue
-			}
-			// The deepest in_progress item is the signable end of the current
-			// chain: prefer an active sub-step over its phase header.
-			current = fmt.Sprintf("; finish todo %d %q first", i+1, todo.Content)
-			if todo.Level == 1 {
+			if strings.TrimSpace(todo.Status) == "in_progress" {
+				current = fmt.Sprintf("; finish todo %d %q first", i+1, todo.Content)
 				break
 			}
 		}
-		return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q matches pending todo %d %q; complete_step only signs the current in_progress item%s", step, match.Index, match.Content, current)
+		return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q matches pending todo %d %q; complete_step only signs the current in_progress item%s.%s Do not guess a later index; copy the exact current todo title reported by the host", step, match.Index, match.Content, current, signableTodoHint(todos))
 	default:
 		return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q matches todo %d (%q) but its status is %q; complete_step requires in_progress or completed", step, match.Index, match.Content, match.Status)
 	}
