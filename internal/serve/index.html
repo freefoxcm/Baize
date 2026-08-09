@@ -224,6 +224,14 @@ input,textarea{font:inherit;color:inherit}
 
 .notice{max-width:var(--chat-maxw);margin:5px auto;font-size:13px;color:var(--fg-2);padding:5px 12px;border-left:2px solid var(--border);border-radius:0 var(--radius) var(--radius) 0;white-space:pre-wrap}
 .notice--warn{color:var(--warning);border-left-color:var(--warning);background:var(--warning-soft)}
+.delivery-card{max-width:var(--chat-maxw);margin:8px auto;padding:12px 14px;border:1px solid color-mix(in srgb,var(--accent) 28%,var(--border));border-radius:var(--radius-lg);background:var(--panel);box-shadow:var(--shadow-sm);color:var(--fg-2);font-size:13px;line-height:1.55}
+.delivery-card__title{color:var(--fg);font-weight:600;font-size:13.5px;margin-bottom:3px}
+.delivery-card__detail{margin-top:7px;color:var(--fg-2)}
+.delivery-card__raw{margin-top:7px;color:var(--muted);font-family:var(--mono);font-size:11px;white-space:pre-wrap;word-break:break-word}
+.delivery-card__actions{display:flex;align-items:center;gap:8px;margin-top:10px}
+.delivery-card__button{padding:5px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:oklch(18% .02 30);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.delivery-card__button:hover{filter:brightness(1.08)}
+.delivery-card__button:disabled{cursor:default;opacity:.55;filter:none}
 .phase{max-width:var(--chat-maxw);margin:10px auto;text-align:center;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);font-family:var(--mono)}
 .compaction{max-width:var(--chat-maxw);margin:8px auto;border:1px dashed var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px;color:var(--fg-2);background:var(--bg-2)}
 .compaction__head{display:flex;align-items:center;gap:7px;cursor:pointer}
@@ -1014,6 +1022,23 @@ const __T = {
     'model_no_match': 'No matching models',
     'effort_title': 'Reasoning effort',
     'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
+    'delivery_incomplete_title': 'Delivery checks are not complete',
+    'delivery_incomplete_body': 'The response was generated, but verification and review still need to be completed.',
+    'delivery_continue': 'Continue checks',
+    'delivery_continue_prompt': 'Continue and complete the remaining delivery checks.',
+    'delivery_missing': 'Still needed: {items}',
+    'delivery_requirement_project_check': 'project checks',
+    'delivery_requirement_todo': 'unfinished task items',
+    'delivery_requirement_criteria': 'acceptance criteria',
+    'delivery_requirement_verification': 'verification',
+    'delivery_requirement_review': 'change review',
+    'delivery_requirement_signoff': 'step sign-off',
+    'delivery_requirement_action': 'host-observable work',
+    'delivery_requirement_mutation': 'the requested change',
+    'delivery_requirement_capability': 'required capability checks',
+    'delivery_raw_detail': 'Technical detail',
+    'todo_signable': 'sign off now',
+    'todo_phase_signoff': 'phase sign-off',
     'stats': 'Stats',
     'statistics': 'Statistics',
     'model': 'Model',
@@ -1242,6 +1267,23 @@ const __T = {
     'model_no_match': '没有匹配的模型',
     'effort_title': '思考长度',
     'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
+    'delivery_incomplete_title': '交付检查尚未完成',
+    'delivery_incomplete_body': '内容已经生成，但验证和复审步骤尚未完成。',
+    'delivery_continue': '继续检查',
+    'delivery_continue_prompt': '继续完成剩余的交付检查。',
+    'delivery_missing': '仍需完成：{items}',
+    'delivery_requirement_project_check': '项目检查',
+    'delivery_requirement_todo': '未完成待办',
+    'delivery_requirement_criteria': '验收标准',
+    'delivery_requirement_verification': '验证',
+    'delivery_requirement_review': '变更复审',
+    'delivery_requirement_signoff': '步骤签收',
+    'delivery_requirement_action': '可观察的实际工作',
+    'delivery_requirement_mutation': '用户要求的变更',
+    'delivery_requirement_capability': '必需能力检查',
+    'delivery_raw_detail': '技术详情',
+    'todo_signable': '当前可签收',
+    'todo_phase_signoff': '阶段签收',
     'stats': '统计',
     'statistics': '统计',
     'model': '模型',
@@ -1678,6 +1720,63 @@ function showNotice(text, tone) {
   log.appendChild(n);
   scrollDown(true); // synchronous feedback to a user action — always reveal
 }
+function hiddenTranscriptTool(name){
+  const n=String(name||'').trim().toLowerCase();
+  return n==='todo_write'||n==='exit_plan_mode';
+}
+const DELIVERY_REQUIREMENTS={
+  project_check:'delivery_requirement_project_check',todo:'delivery_requirement_todo',criteria:'delivery_requirement_criteria',
+  verification:'delivery_requirement_verification',review:'delivery_requirement_review',signoff:'delivery_requirement_signoff',
+  action:'delivery_requirement_action',mutation:'delivery_requirement_mutation',capability:'delivery_requirement_capability'
+};
+function disableDeliveryCards(){
+  $$('.delivery-card__button').forEach(btn=>{btn.disabled=true;});
+}
+function clearDeliveryCards(){
+  $$('.delivery-card').forEach(card=>card.remove());
+  items=items.filter(it=>it.kind!=='delivery');
+}
+function renderDeliveryCard(it){
+  const card=el('div','delivery-card');
+  card.dataset.deliveryId=it.id||'';
+  card.appendChild(el('div','delivery-card__title',__('delivery_incomplete_title')));
+  card.appendChild(el('div','delivery-card__body',__('delivery_incomplete_body')));
+  if(it.detail)card.appendChild(el('div','delivery-card__detail',it.detail));
+  if(it.raw){
+    const details=el('details','delivery-card__raw');
+    const summary=el('summary','',__('delivery_raw_detail'));
+    details.appendChild(summary);details.appendChild(el('div','',it.raw));card.appendChild(details);
+  }
+  const actions=el('div','delivery-card__actions');
+  const btn=el('button','delivery-card__button',__('delivery_continue'));
+  btn.type='button';
+  btn.onclick=()=>{
+    if(btn.disabled||running)return;
+    disableDeliveryCards();
+    deliveryRecoveryActive=true;
+    const prompt=__('delivery_continue_prompt');
+    post('/delivery-recovery',{display:prompt,input:prompt}).then(async response=>{
+      if(response.ok)return;
+      throw new Error((await response.text()).trim()||('HTTP '+response.status));
+    }).catch(err=>{
+      deliveryRecoveryActive=false;
+      btn.disabled=false;
+      showNotice(String(err&&err.message||err), 'warn');
+    });
+  };
+  actions.appendChild(btn);card.appendChild(actions);
+  return card;
+}
+function showDeliveryReadiness(e){
+  disableDeliveryCards();
+  const missing=Array.isArray(e&&e.readiness&&e.readiness.missing)?e.readiness.missing:[];
+  const labels=missing.map(id=>DELIVERY_REQUIREMENTS[id]).filter(Boolean).map(key=>__(key));
+  const detail=labels.length?__('delivery_missing').replace('{items}',labels.join(__LANG==='zh'?'、':', ')):'';
+  const raw=String(e&&e.err||'');
+  const it={id:genItemId(),kind:'delivery',detail,raw,turn:currentTurn};
+  items.push(it);
+  const card=renderDeliveryCard(it);appendItem(it,card);scrollDown(true);
+}
 function updateActionAvailability() {
 }
 
@@ -1773,6 +1872,7 @@ function setConnState(state) {
 //   {id, kind:'tool', name, args, output, err, status}
 //   {id, kind:'phase'|'notice'|'compaction'|'error', text, level?, detail?}
 let items = [];
+let deliveryRecoveryActive = false;
 let nextItemId = 1;
 let liveAssistant = null; // assistant item currently streaming
 let currentTurn = 0; // incremented by turn_started; user messages claim turn+1
@@ -1784,7 +1884,7 @@ let currentTurn = 0; // incremented by turn_started; user messages claim turn+1
 let historyPending = false;
 const turnEls = new Map(); // turn number -> { el, tools: Map, summary }
 function genItemId() { return 'it' + (nextItemId++); }
-function resetItems() { items = []; nextItemId = 1; liveAssistant = null; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; jumpScrollPinned = true; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
+function resetItems() { items = []; nextItemId = 1; liveAssistant = null; deliveryRecoveryActive = false; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; jumpScrollPinned = true; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
 function hasVisibleItems() {
   return items.some(it => it.kind === 'user' || it.kind === 'assistant' || it.kind === 'tool');
 }
@@ -2016,6 +2116,7 @@ function renderItem(it) {
   }
   if (it.kind === 'phase') return el('div', 'phase', it.text || '');
   if (it.kind === 'notice') return el('div', 'notice' + (it.level === 'warn' ? ' notice--warn' : ''), (it.level === 'warn' ? '! ' : '') + (it.text || ''));
+  if (it.kind === 'delivery') return renderDeliveryCard(it);
   if (it.kind === 'error') return el('div', 'msg--error', '✗ ' + (it.text || ''));
   if (it.kind === 'compaction') return renderCompactionItem(it);
   if (it.kind === 'tool') {
@@ -2620,6 +2721,7 @@ function findToolItem(toolId) {
   return it ? { item: it, tool: it } : null;
 }
 function renderToolDispatch(tool) {
+  if(hiddenTranscriptTool(tool&&tool.name))return;
   if(!tool.id)return;
   hideWelcome();
   let it, t;
@@ -2670,6 +2772,7 @@ function shellDisplayName(ex){
   return ex.shell;
 }
 function renderToolResult(tool) {
+  if(hiddenTranscriptTool(tool&&tool.name))return;
   const found = findToolItem(tool.id);
   if (!found) return;
   const { item: it, tool: t } = found;
@@ -3451,7 +3554,9 @@ es.onmessage=ev=>{setConnState('connected');
       // the summary bar unless the user manually toggled it.
       { const tt = turnEls.get(currentTurn);
         if (tt && !tt.userOverride && tt.summary.style.display !== 'none') { tt.folded = true; applyTurnFold(tt); } }
-      if(e.outcome==='recovery_paused'){showNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
+      if(deliveryRecoveryActive&&e.outcome!=='final_readiness'&&!e.err)clearDeliveryCards();
+      deliveryRecoveryActive=false;
+      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){showNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
   }
 };
 es.onerror=()=>{
@@ -3500,8 +3605,8 @@ function renderHistoryMessages(ms){
   if(!ms||ms.length===0){resetItems();hasVisibleHistory=false;showWelcome();updateActionAvailability();return false;}
   const visible = ms.some(m => {
     if(m.role==='user')return !!m.content;
-    if(m.role==='assistant')return !!(m.content||m.reasoning||(m.toolCalls&&m.toolCalls.length));
-    if(m.role==='tool')return !!(m.content||m.toolCallId||m.toolName);
+    if(m.role==='assistant')return !!(m.content||m.reasoning||(m.toolCalls||[]).some(tc=>!hiddenTranscriptTool(tc.name)));
+    if(m.role==='tool')return !hiddenTranscriptTool(m.toolName)&&!!(m.content||m.toolCallId||m.toolName);
     return false;
   });
   hasVisibleHistory=visible;
@@ -3525,8 +3630,12 @@ function renderHistoryMessages(ms){
       return;
     }
     if(m.role==='assistant'){
+      const allCalls=m.toolCalls||[];
+      allCalls.filter(tc=>hiddenTranscriptTool(tc.name)).forEach(tc=>{if(tc.id)consumed.add(tc.id);});
+      const visibleCalls=allCalls.filter(tc=>!hiddenTranscriptTool(tc.name));
+      if(!m.content&&!m.reasoning&&!visibleCalls.length)return;
       const it={id:genItemId(),kind:'assistant',text:m.content||'',reasoning:m.reasoning||'',tools:[],done:true,dom:null,turn:histTurn||++histTurn};
-      (m.toolCalls||[]).forEach(tc=>{
+      visibleCalls.forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
         it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0)});
@@ -3538,6 +3647,7 @@ function renderHistoryMessages(ms){
     }
     if(m.role==='tool'){
       if(m.toolCallId&&consumed.has(m.toolCallId))return;
+      if(hiddenTranscriptTool(m.toolName))return;
       const id=m.toolCallId||'hist-tool-'+(seq++);
       const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:m.err||'',status:m.err?'failed':'done',durationMs:Number(m.durationMs||0),dom:null,turn:histTurn||++histTurn};
       items.push(it);
@@ -4042,6 +4152,11 @@ function todoStatusLabel(s){
     default:return '○';
   }
 }
+function todoIsPhaseSignoff(ts,index){
+  if(!ts[index]||Number(ts[index].level||0)!==0||!ts[index+1]||Number(ts[index+1].level||0)!==1)return false;
+  for(let i=index+1;i<ts.length&&Number(ts[i].level||0)===1;i++)if(String(ts[i].status||'').trim()!=='completed')return false;
+  return true;
+}
 function hasIncompleteTodos(ts){return ts.some(t=>String(t.status||'').trim()!=='completed');}
 function renderTodoPanel(){
   const panel=$('#todo-panel'),list=$('#todos-list'),badge=$('#todos-badge');
@@ -4060,7 +4175,8 @@ function renderTodoPanel(){
   todosState.forEach((t,i)=>{
     const st=String(t.status||'').trim();
     const li=el('li','todos__item todos__item--'+st+(t.level?' todos__item--sub':''));
-    li.innerHTML='<span class="todos__status todos__status--'+st+'">'+todoStatusLabel(st)+'</span><span class="todos__text">'+escHtml((st==='in_progress'&&t.activeForm)?t.activeForm:t.content)+'</span>';
+    const statusText=st==='in_progress'?(todoIsPhaseSignoff(todosState,i)?__('todo_phase_signoff'):__('todo_signable')):todoStatusLabel(st);
+    li.innerHTML='<span class="todos__status todos__status--'+st+'">'+escHtml(statusText)+'</span><span class="todos__text">'+escHtml((st==='in_progress'&&t.activeForm)?t.activeForm:t.content)+'</span>';
     list.appendChild(li);
   });
   panel.classList.add('todos--visible');
@@ -4320,4 +4436,3 @@ updateActionAvailability();
 </script>
 </body>
 </html>
-

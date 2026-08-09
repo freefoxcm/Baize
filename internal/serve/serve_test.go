@@ -70,6 +70,28 @@ type fakeRunner struct{ got chan string }
 
 func (f fakeRunner) Run(_ context.Context, input string) error { f.got <- input; return nil }
 
+type deliveryRecoveryController struct {
+	control.SessionAPI
+	goal         string
+	goalStatus   string
+	resumeResult bool
+	resumed      bool
+	submitted    chan [2]string
+}
+
+func (c *deliveryRecoveryController) Goal() string       { return c.goal }
+func (c *deliveryRecoveryController) GoalStatus() string { return c.goalStatus }
+func (c *deliveryRecoveryController) ResumeGoal() bool {
+	c.resumed = true
+	if c.resumeResult {
+		c.goalStatus = control.GoalStatusRunning
+	}
+	return c.resumeResult
+}
+func (c *deliveryRecoveryController) SubmitDeliveryRecovery(display, input string) {
+	c.submitted <- [2]string{display, input}
+}
+
 func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 	bc := NewBroadcaster()
 	got := make(chan string, 1)
@@ -109,6 +131,75 @@ func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 		case <-deadline:
 			t.Fatal("never saw turn_done on the stream")
 		}
+	}
+}
+
+func TestServeDeliveryRecoveryEndpoint(t *testing.T) {
+	baseBC := NewBroadcaster()
+	base := control.New(control.Options{Sink: baseBC})
+	wrapped := &deliveryRecoveryController{
+		SessionAPI:   base,
+		goal:         "ship the change",
+		goalStatus:   control.GoalStatusBlocked,
+		resumeResult: true,
+		submitted:    make(chan [2]string, 1),
+	}
+	srv := httptest.NewServer(New(wrapped, baseBC, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/delivery-recovery", "application/json", strings.NewReader(`{"input":" Continue checks "}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("delivery recovery status = %d, want 202", resp.StatusCode)
+	}
+	if !wrapped.resumed {
+		t.Fatal("blocked Goal was not resumed before delivery recovery")
+	}
+	select {
+	case got := <-wrapped.submitted:
+		if got != [2]string{"Continue checks", "Continue checks"} {
+			t.Fatalf("delivery recovery submission = %#v", got)
+		}
+	default:
+		t.Fatal("delivery recovery was not submitted")
+	}
+}
+
+func TestServeDeliveryRecoveryRejectsInvalidOrUnresumableRequests(t *testing.T) {
+	baseBC := NewBroadcaster()
+	base := control.New(control.Options{Sink: baseBC})
+	wrapped := &deliveryRecoveryController{
+		SessionAPI: base,
+		goal:       "already complete",
+		goalStatus: control.GoalStatusComplete,
+		submitted:  make(chan [2]string, 1),
+	}
+	handler := New(wrapped, baseBC, config.ServeConfig{}).Handler()
+
+	cases := []struct {
+		body string
+		want int
+	}{
+		{body: `{}`, want: http.StatusBadRequest},
+		{body: `{"input":"!rm file"}`, want: http.StatusForbidden},
+		{body: `{"input":"continue"}`, want: http.StatusConflict},
+	}
+	for _, tc := range cases {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/delivery-recovery", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(recorder, req)
+		if recorder.Code != tc.want {
+			t.Fatalf("delivery recovery body %s status = %d, want %d", tc.body, recorder.Code, tc.want)
+		}
+	}
+	select {
+	case got := <-wrapped.submitted:
+		t.Fatalf("invalid recovery unexpectedly submitted: %#v", got)
+	default:
 	}
 }
 
@@ -800,6 +891,39 @@ func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing recovery pause support %q", want)
+		}
+	}
+}
+
+func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		"e.outcome==='final_readiness'",
+		"showDeliveryReadiness(e)",
+		"post('/delivery-recovery',{display:prompt,input:prompt})",
+		"'delivery_incomplete_title': 'Delivery checks are not complete'",
+		"'delivery_incomplete_title': '交付检查尚未完成'",
+		"project_check:'delivery_requirement_project_check'",
+		"clearDeliveryCards()",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing final-readiness recovery support %q", want)
+		}
+	}
+}
+
+func TestServeIndexHidesInternalTodoToolsAndMarksSignableTodo(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		"return n==='todo_write'||n==='exit_plan_mode';",
+		"if(hiddenTranscriptTool(tool&&tool.name))return;",
+		"filter(tc=>!hiddenTranscriptTool(tc.name))",
+		"'todo_signable': 'sign off now'",
+		"'todo_signable': '当前可签收'",
+		"todoIsPhaseSignoff(todosState,i)?__('todo_phase_signoff'):__('todo_signable')",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing internal-tool/todo presentation support %q", want)
 		}
 	}
 }

@@ -723,6 +723,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /context", s.context)
 	mux.HandleFunc("GET /usage/calendar", s.usageCalendar)
 	mux.HandleFunc("POST /submit", s.submit)
+	mux.HandleFunc("POST /delivery-recovery", s.deliveryRecovery)
 	mux.HandleFunc("POST /steer", s.steer)
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
@@ -1013,6 +1014,45 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	s.bindMu.Lock()
 	s.ctl().SubmitHTTPFormat(body.Input, body.Format)
 	s.bindMu.Unlock()
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// deliveryRecovery continues a turn that ended at the final-readiness gate.
+// It mirrors Desktop's recovery action: a paused Goal is resumed first so its
+// delivery scope/checkpoint survive, then the controller receives a one-shot
+// authorization to reuse the immediately preceding delivery evidence ledger.
+func (s *Server) deliveryRecovery(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Display string `json:"display"`
+		Input   string `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" {
+		http.Error(w, "missing input", http.StatusBadRequest)
+		return
+	}
+	body.Input = strings.TrimSpace(body.Input)
+	body.Display = strings.TrimSpace(body.Display)
+	if body.Display == "" {
+		body.Display = body.Input
+	}
+	if strings.HasPrefix(body.Input, "!") {
+		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
+		return
+	}
+
+	// Keep recovery admission in the same generation/session critical section
+	// as ordinary submit. A Goal with persisted delivery state must be running
+	// before SubmitDeliveryRecovery starts its continuation.
+	s.bindMu.Lock()
+	defer s.bindMu.Unlock()
+	ctl := s.ctl()
+	if strings.TrimSpace(ctl.Goal()) != "" && ctl.GoalStatus() != control.GoalStatusRunning {
+		if !ctl.ResumeGoal() {
+			http.Error(w, "goal cannot be resumed for delivery recovery", http.StatusConflict)
+			return
+		}
+	}
+	ctl.SubmitDeliveryRecovery(body.Display, body.Input)
 	w.WriteHeader(http.StatusAccepted)
 }
 
