@@ -86,7 +86,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) bat
 			calls[i].ResolvedReadOnly = &readOnly
 			surfaceWriters[i] = !readOnly
 		}
-		if calls[i].Name == "complete_step" && outcomes[i].errMsg == "" {
+		if calls[i].Name == "complete_step" && !outcomes[i].blocked && outcomes[i].errMsg == "" {
 			completedStepInBatch = true
 		}
 		durations[i] = time.Since(start).Milliseconds()

@@ -175,8 +175,38 @@ func TestPlanModeUnsafePhaseToolStopsBeforePermission(t *testing.T) {
 	if !out.blocked || !strings.Contains(out.output, "only available after plan approval") {
 		t.Fatalf("phase opt-out outcome = %+v", out)
 	}
+	if out.errMsg != "" || !strings.Contains(out.output, "Planning state unchanged") {
+		t.Fatalf("phase redirect should be informational instead of a red tool error: %+v", out)
+	}
 	if len(gate.calls) != 0 || executions != 0 {
 		t.Fatalf("phase-blocked call reached permission/execution: gate=%+v executions=%d", gate.calls, executions)
+	}
+}
+
+func TestPlanModeCompleteStepRedirectDoesNotAdvanceTodo(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Add(mustBuiltinTool(t, "complete_step"))
+	a := New(nil, reg, NewSession(""), Options{}, event.Discard)
+	a.SeedTodoState([]evidence.TodoItem{{Content: "Analyze root cause", Status: "in_progress"}})
+	a.SetPlanMode(true)
+
+	out := a.executeOne(context.Background(), provider.ToolCall{
+		Name: "complete_step",
+		Arguments: `{
+			"step":"Analyze root cause",
+			"result":"root causes identified",
+			"evidence":[{"kind":"files","summary":"inspected sources","paths":["internal/agent/execute_one.go"]}]
+		}`,
+	})
+	if !out.blocked || out.errMsg != "" || !strings.Contains(out.output, "Planning state unchanged") {
+		t.Fatalf("complete_step planning redirect = %+v", out)
+	}
+	got := a.CanonicalTodoState()
+	if len(got) != 1 || got[0].Status != "in_progress" {
+		t.Fatalf("planning redirect advanced canonical todo: %+v", got)
+	}
+	if a.evidence != nil && a.evidence.HasSuccessfulCompleteStepAfter(-1) {
+		t.Fatal("planning redirect generated a successful complete_step receipt")
 	}
 }
 
@@ -264,6 +294,37 @@ func TestPlanModeCanReplacePriorExecutionTodoState(t *testing.T) {
 	}
 	if len(recoveryGate.proposals) != 0 {
 		t.Fatalf("Plan mode sent duplicate Auto plan review proposals: %+v", recoveryGate.proposals)
+	}
+}
+
+func TestPlanModeTodoWriteCompletesPlanningItemWithoutCompleteStep(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Add(mustBuiltinTool(t, "todo_write"))
+	a := New(nil, reg, NewSession(""), Options{}, event.Discard)
+	a.SetPlanMode(true)
+
+	first := a.executeOne(context.Background(), provider.ToolCall{
+		ID:        "plan-analysis",
+		Name:      "todo_write",
+		Arguments: `{"todos":[{"content":"Analyze root cause","status":"in_progress"}]}`,
+	})
+	if first.errMsg != "" || first.blocked {
+		t.Fatalf("initial planning todo_write = %+v", first)
+	}
+	second := a.executeOne(context.Background(), provider.ToolCall{
+		ID:   "plan-draft",
+		Name: "todo_write",
+		Arguments: `{"todos":[
+			{"content":"Analyze root cause","status":"completed"},
+			{"content":"Draft the plan","status":"in_progress"}
+		]}`,
+	})
+	if second.errMsg != "" || second.blocked {
+		t.Fatalf("planning completion todo_write = %+v", second)
+	}
+	got := a.CanonicalTodoState()
+	if len(got) != 2 || got[0].Status != "completed" || got[1].Status != "in_progress" {
+		t.Fatalf("planning todo state = %+v", got)
 	}
 }
 

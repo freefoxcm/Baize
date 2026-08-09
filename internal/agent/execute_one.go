@@ -215,7 +215,11 @@ func contextualToolGateOutcome(ctx context.Context, target tool.Tool, name strin
 	case "update_goal":
 		msg = "update_goal is only available while an active goal turn is running — no goal state was changed"
 	case "complete_step":
-		msg = "blocked: complete_step is only available after plan approval. While planning, keep task state with todo_write and present the plan for user approval."
+		msg = "Planning state unchanged: complete_step is only available after plan approval. While planning, update planning-item statuses with todo_write itself and present the plan for user approval."
+		// The host still refuses the phase-invalid call, but this is a harmless
+		// workflow redirect rather than a failed verification. Keep Err empty so
+		// Serve/Desktop render an informational result instead of a red failure.
+		return toolOutcome{output: msg, blocked: true}, true
 	case "bash_output", "wait", "kill_shell":
 		msg = "background jobs are not available in this context"
 	}
@@ -277,6 +281,9 @@ func (a *Agent) applyPlanModeAndProxy(ctx context.Context, plan *toolCallPlan) (
 			}
 		}
 		if decision := a.planModeDecision(plan.canonicalName, t.ReadOnly(), safety, json.RawMessage(call.Arguments)); decision.Blocked {
+			if plan.canonicalName == "complete_step" {
+				return toolOutcome{output: decision.Message, blocked: true}, true
+			}
 			return toolOutcome{
 				output:  decision.Message,
 				blocked: true,
