@@ -23,6 +23,7 @@ import (
 	"reasonix/internal/jobs"
 	"reasonix/internal/permission"
 	"reasonix/internal/provider"
+	_ "reasonix/internal/provider/anthropic" // register the kind: boot.Build resolves the default deepseek-flash entry, whose kind is now anthropic
 	"reasonix/internal/tool"
 )
 
