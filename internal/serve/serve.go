@@ -113,14 +113,9 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 
 // ApplyDesktopDefaultApprovalMode applies the desktop-default tool approval
 // posture to a freshly constructed controller — desktop parity: new sessions
-// default to auto (config desktop.default_tool_approval_mode, "auto" unless
-// configured otherwise) instead of the kernel's conservative ask. Runtime
-// switches (modebar, model/work-mode rebuilds) keep whatever the user picked;
-// only initial construction gets the default. When the field is not set at
-// all, the controller's existing posture is left alone (tests and embedded
-// use construct controllers with their own approval policy). Called by the
-// serve CLI entrypoint, not by New, so tests and embedded use are unaffected
-// by the operator's machine config.
+// default to auto (config desktop.default_tool_approval_mode) instead of the
+// kernel's conservative ask. Runtime switches keep whatever the user picked;
+// when the field is not set, the controller's existing posture is left alone.
 func ApplyDesktopDefaultApprovalMode(ctrl control.SessionAPI) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -234,14 +229,11 @@ func titleProviderConfig(entry *config.ProviderEntry) provider.Config {
 // switchModel rebuilds the controller with a new model, carrying over the
 // conversation history. This replicates the TUI/desktop model-switch path.
 //
-// The heavy steps — Snapshot (may touch disk), Build (provider init IO), and the
-// old controller's Close (jobs.CloseWithGrace up to 15s + SessionEnd hook) — all
-// run OFF s.mu. Holding the write lock across them would wedge every HTTP handler
-// on s.ctl()'s RLock for the duration, stalling the whole serve frontend
-// (mirrors the acp rebuildSession fix and PR #5920). bindMu serializes the
-// switch against every other session-path-changing entry point (/resume,
-// /new, /fork), preserving the old "second switch waits" semantics without
-// pinning s.mu.
+// The heavy steps — Snapshot, Build (provider init IO), and the old
+// controller's Close — all run OFF s.mu: holding the write lock across them
+// would wedge every HTTP handler on s.ctl()'s RLock (mirrors the acp
+// rebuildSession fix and PR #5920). bindMu serializes the switch against
+// /resume, /new, and /fork, preserving "second switch waits" semantics.
 func (s *Server) switchModel(ctx context.Context, ref string) error {
 	s.bindMu.Lock()
 	defer s.bindMu.Unlock()
@@ -264,9 +256,8 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 		slog.Warn("serve: snapshot before model switch", "err", err)
 	}
 	// Capture the continue path and history only after Snapshot: a snapshot
-	// conflict can retarget cur to a recovery branch (or adopt the newer disk
-	// transcript), and a pre-snapshot capture would bind the rebuilt controller
-	// back to the original file, re-conflicting on every later save.
+	// conflict can retarget cur to a recovery branch, and a pre-snapshot capture
+	// would bind the rebuild back to the original file, re-conflicting later.
 	prevPath := cur.SessionPath()
 	carried := cur.History()
 
@@ -304,8 +295,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	}
 	// Persist before publishing the replacement. A failed write leaves cur and
 	// the on-disk transcript coherent and lets the caller retry; publishing first
-	// would report a successful switch whose refreshed system contract disappears
-	// on restart. AdoptHistory retained the loaded CAS baseline for this rewrite.
+	// would report a switch whose system contract disappears on restart.
 	if newPath != "" {
 		if err := newCtrl.Snapshot(); err != nil {
 			newCtrl.Close()
@@ -329,9 +319,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 
 	// Publish the swap under a short write lock. bindMu already serializes
 	// switches — today the only writer of s.ctrl — so the identity re-check is
-	// defensive: it keeps a future controller-swapping path (or a test doing so)
-	// from being silently clobbered after the off-lock build. On a mismatch,
-	// discard the fresh controller off-lock instead of leaking it.
+	// defensive against a future controller-swapping path clobbering the swap.
 	s.mu.Lock()
 	if s.ctrl != cur {
 		s.mu.Unlock()
@@ -371,10 +359,9 @@ func (s *Server) build(ctx context.Context, ref string) (*control.Controller, er
 		TokenMode:   tokenMode,
 	}
 	// Rebuilds (model/effort/work-mode switches) must keep the serving
-	// workspace's session store and workspace root: boot.Build would otherwise
-	// fall back to the global session dir, orphaning the per-workspace session
-	// list in GET /sessions. build() runs before the replacement is published,
-	// so s.ctl() still holds the outgoing controller whose values to continue.
+	// workspace's session store and workspace root; boot.Build would otherwise
+	// fall back to the global session dir, orphaning GET /sessions. build() runs
+	// before the replacement is published, so s.ctl() still holds the old one.
 	cur := s.ctl()
 	opts.SessionDir = cur.SessionDir()
 	opts.WorkspaceRoot = cur.WorkspaceRoot()
@@ -946,9 +933,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 }
 
 // submit runs raw user input as a turn (slash commands and @-references
-// resolved by the controller). Returns 202 — output arrives on the event stream.
-// An optional "format":"json_object" asks the model for structured JSON output
-// on this turn (text.format on the wire).
+// resolved by the controller). Returns 202 — output arrives on the event
+// stream; intercepted commands (/model, /effort, /switch) return 204.
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Input  string `json:"input"`
@@ -983,6 +969,15 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+	}
+	// /switch must restore the target session's approval mode (desktop parity).
+	if strings.HasPrefix(trimmed, "/switch ") {
+		if err := s.switchSession(trimmed); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 	// Intercept /effort <level> for reasoning-effort switching; bare /effort
 	// reports the current level and available levels (mirrors how /model
@@ -1301,6 +1296,7 @@ func (s *Server) newSession(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.ctl().SetToolApprovalMode(defaultApprovalMode()) // fresh session = configured default
 	// Fresh path — the lease follows it; failure is theoretical but not silent.
 	if err := s.rebindSessionLease(s.ctl().SessionPath()); err != nil {
 		http.Error(w, sessionInUseError(err), http.StatusConflict)
@@ -1527,6 +1523,7 @@ func (s *Server) fork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, sessionInUseError(err), http.StatusConflict)
 		return
 	}
+	s.persistApprovalMode() // the fork inherits the source session's posture
 	writeJSON(w, map[string]string{"path": path})
 }
 
@@ -1582,7 +1579,9 @@ func (s *Server) toolApprovalMode(w http.ResponseWriter, r *http.Request) {
 	}
 	switch strings.ToLower(strings.TrimSpace(body.Mode)) {
 	case control.ToolApprovalAsk, control.ToolApprovalAuto, control.ToolApprovalYolo:
-		s.ctl().SetToolApprovalMode(body.Mode)
+		cur := s.ctl() // one snapshot: a concurrent switchModel must not split mode/path
+		cur.SetToolApprovalMode(body.Mode)
+		persistApprovalModeFor(cur)
 	default:
 		http.Error(w, "mode must be ask, auto, or yolo", http.StatusBadRequest)
 		return
@@ -1706,6 +1705,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		hook()
 	}
 	s.ctl().Resume(loaded, realPath)
+	s.applySessionApprovalMode(realPath) // restore the session's own posture
 	w.WriteHeader(http.StatusNoContent)
 }
 

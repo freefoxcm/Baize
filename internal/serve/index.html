@@ -157,6 +157,8 @@ input,textarea{font:inherit;color:inherit}
 .reasoning[data-running="true"] .reasoning__label{color:var(--fg-2);background:linear-gradient(90deg,var(--fg-2) 40%,var(--accent) 50%,var(--fg-2) 60%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:reasoning-shimmer 1.6s linear infinite}
 @keyframes reasoning-shimmer{to{background-position:-200% 0}}
 .reasoning__body{margin:2px 0 6px 8px;padding-left:12px;border-left:2px solid var(--border);color:var(--fg-2);font-size:13px;line-height:1.72;white-space:pre-wrap;word-break:break-word;opacity:.85}
+.reasoning__summary{margin:0 0 4px 8px;padding:1px 0 1px 12px;border:none;background:none;font:inherit;text-align:left;border-left:2px solid var(--border);color:var(--muted-2);font-size:13px;line-height:1.6;white-space:nowrap;overflow-x:auto;cursor:pointer;scrollbar-width:none;max-width:100%}
+.reasoning__summary::-webkit-scrollbar{display:none}
 .cursor{display:inline-block;width:2px;height:1.1em;background:var(--accent);vertical-align:text-bottom;margin-left:2px;animation:blink 1s steps(2,start) infinite}
 @keyframes blink{to{visibility:hidden}}
 /* ── markdown rendering ── */
@@ -1601,6 +1603,8 @@ let guidanceExpanded = false;
 let guidanceSendingId = null;
 const GUIDANCE_VISIBLE = 2;
 let turnStartAt = 0, turnTokens = 0, turnArgChars = 0, tickTimer = null, retryStatus = null;
+let turnOutputTokens = 0, modelActiveAt = 0, modelActiveMs = 0; // desktop parity: per-turn output total + model-active window for TPS
+let turnOutputChars = 0, turnOutputCharsAtUsage = 0; // desktop parity: live text+reasoning chars for the in-flight TPS estimate
 let waitingPrompt = null, pendingApprovalLabel = '';
 let waitAccumMs = 0, waitStartedAt = 0; // desktop parity: ticker counts NET work time, waits (approval/ask) are excluded
 function waitPause() { if (waitStartedAt === 0) waitStartedAt = Date.now(); }
@@ -1770,12 +1774,9 @@ function workspaceDisplayName(path){
 function currencySymbol(c){const v=String(c||'¥').trim();if(/^(cny|rmb|yuan)$/i.test(v))return '¥';if(/^(usd|dollar)$/i.test(v))return '$';return v||'¥';}
 function fmtMoney(n,c){if(typeof n!=='number'||!isFinite(n))return '—';const s=currencySymbol(c);return s+(n<1?n.toFixed(4):n.toFixed(2));}
 function fmtElapsed(ms) {
-  const total = Math.max(0, ms) / 1000;
-  // Seconds with up to 3 decimal places, trailing zeros trimmed by JS number
-  // stringification; ≥60s keeps the m/s structure (1m 23.456s).
-  if (total < 60) return String(Math.round(total * 1000) / 1000) + 's';
-  const m = Math.floor(total / 60);
-  return m + 'm ' + String(Math.round((total - m * 60) * 1000) / 1000) + 's';
+  const s = Math.floor(Math.max(0, ms) / 1000); // desktop parity: whole seconds (12s / 1m 23s)
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
 }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function escAttr(s) { return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -1866,15 +1867,26 @@ function updateActionAvailability() {
 // ── run strip (desktop composer-run-strip) ──
 const SPINNER_WORDS = {
   en: ['Frolicking','Pondering','Noodling','Brewing','Conjuring','Cogitating','Percolating','Ruminating','Simmering','Synthesizing','Tinkering','Marinating','Crunching','Hatching','Mulling','Whirring','Forging','Spelunking','Puttering','Vibing'],
-  zh: ['嬉游中','沉思中','鼓捣中','酝酿中','施法中','苦思中','渗滤中','反刍中','文火慢炖','合成中','修补中','腌制入味','嘎吱运算','孵化中','盘算中','嗡嗡运转','锻造中','探洞中','摆弄中','来感觉了'],
+  zh: ['梳理思路','聚焦问题','拆解任务','推演方案','权衡取舍','推敲细节','整合结论','评估进展','校验结果','检索资料','构建方案','验证逻辑','总结要点','打磨输出','迭代优化','排查障碍','规划步骤','分析上下文','整理成果','完善方案'],
 };
+function beginModelActivity() { if (!modelActiveAt) modelActiveAt = Date.now(); }
+function endModelActivity() { if (modelActiveAt) { modelActiveMs += Date.now() - modelActiveAt; modelActiveAt = 0; } }
 function tickerText() {
   const words = SPINNER_WORDS[__LANG] || SPINNER_WORDS.en;
   const ms = Math.max(0, Date.now() - turnStartAt - waitAccumMs - (waitStartedAt ? Date.now() - waitStartedAt : 0));
   const word = words[Math.floor(ms / 3000) % words.length];
-  const liveTokens = turnTokens + Math.round(turnArgChars / 4); // desktop parity: streaming tool args ÷ 4 ≈ tokens
+  // Desktop parity: live text+reasoning chars beyond the last usage snapshot,
+  // plus streaming tool args, ÷ 4 ≈ tokens — the estimate shows as soon as
+  // the first token streams instead of waiting for the first usage event.
+  const inFlightChars = Math.max(0, turnOutputChars - turnOutputCharsAtUsage) + turnArgChars;
+  const inFlightTokens = Math.round(inFlightChars / 4);
+  const liveTokens = turnTokens + inFlightTokens;
   const tok = liveTokens > 0 ? ' · ↓ ' + fmtTok(liveTokens) + ' tokens' : '';
-  return word + '… ' + fmtElapsed(ms) + tok;
+  const outTok = turnOutputTokens + inFlightTokens;
+  const modelElapsedMs = modelActiveMs + (modelActiveAt ? Date.now() - modelActiveAt : 0);
+  const tps = outTok > 0 && modelElapsedMs >= 500 ? Math.round(outTok / (modelElapsedMs / 1000)) : null;
+  const tpsStr = tps !== null ? ' · ' + tps + ' tokens/s' : '';
+  return word + '… ' + fmtElapsed(ms) + tpsStr + tok;
 }
 function updateRunStrip() {
   const on = running || waitingPrompt !== null || retryStatus !== null;
@@ -1919,7 +1931,7 @@ function setRunning(on) {
   statusDotSidebar.className=on?'status__dot status__dot--busy':'status__dot';
   setActionDisabled('btn-new', on, on?__('new_session_busy_title'):'');
   updateActionAvailability();
-  if(on){turnStartAt=Date.now();turnTokens=0;waitAccumMs=0;waitStartedAt=0;tickTimer=setInterval(updateRunStrip,1000);} else {clearInterval(tickTimer);}
+  if(on){turnStartAt=Date.now();turnTokens=0;turnOutputTokens=0;turnOutputChars=0;turnOutputCharsAtUsage=0;modelActiveAt=0;modelActiveMs=0;waitAccumMs=0;waitStartedAt=0;tickTimer=setInterval(updateRunStrip,1000);} else {clearInterval(tickTimer);}
   updateRunStrip();
 }
 
@@ -2455,13 +2467,49 @@ function ensureAssistant() {
 function setReasoningOpen(wrapper, open) {
   const body = wrapper.querySelector('.reasoning__body');
   const chevron = wrapper.querySelector('.reasoning__chevron');
+  const summary = wrapper.querySelector('.reasoning__summary');
   if (!body) return;
   body.style.display = open ? '' : 'none';
+  if (summary) summary.style.display = open ? 'none' : '';
   if (chevron) chevron.className = 'reasoning__chevron' + (open ? ' reasoning__chevron--open' : '');
 }
 // truncateReasoningText mirrors desktop's displayReasoningText streaming
 // truncation: keep the tail, cap at 12k chars / 240 lines. Only applied to
 // live appends; history rebuilds show the full reasoning.
+// reasoningSummaryText mirrors desktop's lib/reasoningSummary.ts: while
+// streaming the tail line is the live signal, once settled the head line
+// reads best. Single line, whitespace collapsed, code-point-safe, 180 chars.
+function reasoningSummaryText(text, streaming) {
+  const MAX_CHARS = 180;
+  const s = String(text);
+  if (!s) return '';
+  let line = '';
+  if (streaming) {
+    let end = s.length;
+    while (end > 0) {
+      while (end > 0 && (s[end-1]==='\n' || s[end-1]==='\r')) end--;
+      let start = end;
+      while (start > 0 && s[start-1]!=='\n' && s[start-1]!=='\r') start--;
+      const t = s.slice(start, end).trim();
+      if (t) { line = t; break; }
+      end = start;
+    }
+  } else {
+    let i = 0, n = s.length;
+    while (i < n) {
+      while (i < n && (s[i]==='\n' || s[i]==='\r')) i++;
+      const start = i;
+      while (i < n && s[i]!=='\n' && s[i]!=='\r') i++;
+      const t = s.slice(start, i).trim();
+      if (t) { line = t; break; }
+    }
+  }
+  if (!line) return '';
+  const normalized = line.replace(/\s+/g, ' ');
+  const chars = Array.from(normalized);
+  if (chars.length <= MAX_CHARS) return normalized;
+  return MAX_CHARS <= 1 ? '…' : chars.slice(0, MAX_CHARS - 1).join('') + '…';
+}
 function truncateReasoningText(text) {
   const MAX_CHARS = 12000, MAX_LINES = 240;
   const s = String(text);
@@ -2482,23 +2530,29 @@ function appendAssistantReasoning(it, container) {
   const b = el('button', 'reasoning__head');
   b.type = 'button';
   b.innerHTML = '<span class="reasoning__chevron">▶</span><span class="reasoning__label">' + __('thinking') + '</span>';
+  const summary = el('button', 'reasoning__summary');
+  summary.type = 'button';
   const body = el('div', 'reasoning__body');
   body.style.display = 'none';
-  b.onclick = () => {
+  const toggle = () => {
     it.reasoningUserOverride = true; // manual toggle wins over auto collapse/expand
     setReasoningOpen(w, body.style.display === 'none');
   };
-  w.appendChild(b); w.appendChild(body);
+  b.onclick = toggle; summary.onclick = toggle;
+  w.appendChild(b); w.appendChild(summary); w.appendChild(body);
   if (it.reasoning) body.textContent = it.done ? it.reasoning : truncateReasoningText(it.reasoning);
+  summary.textContent = reasoningSummaryText(it.reasoning, !it.done);
   if (!it.dom) it.dom = { root: null, textEl: null, reasoningEl: null, tools: new Map() };
   const textEl = it.dom.textEl && it.dom.textEl.parentNode;
   if (textEl) container.insertBefore(w, textEl); else container.appendChild(w);
   it.dom.reasoningEl = body;
   if (!it.done) it.reasoningStartedAt = Date.now();
+  else b.querySelector('.reasoning__label').textContent = __('thinking_done'); // history rebuild: settled label, no duration
   w.dataset.running = it.done ? 'false' : 'true';
-  // Live turns stream with the reasoning open; finalized messages (history
-  // rebuild) render collapsed.
-  setReasoningOpen(w, !it.done);
+  // Desktop parity: thinking renders collapsed with a horizontal summary by
+  // default (live turns included); clicking the head or summary expands the
+  // vertical trace.
+  setReasoningOpen(w, false);
   return w;
 }
 function appendReasoning(t) {
@@ -2506,6 +2560,12 @@ function appendReasoning(t) {
   it.reasoning += t;
   if (!it.dom.reasoningEl) appendAssistantReasoning(it, it.dom.root); // seeds existing content
   else it.dom.reasoningEl.textContent = truncateReasoningText(it.reasoning);
+  const w = it.dom.reasoningEl.parentNode;
+  const summary = w && w.querySelector('.reasoning__summary');
+  if (summary && summary.style.display !== 'none') {
+    summary.textContent = reasoningSummaryText(it.reasoning, true); // tail line while streaming
+    summary.scrollLeft = summary.scrollWidth; // follow the newest text
+  }
   scrollDown();
 }
 // ── streaming markdown rendering ──
@@ -2680,6 +2740,8 @@ function finalizeMsg() {
         }
         // Auto-collapse only when the user hasn't manually toggled the block.
         if (!it.reasoningUserOverride) setReasoningOpen(r, false);
+        const sm = r.querySelector('.reasoning__summary');
+        if (sm) sm.textContent = reasoningSummaryText(it.reasoning, false); // head line once settled
       }
       const c = it.dom.root.querySelector('.cursor');
       if (c) c.remove();
@@ -3608,17 +3670,25 @@ es.onmessage=ev=>{setConnState('connected');
   if(e.kind!=='retrying')clearRetrying();
   switch(e.kind){
     case 'turn_started': setRunning(true); clearPendingPrompts(); finalizeMsg(); currentTurn++; turnArgChars = 0; todosDismissed=false; break;
-    case 'reasoning': appendReasoning(e.reasoning||e.text||''); break;
-    case 'text': appendText(e.text||''); break;
+    case 'reasoning': if(e.reasoning||e.text){turnOutputChars+=(e.reasoning||e.text).length;beginModelActivity();} appendReasoning(e.reasoning||e.text||''); break;
+    case 'text': if(e.text){turnOutputChars+=e.text.length;beginModelActivity();} appendText(e.text||''); break;
     case 'message': finalizeMsg(); break;
-    case 'tool_dispatch': if(e.tool){renderToolDispatch(e.tool); if (e.tool.argChars && e.tool.argChars > 0) turnArgChars = e.tool.argChars;} break;
+    case 'tool_dispatch': if(e.tool){renderToolDispatch(e.tool); if(!e.tool.parentId){if(e.tool.partial){beginModelActivity();}else{endModelActivity();}} if (e.tool.argChars && e.tool.argChars > 0) turnArgChars = e.tool.argChars;} break;
     case 'tool_result': if(e.tool){renderToolResult(e.tool);if(e.tool.name==='todo_write'&&!e.tool.parentId&&!e.tool.err){try{const ts=parseTodos(e.tool.args);if(ts.length){todosState=ts;renderTodoPanel();}}catch{}}} break;
     case 'tool_progress': if(e.tool)renderToolProgress(e.tool); break;
     case 'usage':
       // Usage never enters the transcript (matches desktop): accumulate into
       // the session stats that drive the sidebar metrics and the stats modal.
-      if(e.usage){turnTokens=e.usage.completionTokens||0;
-        turnArgChars = 0; // desktop parity: usage closes the streaming-args estimate
+      if(e.usage){turnTokens+=e.usage.completionTokens||0;
+        // Desktop parity: only executor usage closes the model window and
+        // feeds the TPS output total; subagent/planner usage still counts
+        // toward the turn total (turnTokens accumulates unconditionally).
+        const execUsage=!e.usage.source||e.usage.source==='executor';
+        if(execUsage){turnOutputTokens+=e.usage.completionTokens||0;
+          turnOutputCharsAtUsage = turnOutputChars; // desktop parity: usage snapshot closes the char estimate
+          endModelActivity(); // usage closes the model-active window (desktop parity)
+          turnArgChars = 0; // desktop parity: usage closes the streaming-args estimate
+        }
         cumulativeTokens+=e.usage.totalTokens||0;
         const usageCost=e.usage.cost??e.usage.costUsd;
         if(typeof usageCost==='number')cumulativeCost+=usageCost;
@@ -3635,7 +3705,8 @@ es.onmessage=ev=>{setConnState('connected');
     case 'compaction_started': showCompaction({trigger:e.compaction?.trigger}); break;
     case 'compaction_done': showCompaction(e.compaction||{}); fetchStatus(); break;
     case 'retrying': setRetrying(e.retryAttempt,e.retryMax); break;
-    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); autoSendGuidance();
+    case 'stream_attempt': endModelActivity(); break; // desktop parity: a new attempt closes the previous window
+    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); endModelActivity(); autoSendGuidance();
       // Desktop behavior: a completed turn folds its tools+reasoning behind
       // the summary bar unless the user manually toggled it.
       { const tt = turnEls.get(currentTurn);
@@ -3797,7 +3868,7 @@ function renderSessions(){
     const title=sessionTitle(s);
     const meta=s.turns?s.turns+' turns':'';
     item.innerHTML='<svg class="session-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="session-item__body"><div class="session-item__title">'+escHtml(title)+'</div><div class="session-item__meta">'+escHtml(meta)+'</div></div><button type="button" class="session-del" data-name="'+escAttr(s.name)+'" title="'+escAttr(__('delete_session'))+'">&times;</button>';
-    item.onclick=ev=>{if(ev.target.closest('.session-del')||running||s.current)return;post('/resume',{path:s.path}).then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosDismissed=false;resetCumulativeStats();loadSessions();updateActionAvailability();reloadHistory();});};
+    item.onclick=ev=>{if(ev.target.closest('.session-del')||running||s.current)return;post('/resume',{path:s.path}).then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosDismissed=false;resetCumulativeStats();loadSessions();updateActionAvailability();reloadHistory();fetchStatus();});};
     list.appendChild(item);
   });
 }
@@ -4328,7 +4399,7 @@ $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
   b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
 $('#goal-chip').onclick=()=>toggleGoalMode();
-$('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();});};
+$('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();fetchStatus();});};
 // model switcher popover (desktop ModelSwitcher)
 function providerLabel(p){
   switch(p){
@@ -4439,7 +4510,7 @@ $('#branches-list').onclick=e=>{
   const id=btn.dataset.branchId;
   if(!id)return;
   closeBranches();
-  post('/submit',{input:'/switch '+id}).then(()=>{setTimeout(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();loadSessions();reloadHistory();},300);});
+  post('/submit',{input:'/switch '+id}).then(()=>{setTimeout(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();loadSessions();reloadHistory();fetchStatus();},300);});
 };
 $('#models-modal-close').onclick=()=>closeModels();
 $('#models-modal').onclick=e=>{if(e.target===e.currentTarget)closeModels();};
