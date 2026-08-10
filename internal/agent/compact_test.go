@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"reasonix/internal/event"
 	"strings"
 	"testing"
@@ -258,6 +259,127 @@ func TestCompactEmitsEvents(t *testing.T) {
 	}
 	if startedAt > doneAt {
 		t.Errorf("CompactionStarted (%d) must precede CompactionDone (%d)", startedAt, doneAt)
+	}
+}
+
+// TestCompactUpdatesContextGauge: a successful compaction must move the
+// context gauge to the projection size immediately, without overwriting
+// lastUsage (tokPerChar depends on the real usage ratio).
+func TestCompactUpdatesContextGauge(t *testing.T) {
+	prov := &fakeProvider{reply: "- goal: do X"}
+	sess := &Session{Messages: []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys"},
+		{Role: provider.RoleUser, Content: "task"},
+		{Role: provider.RoleAssistant, Content: "step one"},
+		{Role: provider.RoleUser, Content: "more"},
+		{Role: provider.RoleAssistant, Content: "step two"},
+		{Role: provider.RoleUser, Content: "next"},
+		{Role: provider.RoleAssistant, Content: "ok"},
+	}}
+	a := New(prov, tool.NewRegistry(), sess, Options{RecentKeep: 2}, event.Discard)
+
+	if err := a.compact(context.Background(), "auto", "", true); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	got, ok := a.ContextGaugeTokens()
+	if !ok || got == 0 {
+		t.Fatalf("ContextGaugeTokens = (%d, %v), want non-zero", got, ok)
+	}
+	if want := a.compactionState.Projection.ProjectionTokens; got != want {
+		t.Errorf("ContextGaugeTokens = %d, want projection tokens %d", got, want)
+	}
+	if u := a.LastUsage(); u != nil {
+		t.Errorf("lastUsage was overwritten by compaction: %+v", u)
+	}
+}
+
+// TestSetSessionSyncsContextGauge: switching sessions must point the gauge at
+// the new session's size, never the previous session's usage.
+func TestSetSessionSyncsContextGauge(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Add(fakeTool{name: "read", readOnly: true})
+	a := New(&fakeProvider{}, reg, &Session{}, Options{}, event.Discard)
+	a.lastUsage.Store(&provider.Usage{PromptTokens: 999999})
+	sess := &Session{Messages: []provider.Message{
+		{Role: provider.RoleUser, Content: "hello world"},
+		{Role: provider.RoleAssistant, Content: "hi there"},
+	}}
+	want := estimateRequestTokens("", reg.Schemas(), sess.Messages)
+	a.SetSession(sess)
+	if got, ok := a.ContextGaugeTokens(); !ok || got != want {
+		t.Errorf("ContextGaugeTokens = (%d, %v), want %d", got, ok, want)
+	}
+	if u := a.LastUsage(); u == nil || u.PromptTokens != 999999 {
+		t.Errorf("lastUsage was overwritten: %+v, want untouched 999999", u)
+	}
+}
+
+// TestSyncContextUsageUsesVisibleProjection: SyncContextUsage must gauge the
+// visible (projected) messages after a compaction, not the full canonical
+// transcript — a resumed session with a sidecar would otherwise over-report.
+func TestSyncContextUsageUsesVisibleProjection(t *testing.T) {
+	prov := &fakeProvider{reply: "- goal: do X"}
+	big := strings.Repeat("work line for the fold\n", 60) // large enough that the folded projection is genuinely smaller
+	sess := &Session{Messages: []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys"},
+		{Role: provider.RoleUser, Content: big},
+		{Role: provider.RoleAssistant, Content: big},
+		{Role: provider.RoleUser, Content: big},
+		{Role: provider.RoleAssistant, Content: big},
+		{Role: provider.RoleUser, Content: big},
+		{Role: provider.RoleAssistant, Content: "ok"},
+	}}
+	a := New(prov, tool.NewRegistry(), sess, Options{RecentKeep: 2}, event.Discard)
+	if err := a.compact(context.Background(), "auto", "", true); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	if len(a.compactionState.Projection.Messages) == 0 {
+		t.Fatal("compaction did not install a projection")
+	}
+	full := a.estimateRequest(sess.Messages)
+	a.SyncContextUsage()
+	got, ok := a.ContextGaugeTokens()
+	if !ok || got == 0 {
+		t.Fatalf("ContextGaugeTokens = (%d, %v), want non-zero", got, ok)
+	}
+	if want := a.estimateRequest(a.modelVisibleMessages()); got != want {
+		t.Errorf("ContextGaugeTokens = %d, want visible estimate %d", got, want)
+	}
+	if got >= full {
+		t.Errorf("ContextGaugeTokens = %d, want < full canonical estimate %d", got, full)
+	}
+}
+
+// TestEstimateRequestTokens pins the request-scope accounting: the system
+// prompt is counted once (in msgs or via the argument), and tool schemas that
+// ride every request are always included.
+func TestEstimateRequestTokens(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys prompt"},
+		{Role: provider.RoleUser, Content: "hello"},
+	}
+	base := estimateMessagesTokens(msgs)
+	// System message absent from msgs: added from the argument.
+	ext := estimateMessagesTokens(msgs[1:]) + estimateTextTokens("sys prompt")
+	if got := estimateRequestTokens("sys prompt", nil, msgs[1:]); got != ext {
+		t.Errorf("external system: got %d, want %d", got, ext)
+	}
+	// System message already embedded: no double count — only the extra
+	// message framing separates the two forms.
+	if got := estimateRequestTokens("sys prompt", nil, msgs); got != ext+4 {
+		t.Errorf("embedded system: got %d, want %d", got, ext+4)
+	}
+	if got := estimateRequestTokens("sys prompt", nil, msgs); got != base {
+		t.Errorf("embedded system: got %d, want %d", got, base)
+	}
+	// Tool schemas always ride the request.
+	schemas := []provider.ToolSchema{{Name: "read", Description: "read a file"}}
+	if b, err := json.Marshal(schemas); err != nil {
+		t.Fatalf("marshal schemas: %v", err)
+	} else {
+		if got, want := estimateRequestTokens("", schemas, msgs[1:]), estimateMessagesTokens(msgs[1:])+estimateTextTokens(string(b)); got != want {
+			t.Errorf("with schemas: got %d, want %d", got, want)
+		}
 	}
 }
 

@@ -306,6 +306,9 @@ type Agent struct {
 	// the CLI can expose a context gauge without re-scraping the usage line. The
 	// run loop writes it while a frontend's status line reads it, so it is atomic.
 	lastUsage atomic.Pointer[provider.Usage]
+	// gaugeTokens overrides the context gauge (compaction projection size or
+	// loaded-session estimate) until the next real usage chunk replaces it.
+	gaugeTokens atomic.Int64
 
 	// sessCacheHit/sessCacheMiss accumulate cache tokens across every API call
 	// this session, so frontends can show the aggregate hit-rate (Σhit/Σ(hit+miss))
@@ -834,6 +837,37 @@ func (a *Agent) SetSession(s *Session) {
 	if s != nil {
 		a.rebuildTodoState(s.Snapshot())
 	}
+	a.SyncContextUsage()
+}
+
+// SyncContextUsage points the context gauge at the current session's
+// estimated size after a session switch; lastUsage is left untouched so
+// tokPerChar keeps the provider's real token ratio. The visible (projected)
+// message view is used so a session with a compaction sidecar is not gauged
+// at its full canonical size.
+func (a *Agent) SyncContextUsage() {
+	a.sessMu.Lock()
+	s := a.session
+	a.sessMu.Unlock()
+	if s == nil {
+		a.gaugeTokens.Store(0)
+		return
+	}
+	a.gaugeTokens.Store(int64(a.estimateRequest(a.modelVisibleMessages())))
+}
+
+// ContextGaugeTokens returns the size the context gauge should show: the
+// explicit gauge (compaction projection, loaded session) when set, else the
+// last turn's usage.
+func (a *Agent) ContextGaugeTokens() (int, bool) {
+	if g := a.gaugeTokens.Load(); g > 0 {
+		return int(g), true
+	}
+	u := a.lastUsage.Load()
+	if u == nil {
+		return 0, false
+	}
+	return u.PromptTokens + u.CompletionTokens, true
 }
 
 // LastUsage returns the most recent per-turn token telemetry the provider
@@ -2509,6 +2543,7 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		case provider.ChunkUsage:
 			usage, a.lastReasoning = chunk.Usage, chunk.Usage.ReasoningTokens
 			a.lastUsage.Store(chunk.Usage)
+			a.gaugeTokens.Store(0) // real usage takes over from the explicit gauge
 			a.sessCacheHit.Add(int64(chunk.Usage.CacheHitTokens))
 			a.sessCacheMiss.Add(int64(chunk.Usage.CacheMissTokens))
 		case provider.ChunkError:

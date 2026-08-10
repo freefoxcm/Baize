@@ -225,6 +225,34 @@ func estimateTextTokens(s string) int {
 	return byBytes
 }
 
+// estimateRequestTokens estimates a provider request's token cost: the message
+// body plus the tool schemas that ride every request. systemPrompt is added
+// only when msgs don't already carry it (projections start at the first user
+// turn; full sessions embed their system message). Gauge estimates use this so
+// they share the same accounting basis as real usage.
+func estimateRequestTokens(systemPrompt string, schemas []provider.ToolSchema, msgs []provider.Message) int {
+	total := estimateMessagesTokens(msgs)
+	if len(msgs) == 0 || msgs[0].Role != provider.RoleSystem {
+		total += estimateTextTokens(systemPrompt)
+	}
+	if len(schemas) > 0 {
+		if b, err := json.Marshal(schemas); err == nil {
+			total += estimateTextTokens(string(b))
+		}
+	}
+	return total
+}
+
+// estimateRequest estimates what the next provider request built from msgs
+// would cost (messages + system prompt when absent + tool schemas).
+func (a *Agent) estimateRequest(msgs []provider.Message) int {
+	var schemas []provider.ToolSchema
+	if a.tools != nil {
+		schemas = a.tools.Schemas()
+	}
+	return estimateRequestTokens(a.systemPrompt(), schemas, msgs)
+}
+
 // SummarizeFrom keeps the compatibility index contract while installing a
 // projection that compresses from that user-turn boundary onward.
 func (a *Agent) SummarizeFrom(ctx context.Context, fromIdx int) error {

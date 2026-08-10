@@ -8,6 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>
+// Theme persistence: set data-theme before first paint to avoid a flash; dark is the default.
+(function(){try{if(localStorage.getItem('baize-theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();
+</script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -23,6 +27,8 @@
   --warning:oklch(78% .14 85);--warning-soft:oklch(78% .14 85/.16);
   --danger:oklch(66% .18 25);--danger-soft:oklch(66% .18 25/.16);
   --violet:oklch(72% .14 295);--violet-soft:oklch(72% .14 295/.16);
+  --hl-keyword:oklch(74% .13 285);--hl-string:oklch(78% .12 130);--hl-number:oklch(80% .12 55);
+  --hl-func:oklch(76% .11 210);--hl-var:oklch(80% .1 90);--hl-deletion:oklch(72% .14 25);
   --shadow-sm:0 1px 0 oklch(0% 0 0/.35);
   --shadow-md:0 8px 24px -8px oklch(0% 0 0/.5);
   --shadow-lg:0 24px 60px -16px oklch(0% 0 0/.65);
@@ -34,6 +40,44 @@
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color-scheme:dark;
 }
+/* Graphite light palette, mapped from desktop styles.css data-theme="light" data-theme-style="graphite". */
+:root[data-theme="light"]{
+  --bg:#f4f3ef;--bg-2:#ffffff;
+  --panel:#ffffff;--panel-2:#f6f5f1;
+  --card:#ffffff;--card-hover:#f0efe9;
+  --border:rgba(20,22,28,.12);--border-strong:rgba(20,22,28,.24);
+  --fg:#16181d;--fg-2:#4a4d56;
+  --muted:#85888f;--muted-2:#a3a6ad;
+  --accent:#ff5a2c;--accent-soft:rgba(255,90,44,.12);--accent-strong:#df471f;
+  --success:#1f9d57;--success-soft:rgba(31,157,87,.12);
+  --ok:#15803d; /* matches desktop light --ok */
+  --warning:#d98a1f;--warning-soft:rgba(217,138,31,.16);
+  --danger:#d83a2a;--danger-soft:rgba(216,58,42,.1);
+  --violet:#7a5bd6;--violet-soft:rgba(122,91,214,.14);
+  /* syntax highlighting, matches desktop light --hl-* */
+  --hl-keyword:#cf222e;--hl-string:#0a3069;--hl-number:#0550ae;
+  --hl-func:#8250df;--hl-var:#0550ae;--hl-deletion:#d83a2a;
+  --shadow-sm:0 1px 0 rgba(20,22,28,.08);
+  --shadow-md:0 8px 24px -8px rgba(20,22,28,.18);
+  --shadow-lg:0 24px 60px -16px rgba(20,22,28,.22);
+  color-scheme:light;
+}
+/* Light-mode overrides for colors hardcoded outside the palette. */
+:root[data-theme="light"] .msg-edit__btn--save,
+:root[data-theme="light"] .delivery-card__button,
+:root[data-theme="light"] .approval__confirm-btn,
+:root[data-theme="light"] .sidebar__item--accent,
+:root[data-theme="light"] .sidebar__item--accent:hover,
+:root[data-theme="light"] .composer__btn--send,
+:root[data-theme="light"] .ask__confirm,
+:root[data-theme="light"] .ask__opt--selected .ask__num{color:#fff}
+:root[data-theme="light"] .diff-line--add{background:var(--success-soft);color:var(--success)}
+:root[data-theme="light"] .diff-line--del{background:var(--danger-soft);color:var(--danger)}
+:root[data-theme="light"] .goal-chip:hover{background:rgba(255,90,44,.25)}
+/* Light mode: the sidebar wordmark stays dark and flat; only the welcome
+   logo keeps the accent glow it has on the dark theme. */
+:root[data-theme="light"] .brand-wordmark{filter:drop-shadow(0 0 12px color-mix(in srgb,var(--accent) 32%,transparent))}
+:root[data-theme="light"] .brand-wordmark--sidebar{filter:none}
 html,body{height:100%;overflow:hidden}
 body{font:14px/1.6 var(--sans);color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -183,13 +227,13 @@ input,textarea{font:inherit;color:inherit}
 /* highlight.js dark theme (subset matching the UI palette) */
 .hljs{color:var(--fg);background:transparent}
 .hljs-comment,.hljs-quote{color:var(--muted-2);font-style:italic}
-.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-type,.hljs-doctag{color:oklch(74% .13 285)}
-.hljs-string,.hljs-regexp,.hljs-addition,.hljs-attribute,.hljs-meta .hljs-string{color:oklch(78% .12 130)}
-.hljs-number,.hljs-symbol,.hljs-bullet,.hljs-link{color:oklch(80% .12 55)}
-.hljs-title,.hljs-title.class_,.hljs-title.function_,.hljs-section,.hljs-name{color:oklch(76% .11 210)}
-.hljs-variable,.hljs-template-variable,.hljs-selector-id,.hljs-selector-class,.hljs-attr{color:oklch(80% .1 90)}
+.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-type,.hljs-doctag{color:var(--hl-keyword)}
+.hljs-string,.hljs-regexp,.hljs-addition,.hljs-attribute,.hljs-meta .hljs-string{color:var(--hl-string)}
+.hljs-number,.hljs-symbol,.hljs-bullet,.hljs-link{color:var(--hl-number)}
+.hljs-title,.hljs-title.class_,.hljs-title.function_,.hljs-section,.hljs-name{color:var(--hl-func)}
+.hljs-variable,.hljs-template-variable,.hljs-selector-id,.hljs-selector-class,.hljs-attr{color:var(--hl-var)}
 .hljs-built_in,.hljs-builtin-name,.hljs-params{color:var(--fg-2)}
-.hljs-deletion{color:oklch(72% .14 25)}
+.hljs-deletion{color:var(--hl-deletion)}
 .hljs-emphasis{font-style:italic}
 .hljs-strong{font-weight:600}
 .hljs-meta{color:var(--muted-2)}
@@ -506,6 +550,12 @@ input,textarea{font:inherit;color:inherit}
 .sidebar__stats-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:auto;padding:0;border:none;border-radius:5px;background:none;color:var(--muted);cursor:pointer;transition:background .15s ease,color .15s ease}
 .sidebar__stats-btn:hover{background:var(--panel);color:var(--fg)}
 .sidebar__stats-btn svg{width:14px;height:14px}
+.sidebar__theme-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:auto;padding:0;border:none;border-radius:5px;background:none;color:var(--muted);cursor:pointer;transition:background .15s ease,color .15s ease}
+.sidebar__theme-btn:hover{background:var(--panel);color:var(--fg)}
+.sidebar__theme-btn svg{width:14px;height:14px}
+#theme-icon-sun{display:none}
+:root[data-theme="light"] #theme-icon-sun{display:inline}
+:root[data-theme="light"] #theme-icon-moon{display:none}
 @keyframes pulse{50%{opacity:.35}}
 
 /* welcome */
@@ -553,7 +603,8 @@ input,textarea{font:inherit;color:inherit}
 .welcome__hints{display:flex;gap:18px;margin-top:20px;font-size:12px;color:var(--muted);position:relative}
 .welcome__hints span{display:inline-flex;align-items:center;gap:5px}
 .welcome__hints kbd{font-family:var(--mono);font-size:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--fg-2)}
-.welcome__examples{display:flex;flex-direction:column;gap:7px;margin-top:24px;width:100%;max-width:400px;position:relative}
+/* Temporarily hidden: drop display:none to restore the example buttons. */
+.welcome__examples{display:none;flex-direction:column;gap:7px;margin-top:24px;width:100%;max-width:400px;position:relative}
 .welcome__ex{text-align:left;background:var(--bg-2);border:1px solid var(--border);border-left:3px solid var(--accent);padding:9px 12px;border-radius:6px;color:var(--fg-2);font-size:12.5px;cursor:pointer;transition:all .18s ease}
 .welcome__ex:hover{color:var(--fg);border-color:var(--accent);background:var(--panel);transform:translateY(-1px)}
 
@@ -652,8 +703,12 @@ input,textarea{font:inherit;color:inherit}
   <aside class="sidebar">
     <div class="sidebar__brand">
       <img src="/assets/logo-wordmark.svg" alt="Baize" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
+      <button type="button" class="sidebar__theme-btn" id="btn-theme" title="__('theme_switch_light')" aria-label="__('theme_switch_light')">
+        <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg>
+        <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
     </div>
-<nav class="sidebar__nav" style="border-top:none;padding-top:0">
+<nav class="sidebar__nav" style="border-top:none;padding-top:6px">
       <div class="sidebar__item sidebar__item--accent" id="btn-new">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span>__('new_session')</span>
@@ -1192,6 +1247,10 @@ const __T = {
     'example_explain': 'Explain the project structure',
     'example_fix': 'Find and fix any bugs',
     'example_test': 'Write tests for the main module',
+    'theme_switch_light': 'Switch to light theme',
+    'theme_switch_dark': 'Switch to dark theme',
+    'new_session_busy': 'A task is running; start a new session after it finishes',
+    'new_session_busy_title': 'Task in progress',
     'total': 'Total',
     'in': 'In',
     'out': 'Out',
@@ -1437,6 +1496,10 @@ const __T = {
     'example_explain': '解释项目结构',
     'example_fix': '查找并修复错误',
     'example_test': '为主模块编写测试',
+    'theme_switch_light': '切换到浅色',
+    'theme_switch_dark': '切换到深色',
+    'new_session_busy': '任务进行中，无法新建会话',
+    'new_session_busy_title': '任务进行中',
     'total': '总计',
     'in': '输入',
     'out': '输出',
@@ -1834,6 +1897,7 @@ function setRunning(on) {
   btnStop.style.display=on?'':'none';
   input.placeholder = on ? __('placeholder_running') : (goalMode ? __('goal_placeholder') : __('placeholder'));
   statusDotSidebar.className=on?'status__dot status__dot--busy':'status__dot';
+  setActionDisabled('btn-new', on, on?__('new_session_busy_title'):'');
   updateActionAvailability();
   if(on){turnStartAt=Date.now();turnTokens=0;waitAccumMs=0;waitStartedAt=0;tickTimer=setInterval(updateRunStrip,1000);} else {clearInterval(tickTimer);}
   updateRunStrip();
@@ -3547,7 +3611,7 @@ es.onmessage=ev=>{setConnState('connected');
     case 'extension_surface': if(e.extension)renderExtensionSurface(e.extension); break;
     case 'extension_status': if(e.extension)renderExtensionSurface(e.extension); break;
     case 'compaction_started': showCompaction({trigger:e.compaction?.trigger}); break;
-    case 'compaction_done': showCompaction(e.compaction||{}); break;
+    case 'compaction_done': showCompaction(e.compaction||{}); fetchStatus(); break;
     case 'retrying': setRetrying(e.retryAttempt,e.retryMax); break;
     case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); autoSendGuidance();
       // Desktop behavior: a completed turn folds its tools+reasoning behind
@@ -4240,7 +4304,7 @@ $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
   b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
 $('#goal-chip').onclick=()=>toggleGoalMode();
-$('#btn-new').onclick=()=>{if(running)return;post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();});};
+$('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();});};
 // model switcher popover (desktop ModelSwitcher)
 function providerLabel(p){
   switch(p){
@@ -4428,6 +4492,16 @@ $('#delete-confirm').onclick=()=>{
 
 // welcome examples
 $$('.welcome__ex').forEach(btn=>{btn.onclick=()=>{input.value=btn.dataset.prompt;send();};});
+
+// ── theme toggle (light/dark; persisted per-browser, dark default) ──
+const themeBtn=$('#btn-theme');
+function applyTheme(mode){
+  if(mode==='light'){document.documentElement.setAttribute('data-theme','light');localStorage.setItem('baize-theme','light');themeBtn.title=__('theme_switch_dark');}
+  else{document.documentElement.removeAttribute('data-theme');localStorage.setItem('baize-theme','dark');themeBtn.title=__('theme_switch_light');}
+  themeBtn.setAttribute('aria-label',themeBtn.title);
+}
+applyTheme(document.documentElement.getAttribute('data-theme')==='light'?'light':'dark');
+themeBtn.onclick=()=>applyTheme(document.documentElement.getAttribute('data-theme')==='light'?'dark':'light');
 
 // initial fetch
 fetchStatus();

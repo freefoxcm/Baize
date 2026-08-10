@@ -3361,6 +3361,9 @@ func (c *Controller) SwitchBranch(ref string) (agent.BranchInfo, error) {
 	c.loadRecoveryState(match.Path)
 	c.rotateSessionTemp()
 	c.snapshotMu.Unlock()
+	if c.executor != nil {
+		c.executor.SyncContextUsage() // projection restored by bindExecutorProjection above
+	}
 	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
 		Text: fmt.Sprintf("switched to branch %s", branchDisplayName(match))})
 	return match, nil
@@ -3496,6 +3499,9 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	// (possibly owner-adjusted) phase payload.
 	if err := c.extensionSessionPhase(context.Background(), extension.PointSessionLoad, dispatch.PhaseLoad, path); err != nil {
 		c.extensionWarn("session policy failed at session.load", err)
+	}
+	if c.executor != nil {
+		c.executor.SyncContextUsage() // post-recovery size; SetSession ran before pruning
 	}
 }
 
@@ -4774,18 +4780,19 @@ func (c *Controller) SessionPersistedState() (agent.PersistedState, bool) {
 }
 
 // ContextSnapshot returns (usedTokens, contextWindow) from the most recent
-// turn. Both zero means no data yet — a gauge hides itself.
-// usedTokens is promptTokens + completionTokens so the GUI breakdown and
-// gauge reflect the full token usage, not just the prompt fill.
+// turn. Both zero means no data yet — a gauge hides itself. usedTokens is
+// promptTokens + completionTokens so the GUI breakdown and gauge reflect the
+// full token usage. After a compaction or a session switch the explicit gauge
+// (agent.ContextGaugeTokens) wins until the next real usage chunk arrives.
 func (c *Controller) ContextSnapshot() (int, int) {
 	if c.executor == nil {
 		return 0, 0
 	}
-	u := c.executor.LastUsage()
-	if u == nil {
-		return 0, c.executor.ContextWindow()
+	window := c.executor.ContextWindow()
+	if used, ok := c.executor.ContextGaugeTokens(); ok {
+		return used, window
 	}
-	return u.PromptTokens + u.CompletionTokens, c.executor.ContextWindow()
+	return 0, window
 }
 
 // CompactRatio returns the auto-compaction threshold as a fraction of the window
