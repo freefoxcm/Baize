@@ -309,8 +309,11 @@ func TestSetSessionSyncsContextGauge(t *testing.T) {
 	if got, ok := a.ContextGaugeTokens(); !ok || got != want {
 		t.Errorf("ContextGaugeTokens = (%d, %v), want %d", got, ok, want)
 	}
-	if u := a.LastUsage(); u == nil || u.PromptTokens != 999999 {
-		t.Errorf("lastUsage was overwritten: %+v, want untouched 999999", u)
+	// Upstream SetSession resets per-session calibration: lastUsage is cleared
+	// so the previous session's tokPerChar cannot leak into budget math. The
+	// gauge still shows the fresh estimate via gaugeTokens.
+	if u := a.LastUsage(); u != nil {
+		t.Errorf("lastUsage = %+v, want nil after session switch (calibration reset)", u)
 	}
 }
 

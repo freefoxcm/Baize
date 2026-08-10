@@ -321,7 +321,7 @@ jobs:
       - name: Install Wails CLI
         run: |
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(cat "$GITHUB_WORKSPACE/.wails-version")"
 
       - name: gofmt
         run: |
@@ -449,7 +449,7 @@ jobs:
       - name: Install Wails CLI
         run: |
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(cat "$GITHUB_WORKSPACE/.wails-version")"
 
       # go:embed of frontend/dist needs a built frontend before the package
       # compiles, same as the ubuntu desktop leg.
@@ -494,6 +494,11 @@ jobs:
 
       - name: repo standards
         run: go run ./tools/repolint
+
+      - name: wails version pin
+        run: |
+          bash scripts/check-wails-pin.sh
+          bash scripts/check-wails-pin.test.sh
 
       # `make lint-install` reads the same file, so a local run and this job
       # cannot drift onto different linter versions.

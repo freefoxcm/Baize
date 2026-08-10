@@ -4503,7 +4503,7 @@ export function Composer({
                   id="composer-input"
                   ref={taRef}
                   className="composer__input"
-                  aria-label={t("composer.placeholder")}
+                  aria-label={t("composer.placeholder")} spellCheck={false} autoCorrect="off" autoCapitalize="off"
                   value={text}
                   onInputCapture={(e) => {
                     pendingNativeInputTypeRef.current = (e.nativeEvent as InputEvent).inputType;

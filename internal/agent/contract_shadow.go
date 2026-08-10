@@ -93,5 +93,17 @@ func (a *Agent) emitTurnShadows(input string) {
 	}
 	c := buildShadowContract(input, a.evidence.Receipts())
 	event.RecordContractShadow(a.sink, contractShadowAudit(c))
-	event.RecordCompletionReport(a.sink, completionReportAudit(completion.Build(c, a.evidence)))
+	rep := completion.Build(c, a.evidence)
+	a.completion = &rep
+	event.RecordCompletionReport(a.sink, completionReportAudit(rep))
+}
+
+// CompletionReceipt returns the turn's completion record for the host to
+// deliver, or nil when the turn had nothing to judge. The host renders it; the
+// agent never writes the user-facing text, which is the whole point.
+func (a *Agent) CompletionReceipt() *event.CompletionReceipt {
+	if a == nil || a.completion == nil {
+		return nil
+	}
+	return completionReceipt(*a.completion)
 }

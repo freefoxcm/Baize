@@ -256,6 +256,8 @@ export const zh: Record<DictKey, string> = {
   "workspace.addFileReferenceToChat": "添加文件引用",
   "workspace.addFolderReferenceToChat": "添加文件夹引用",
   "workspace.addFileContentToChat": "添加文件内容",
+  "workspace.copyRelativePath": "复制相对路径",
+  "workspace.copyAbsolutePath": "复制绝对路径",
   "workspace.viewMode": "工作区视图",
   "workspace.filesTab": "文件",
   "workspace.changedTab": "改动",

@@ -175,6 +175,8 @@ export const zhTW: Record<DictKey, string> = {
   "workspace.addFileReferenceToChat": "新增檔案引用",
   "workspace.addFolderReferenceToChat": "新增資料夾引用",
   "workspace.addFileContentToChat": "新增檔案內容",
+  "workspace.copyRelativePath": "複製相對路徑",
+  "workspace.copyAbsolutePath": "複製絕對路徑",
   "workspace.viewMode": "工作區視圖",
   "workspace.filesTab": "檔案",
   "workspace.changedTab": "變更",

@@ -709,10 +709,10 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) HandlerWithCORS(origin string) http.Handler {
 	return corsMiddleware(s.handler(), origin)
 }
-
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
+	mux.HandleFunc("GET /sessions/{id}", s.index)
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
 	mux.HandleFunc("GET /assets/logo-symbol.svg", s.logoSymbol)
 	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)

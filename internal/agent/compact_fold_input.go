@@ -46,6 +46,19 @@ func summaryInputTokens(msgs []provider.Message) int {
 	return estimateTextTokens(renderTranscript(msgs))
 }
 
+// guardedSummaryInputTokens uses the same calibrated/conservative estimator as
+// shared-window output clipping. Other providers retain the existing rendered-
+// transcript estimate and byte-identical single-call behavior.
+func (a *Agent) guardedSummaryInputTokens(msgs []provider.Message) int {
+	raw := summaryInputTokens(msgs)
+	if !sharesContextWindow(a.prov) || a.configuredOutputBudget(a.maxOutputTokens) <= 0 || len(msgs) == 0 {
+		return raw
+	}
+	return a.estimatedPromptTokens([]provider.Message{{
+		Role: provider.RoleUser, Content: renderTranscript(msgs),
+	}})
+}
+
 // summaryInputBudget is the transcript ceiling for one summarizer call: what
 // the window has left once the digest, the summary prompt and the caller's
 // instructions are reserved, since the provider counts all of them. Zero means
@@ -55,8 +68,14 @@ func (a *Agent) summaryInputBudget(instructions string) int {
 	if a.contextWindow <= 0 {
 		return 0
 	}
+	reserve := summaryOutputReserve
+	if sharesContextWindow(a.prov) && a.configuredOutputBudget(a.maxOutputTokens) > 0 {
+		reserve += outputBudgetReserve
+	}
+	// Shared-window calls keep the digest allowance separate from the estimator
+	// safety reserve. Independent-ceiling providers retain their existing budget.
 	// Span passes add a per-part line to the instructions; 256 covers it.
-	budget := a.contextWindow - summaryOutputReserve - estimateTextTokens(summarySystemPrompt) - estimateTextTokens(instructions) - 256
+	budget := a.contextWindow - reserve - estimateTextTokens(summarySystemPrompt) - estimateTextTokens(instructions) - 256
 	if budget < minSummarySpanTokens {
 		return 0
 	}
@@ -70,17 +89,23 @@ func (a *Agent) summaryInputBudget(instructions string) int {
 func (a *Agent) foldToSummary(ctx context.Context, fold []provider.Message, instructions string) (foldSummary, error) {
 	res := foldSummary{Mode: CompactionModeSummarized, Spans: 1, FoldTokens: summaryInputTokens(fold)}
 	budget := a.summaryInputBudget(instructions)
-	if budget <= 0 || res.FoldTokens <= budget {
+	guardedTokens := a.guardedSummaryInputTokens(fold)
+	if budget <= 0 || guardedTokens <= budget {
 		return a.singleCallSummary(ctx, res, fold, instructions)
 	}
 
 	input := a.shortenFoldForSummary(fold)
 	res.FoldTokens = summaryInputTokens(input)
-	if res.FoldTokens <= budget {
+	guardedTokens = a.guardedSummaryInputTokens(input)
+	if guardedTokens <= budget {
 		return a.singleCallSummary(ctx, res, input, instructions)
 	}
 
-	spans := splitIntoSummarySpans(input, budget)
+	splitBudget := budget
+	if guardedTokens > res.FoldTokens && guardedTokens > 0 {
+		splitBudget = max(minSummarySpanTokens, budget*res.FoldTokens/guardedTokens)
+	}
+	spans := splitIntoSummarySpans(input, splitBudget)
 	res.Spans = len(spans)
 	if len(spans) == 1 {
 		return a.singleCallSummary(ctx, res, spans[0], instructions)

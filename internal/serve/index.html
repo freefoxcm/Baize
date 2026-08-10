@@ -1205,6 +1205,7 @@ const __T = {
     'delete_session': 'Delete Session',
     'cannot_delete_active': 'Cannot delete the active session',
     'delete_failed': 'Could not delete the session. Check your connection and try again.',
+    'auth_failed': 'Web authentication failed',
     'search_sessions': 'Search sessions',
     'active': 'Active',
     'use_model': 'Use',
@@ -1454,6 +1455,7 @@ const __T = {
     'delete_session': '删除会话',
     'cannot_delete_active': '无法删除当前会话',
     'delete_failed': '无法删除会话，请检查连接后重试',
+    'auth_failed': 'Web 认证失败',
     'search_sessions': '搜索会话',
     'active': '当前',
     'use_model': '使用',
@@ -1569,6 +1571,24 @@ const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-wi
 const welcome = $('#welcome');
 const welcomeModel = $('#welcome-model'), welcomeCwd = $('#welcome-cwd');
 const slashAnchor = $('#slash-menu-anchor');
+
+// Token links use a URL fragment so the secret never appears in the initial
+// HTTP request, browser history, referrers, or access logs. Exchange it for an
+// HttpOnly cookie before any API fetch or SSE connection starts.
+const __nativeFetch = window.fetch.bind(window);
+function bootstrapFragmentToken() {
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const token = fragment.get('token');
+  if(!token)return Promise.resolve();
+  fragment.delete('token');
+  const cleanHash=fragment.toString();
+  window.history.replaceState(null,'',window.location.pathname+window.location.search+(cleanHash?'#'+cleanHash:''));
+  return __nativeFetch('/auth/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token})}).then(response=>{
+    if(!response.ok)throw new Error(__('auth_failed')+' (HTTP '+response.status+')');
+  });
+}
+const __authReady = bootstrapFragmentToken();
+window.fetch = (...args) => __authReady.then(() => __nativeFetch(...args));
 
 // ── state ──
 let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask';
@@ -3578,7 +3598,9 @@ function uniqueModelRefs() {
 function currentModelRefLabel(){const c=modelsCache.find(m=>m.active);return c?(c.ref||c.model||''):'';}
 
 // ── SSE ──
-const es=new EventSource('/events');
+let es;
+function connectEvents(){
+es=new EventSource('/events');
 es.onopen=()=>{setConnState('connected');fetchStatus();fetchTodos();};
 es.onmessage=ev=>{setConnState('connected');
   if(historyPending)return; // history rebuild owns the transcript; skip gap events
@@ -3627,6 +3649,8 @@ es.onerror=()=>{
   if(es.readyState===EventSource.CONNECTING){setConnState('reconnecting');}
   else{setConnState('disconnected');}
 };
+}
+__authReady.then(connectEvents).catch(error=>{setConnState('disconnected');showNotice(error instanceof Error?error.message:__('auth_failed'),'warn');});
 
 // ── status polling ──
 function fetchStatus(){

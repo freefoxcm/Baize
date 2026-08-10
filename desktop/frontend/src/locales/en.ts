@@ -255,6 +255,8 @@ export const en = {
   "workspace.addFileReferenceToChat": "Add file reference",
   "workspace.addFolderReferenceToChat": "Add folder reference",
   "workspace.addFileContentToChat": "Add file contents",
+  "workspace.copyRelativePath": "Copy relative path",
+  "workspace.copyAbsolutePath": "Copy absolute path",
   "workspace.viewMode": "Workspace view",
   "workspace.filesTab": "Files",
   "workspace.changedTab": "Changes",

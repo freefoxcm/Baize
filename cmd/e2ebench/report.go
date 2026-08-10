@@ -193,6 +193,7 @@ func renderBody(results []result) string {
 	b.WriteString(perSolvedLine(s))
 	b.WriteString(requestsBySourceLine(s.bySource))
 	b.WriteString(renderMeterAccounting(results))
+	b.WriteString(renderFaultRecovery(results))
 	b.WriteString(renderTimeAttribution(results))
 	b.WriteString(renderSolveProfiles(results))
 	b.WriteString(renderToolSurface(results))

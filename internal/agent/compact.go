@@ -38,6 +38,8 @@ const (
 	maxEarlyUserTurns          = 3     // small user turns hoisted verbatim ahead of the digest; position-fixed (the first N of the fold region, never "the latest N") so the projection prefix stays byte-stable
 )
 
+var errSummaryOutputTruncated = errors.New("summarizer output truncated")
+
 // summaryTag wraps the compaction summary so the model can distinguish it from
 // live user input and later strip or skip it when reasoning about the current turn.
 const (
@@ -532,11 +534,9 @@ func tailStart(msgs []provider.Message, head, budgetTokens int, tokPerChar float
 // actually sent (the provider strips it). Falls back to ~4 chars/token before
 // any usage is known, and ignores absurd ratios.
 func (a *Agent) tokPerChar() float64 {
-	if u := a.lastUsage.Load(); u != nil && u.PromptTokens > 0 {
-		if c := charsOfMessages(a.session.Messages); c > 0 {
-			if r := float64(u.PromptTokens) / float64(c); r > 0.05 && r < 2 {
-				return r
-			}
+	if cal := a.promptCalibration.Load(); cal != nil && cal.compactChars > 0 {
+		if r := float64(cal.promptTokens) / float64(cal.compactChars); r > 0.05 && r < 2 {
+			return r
 		}
 	}
 	return fallbackTokPerChar
@@ -582,13 +582,20 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 		}
 	}()
 	defer trackPublishedHostStream(ctx, cancel)()
-	ch, err := a.prov.Stream(ctx, provider.Request{
+	req := provider.Request{
 		Messages: []provider.Message{
 			{Role: provider.RoleSystem, Content: sys},
 			{Role: provider.RoleUser, Content: renderTranscript(region)},
 		},
+		MaxTokens:   a.maxOutputTokens,
 		Temperature: provider.OptionalTemperature(a.temperature),
-	})
+	}
+	if budget, clipped, budgetErr := a.effectiveOutputBudget(req); budgetErr != nil {
+		return "", usage, budgetErr
+	} else if clipped {
+		req.MaxTokens = budget
+	}
+	ch, err := a.prov.Stream(ctx, req)
 	if err != nil {
 		return "", usage, err
 	}
@@ -601,6 +608,9 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 			return "", usage, ctx.Err()
 		case chunk, ok := <-ch:
 			if !ok {
+				if usage != nil && usage.FinishReason == "length" {
+					return "", usage, fmt.Errorf("%w: provider reached the output token limit", errSummaryOutputTruncated)
+				}
 				s := strings.TrimSpace(b.String())
 				if s == "" {
 					return "", usage, fmt.Errorf("summarizer returned empty output")
@@ -623,7 +633,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 // Token and request counts from both attempts are merged into the returned Usage.
 func (a *Agent) summarizeWithRetry(ctx context.Context, fold []provider.Message, instructions string) (string, *provider.Usage, error) {
 	summary, usage, err := a.summarize(ctx, fold, instructions)
-	if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, errSummaryOutputTruncated) {
 		return summary, usage, err
 	}
 	summary2, usage2, err2 := a.summarize(ctx, fold, instructions)

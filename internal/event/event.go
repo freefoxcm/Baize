@@ -525,6 +525,7 @@ type Event struct {
 	Cancelled       bool                     // TurnDone: Cancel was requested while the turn was active
 	Outcome         string                   // TurnDone: optional machine-readable recoverable outcome
 	Readiness       *FinalReadiness          // TurnDone: structured final-readiness recovery state
+	Receipt         *CompletionReceipt       // TurnDone: what the host verified, and what it could not
 	CheckpointTurn  *int                     // TurnDone: authoritative checkpoint for this turn's visible user message
 	Compaction      Compaction               // Compaction
 	Guardian        GuardianResult

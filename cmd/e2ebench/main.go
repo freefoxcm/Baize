@@ -120,6 +120,9 @@ type result struct {
 	// and token aggregates instead of being averaged in as zero, which would
 	// quietly understate every published per-task figure.
 	Unaccounted bool `json:"unaccounted"`
+	// Segments is how many resumed legs the run was split into (1 = a single
+	// leg). Above 1 the trajectory digest covers only the last leg.
+	Segments int `json:"segments,omitempty"`
 	// Partial marks accounting recovered from an in-flight snapshot after the
 	// agent was killed. The numbers are real but stop at the last snapshot, so
 	// they are counted as lower bounds rather than dropped.
@@ -227,8 +230,7 @@ func main() {
 	cacheArm := flag.String("cache", "cold", "suite mode: cold (fresh session per task) | warm (prefix-warming one-step run in the same workdir before the graded run)")
 	effort := flag.String("effort", "", "reasoning effort override passed to the agent (model-specific levels, e.g. disabled|low|high|max); empty = model default")
 	checkpoints := flag.Bool("checkpoints", false, "suite mode: snapshot the workdir on every change and grade each snapshot offline after the run, yielding first_correct_ms (TTFCS) and post_solve_waste_ms")
-	meterConfig := flag.String("meter", "", "suite mode: route the benchmarked provider through the neutral measuring proxy, using this config.toml as the source (e.g. ~/.reasonix/config.toml). Spend is then counted at the request boundary instead of trusted from the harness")
-	faultSpec := flag.String("faults", "", "suite mode: inject provider failures at fixed request indices, e.g. 3:429,7:500 (requires -meter)")
+	pressure := registerPressureFlags()
 	policyFlag := flag.String("policy", "", "suite mode: experiment arm — empty (baseline) | ebm (evidence-before-more-mutation nudge) | governor (exploration-phase reasoning governor) | memory-off (hide the memory store: MemoryBench counterfactual arm)")
 	forkCapture := flag.String("fork-capture", "", "suite mode: capture a fork bundle per task at first EBM eligibility into <dir>/<task-id>")
 	bundles := flag.String("bundles", "", "fork mode: directory of captured bundles (<task-id>/bundle.json)")
@@ -311,12 +313,12 @@ func main() {
 		return
 	}
 
-	meterSource, faults := meterSettings(*meterConfig, *faultSpec)
+	meterSource, faults, segments, steers := pressure.settings()
 	runSuiteMode(suiteConfig{
 		bin: *bin, model: *model, profile: profile, arm: arm, budget: *budget,
 		trajDir: *trajDir, forcePlanner: *forcePlanner, attempts: *attempts,
 		cacheArm: cache, effort: *effort, checkpoints: *checkpoints, policy: *policyFlag,
-		forkCapture: *forkCapture, meterConfig: meterSource, meterFaults: faults,
+		forkCapture: *forkCapture, meterConfig: meterSource, meterFaults: faults, segments: segments, steers: steers,
 	}, *suite, *taskFilter, *outMD, *outJSON)
 }
 
@@ -455,7 +457,11 @@ type suiteConfig struct {
 	// meterConfig is the real config.toml whose provider endpoint each run is
 	// redirected through the neutral meter; empty leaves runs unmetered.
 	meterConfig string
-	meterFaults map[int]int
+	meterFaults faultScript
+	// segments splits each task into that many resumed legs; steers delivers a
+	// user turn at a leg boundary. Both are LongRun pressure, not defaults.
+	segments int
+	steers   map[int]string
 }
 
 // runSuite runs each task in order until the token budget is exhausted;
@@ -503,13 +509,15 @@ func runTask(cfg suiteConfig, t task) result {
 		r.PlanForced = true
 	}
 
+	// The per-leg file names are decided in runSegments; only the directory has
+	// to exist before the first child starts, and the digest below reads the
+	// last leg's file.
 	trajPath := ""
 	if cfg.trajDir != "" {
 		if err := os.MkdirAll(cfg.trajDir, 0o755); err != nil {
 			r.Note = "trajectory dir: " + err.Error()
 			return r
 		}
-		trajPath = filepath.Join(cfg.trajDir, t.ID+".trajectory.jsonl")
 	}
 
 	work, err := os.MkdirTemp("", "e2ebench-"+t.ID+"-")
@@ -533,11 +541,6 @@ func runTask(cfg suiteConfig, t task) result {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(t.TimeoutSec)*time.Second)
 	defer cancel()
 
-	metricsPath := filepath.Join(work, ".run-metrics.json")
-	args := buildRunTaskArgs(cfg, metricsPath, trajPath, t.MaxSteps, t.Prompt)
-
-	cmd := exec.CommandContext(ctx, cfg.bin, args...)
-	cmd.Dir = work
 	extraEnv, seedNote := taskExperimentEnv(cfg, t, work)
 	if seedNote != "" {
 		r.Note = seedNote
@@ -545,27 +548,18 @@ func runTask(cfg suiteConfig, t task) result {
 	mtr := attachMeter(cfg, &r)
 	defer mtr.close()
 	extraEnv = append(extraEnv, mtr.env...)
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
-	cmd.Stdout = os.Stderr // stream the run to the job log, keep stdout clean for the report
-	cmd.Stderr = os.Stderr
-	cmd.WaitDelay = 10 * time.Second // bound the wait for a stuck child after ctx timeout
 	startedAt := time.Now()
 	snap, dropSnapshots := attachSnapshotter(cfg, t, work, startedAt)
 	defer dropSnapshots()
-	runErr := cmd.Run()
+	runErr := runSegments(ctx, cfg, t, work, cfg.trajDir, extraEnv, &r)
 	r.WallMs = time.Since(startedAt).Milliseconds()
 	var taken []checkpoint
 	if snap != nil {
 		taken = snap.halt()
 	}
 
-	if m, err := readMetrics(metricsPath); err == nil {
-		r.runMetrics = m
-	}
 	mtr.record(&r)
-	if trajPath != "" {
+	if trajPath = lastSegmentTrajectory(cfg.trajDir, t.ID, r.Segments); trajPath != "" {
 		if summary, err := summarizeTrajectory(trajPath); err == nil {
 			r.Trajectory = summary
 		}
@@ -633,6 +627,18 @@ func buildRunTaskArgs(cfg suiteConfig, metricsPath, trajectoryPath string, maxSt
 		args = append(args, "--ablate", cfg.arm.String())
 	}
 	return append(args, prompt)
+}
+
+// buildSegmentArgs is buildRunTaskArgs for one leg: a resumed leg adds
+// --continue, which is unambiguous because each task runs in its own home and
+// therefore its own session directory.
+func buildSegmentArgs(cfg suiteConfig, seg segment, metricsPath, trajectoryPath string) []string {
+	args := buildRunTaskArgs(cfg, metricsPath, trajectoryPath, seg.maxSteps, seg.prompt)
+	if !seg.resume {
+		return args
+	}
+	// The prompt is the last argument; --continue must precede it.
+	return append(args[:len(args)-1:len(args)-1], "--continue", args[len(args)-1])
 }
 
 // warmPrefix primes the provider prefix cache for work's session shape with a

@@ -146,9 +146,74 @@ metered this way precisely because it *does* self-report: if the proxy and
 `.run-metrics.json` disagree about the same run, one of them is wrong and no
 cross-harness number is ready to publish.
 
-`-faults` injects provider failures at fixed request indices through the same
-proxy, which is what LongRun needs: deterministic 429/500 at the same point of
-a run, replayable across harnesses.
+## Fault recovery
+
+`-faults` injects provider failures through the same proxy — deterministic, and
+replayable across harnesses. Two forms:
+
+- `3:429` — a targeted failure at an exact request.
+- `every:5:500` — a cadence. **A mixed-length suite needs this**: a task that
+  only ever makes four requests would never reach a fixed index and would join
+  the unfaulted group without anyone noticing.
+
+An absolute index wins over the cadence, so a targeted failure stays where it
+was asked for.
+
+```sh
+go run ./cmd/e2ebench -meter ~/.reasonix/config.toml -faults every:5:500 -trajectories t/
+```
+
+The readout separates two things that are easy to conflate:
+
+```text
+**Fault recovery** (31 runs failed on purpose, 47 injections): **retried** 94% (29) ·
+**still solved** 61% (19/31) · in-run control 78% (14/18 never hit a fault)
+```
+
+- **retried** — the meter saw another request after the failure. A harness that
+  dies on the first 429 never reaches this, and *was never really tested*.
+- **still solved** — the task landed anyway. A harness can retry forever and
+  still not finish; that is not recovery.
+- **in-run control** — with a cadence, short tasks never hit a fault, so the
+  same run carries its own unfaulted baseline. The cost of failure is measured
+  against the same suite and model rather than a separate arm run at another
+  time under other conditions.
+
+## Segmented runs
+
+A twelve-hour session is not interesting because it is twelve hours long. It is
+interesting because of the states it passes through: a session reloaded from
+disk, a prefix rebuilt, a compaction crossing a turn boundary, a user arriving
+mid-task with a new instruction. `-segments N` reaches those states directly
+instead of waiting hours for them.
+
+```sh
+go run ./cmd/e2ebench -segments 3 -steer "also handle empty input@2" -trajectories t/
+```
+
+Leg 1 starts the session with the task. Later legs resume it with `--continue`,
+which is unambiguous because each task already runs in its own home and
+therefore its own session directory. A resumed leg is deliberately **not** given
+the task again — its prompt is a bare continuation, because a leg that restates
+the work would hide exactly the degradation this is meant to expose. A `-steer`
+entry replaces one leg's continuation with a user turn.
+
+Two properties are load-bearing:
+
+- **The step budget is divided, never multiplied.** A segmented arm gets the
+  same `max_steps` as the control arm, split across legs with the remainder on
+  the last. Otherwise the arm would win by being allowed to work longer.
+- **Each leg writes its own metrics file.** They share a work dir, so a single
+  `.run-metrics.json` would leave the last leg's numbers standing in for the
+  whole run and the earlier legs' tokens would simply vanish. `Segments` in the
+  JSON records how many legs a run had.
+
+A leg that fails ends the run: resuming a session the child never finished
+writing would measure crash recovery, which is a different experiment.
+
+Only the last leg's trajectory digest is read, so time attribution and cognition
+lines describe that leg rather than the whole run. Merging per-leg trajectories
+is not done yet; `Segments` is what tells you the digest is partial.
 
 ## task.toml schema
 
@@ -240,7 +305,9 @@ own outcome).
 | `-cache` | `cold` | Suite mode: `cold` runs each task as a fresh session (the fair cross-agent comparison arm); `warm` primes the provider prefix cache with a one-step run in the same workdir first, measuring the long-lived-session steady state. Never mix arms in one report — compare them with `-mode compare cold.json warm.json`. |
 | `-budget` | `800000` | Abort once total tokens cross this (`0` = no cap). Remaining tasks are reported as skipped. |
 | `-meter` | *(off)* | Suite mode: route the benchmarked provider through the neutral measuring proxy, using this `config.toml` as the source. Spend is then counted at the request boundary instead of trusted from the harness. See [Neutral metering](#neutral-metering). |
-| `-faults` | *(none)* | Suite mode: inject provider failures at fixed request indices, e.g. `3:429,7:500`. Requires `-meter` — the proxy is the only place a fault can be injected. |
+| `-faults` | *(none)* | Suite mode: inject provider failures through the meter — absolute indices (`3:429`) and/or a cadence that scales with the run (`every:5:500`). Requires `-meter`. See [Fault recovery](#fault-recovery). |
+| `-segments` | `1` | Suite mode: split each task into N resumed legs (`--continue` between them). The step budget is **divided**, never multiplied. See [Segmented runs](#segmented-runs). |
+| `-steer` | *(none)* | Suite mode: deliver a user turn at a leg boundary, e.g. `"also handle empty input@2"`. Requires `-segments` to reach that leg. |
 
 Diff-mode flags:
 
