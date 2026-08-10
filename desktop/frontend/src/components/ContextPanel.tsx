@@ -100,7 +100,7 @@ export function cacheHitTone(hitTokens: number, missTokens: number): MetricTone 
   return "warn";
 }
 
-function formatSharePercent(value: number, total: number): string {
+export function formatSharePercent(value: number, total: number): string {
   if (total <= 0 || value <= 0) return "-";
   const pct = (value / total) * 100;
   if (pct > 0 && pct < 1) return "<1%";
@@ -273,6 +273,16 @@ function sourceLabel(source: string, t: Translator): string {
     case "classifier": return t("context.sourceClassifier");
     case "title": return t("context.sourceTitle");
     default: return source;
+  }
+}
+
+function maintenanceActionLabel(action: string | undefined, t: Translator): string {
+  switch (action) {
+    case "snip": return t("context.maintenanceActionSnip");
+    case "prune": return t("context.maintenanceActionPrune");
+    case "summary": return t("summary.detail");
+    case "native_tool_clear": return t("context.maintenanceActionNative");
+    default: return t("common.none");
   }
 }
 
@@ -451,6 +461,13 @@ export function ContextPanel({
   const compactLabelPct = Math.max(6, Math.min(94, compactMarkerPct));
   const usageSummary = t("context.windowUsageSummary", { used: usedLabel, window: windowLabel, pct: usagePct });
   const compactSummary = t("context.windowCompactRemaining", { used: usedLabel, window: windowLabel, tokens: compactRemainingLabel, pct: compactPct });
+  const maintenance = context?.maintenance;
+  const lastMaintenance = maintenance?.lastReceipt;
+  const maintenanceStatus = maintenance?.blocked
+    ? t("projectTree.status.paused")
+    : lastMaintenance?.status === "applied"
+      ? t("settings.typography.applied")
+      : t("remote.server.state.ready");
   const activeAnalysisView: UsageAnalysisView = showSourceUsageRows ? analysisView : "type";
   const tokenTypeRows = [
     { key: "prompt", label: t("context.prompt"), value: breakdown.promptTokens },
@@ -549,6 +566,25 @@ export function ContextPanel({
               </div>
             </div>
           </section>
+          {maintenance && (
+            <section className="context-panel__section context-panel__session-section">
+              <SectionHeading title={t("context.maintenanceTitle")} meta={maintenanceStatus} />
+              <div className="context-panel__session-metrics">
+                <div className="context-panel__summary-rows">
+                  <MiniStat label={t("context.maintenanceProjected")} value={formatOptionalTokens(maintenance.projectedTokens)} tone="accent" />
+                  <MiniStat label={t("history.title")} value={formatOptionalTokens(maintenance.canonicalTokens)} />
+                  <MiniStat label={t("summary.detail")} value={formatOptionalTokens(maintenance.summaryTokens)} />
+                  <MiniStat label={t("context.maintenanceLastSaved")} value={formatOptionalTokens(maintenance.lastSavedTokens)} tone={maintenance.lastSavedTokens ? "good" : undefined} />
+                  <MiniStat label={t("context.maintenanceHeadroom")} value={formatOptionalTokens(maintenance.headroom)} wide />
+                  <MiniStat label={t("context.maintenanceLastAction")} value={maintenanceActionLabel(lastMaintenance?.action, t)} />
+                  <MiniStat label={t("context.maintenanceSnipAt")} value={formatOptionalTokens(maintenance.snipTrigger)} />
+                  <MiniStat label={t("context.maintenanceFoldAt")} value={formatOptionalTokens(maintenance.foldTrigger)} />
+                  <MiniStat label={t("context.maintenanceForceAt")} value={formatOptionalTokens(maintenance.forceTrigger)} />
+                  <MiniStat label={t("context.maintenanceHardAt")} value={formatOptionalTokens(maintenance.hardInputCeiling)} />
+                </div>
+              </div>
+            </section>
+          )}
           <section className="context-panel__section context-panel__session-section">
             <SectionHeading title={t("context.sessionMetrics")} />
             <div className="context-panel__session-metrics">
@@ -613,11 +649,10 @@ export function ContextPanel({
                   </div>
                   <div className="context-panel__source-legend">
                     {sourceUsageRows.map((row) => {
-                      const sharePct = sourceTotalTokens > 0 ? (sourceTokenTotal(row) / sourceTotalTokens) * 100 : 0;
                       return (
                         <span key={row.source}>
                           <i className={`context-panel__source-dot context-panel__source-tone--${sourceTone(row.source)}`} aria-hidden="true" />
-                          {sourceLabel(row.label, t)} {sharePct > 0 ? `${sharePct.toFixed(0)}%` : "-"}
+                          {sourceLabel(row.label, t)} {formatSharePercent(sourceTokenTotal(row), sourceTotalTokens)}
                         </span>
                       );
                     })}

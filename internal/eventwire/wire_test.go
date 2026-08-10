@@ -46,6 +46,21 @@ func TestToWireStreamAttemptJSON(t *testing.T) {
 	}
 }
 
+func TestToWireContextMaintenanceJSON(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.ContextMaintenanceEvent, Maintenance: &event.ContextMaintenance{
+		Status: "applied", Action: "prune", SavedTokens: 4096, ProjectionVersion: 3, CacheBreak: true,
+	}})
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{`"kind":"context_maintenance"`, `"action":"prune"`, `"savedTokens":4096`, `"projectionVersion":3`, `"cacheBreak":true`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("context maintenance JSON = %s, want %s", b, want)
+		}
+	}
+}
+
 func TestToWireNoticeCarriesCode(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeFinalReadiness, Text: "readiness copy"})
 	b, err := json.Marshal(w)
