@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+if [ "$branch" = "upstream-sync/main-v2" ]; then
+  echo "error: upstream-sync/main-v2 is a read-only upstream mirror" >&2
+  echo "switch to custom/baize or a feature branch before committing" >&2
+  exit 1
+fi

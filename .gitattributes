@@ -12,6 +12,7 @@
 *.mod text eol=lf
 *.nsi text eol=lf
 *.plist text eol=lf
+*.ps1 text eol=lf
 *.py text eol=lf
 *.rs text eol=lf
 *.sh text eol=lf
@@ -26,3 +27,12 @@
 *.yml text eol=lf
 .githooks/** text eol=lf
 benchmarks/**/*.sh text eol=lf
+
+# Baize owns these frontend surfaces. Configure the driver with
+# scripts/setup-fork-git before integrating upstream.
+internal/serve/index.html merge=baize
+internal/serve/login.html merge=baize
+internal/serve/logo-symbol.svg merge=baize
+internal/serve/logo-wordmark.svg merge=baize
+internal/serve/assets/baize.css merge=baize
+internal/serve/assets/baize.js merge=baize

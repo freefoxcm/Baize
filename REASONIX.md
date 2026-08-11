@@ -96,6 +96,18 @@ Use `go test ./path/to/target/` to detect cycles **before** pushing. A `[setup f
 - **Keep the PR diff minimal.** Only the files relevant to the PR's purpose — no stray changes from other branches.
 - **Amend, don't add commits, for review feedback** — keeps the commit history clean.
 
+## Baize fork maintenance
+
+- Develop and deploy from `custom/baize`; `upstream-sync/main-v2` is a clean
+  mirror and must only fast-forward to `upstream/main-v2`.
+- Integrate upstream with a controlled `--no-commit` merge into
+  `custom/baize`. Never rebase that branch and never commit on the sync branch.
+- Baize owns the frontend paths marked `merge=baize` in `.gitattributes`.
+  Audit upstream WebUI changes and record every decision in
+  `docs/UPSTREAM_SYNC_LOG.md`; backend files always use normal merges.
+- Run `scripts/setup-fork-git` once per clone and follow the full bilingual
+  workflow in `docs/FORK_MAINTENANCE.md`.
+
 ## PR metadata gates
 
 Two CI guards read the PR body. The scripts are the source of truth and both
