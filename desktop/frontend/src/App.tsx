@@ -54,7 +54,6 @@ import { RuntimeDecisionCard } from "./components/RuntimeDecisionCard";
 import { decisionSurfaceMockFromInput, type DecisionSurfaceKind as MockDecisionSurfaceKind } from "./lib/decisionSurfaceMock";
 
 const UndoRewindBanner = lazy(() => import("./components/UndoRewindBanner").then((module) => ({ default: module.UndoRewindBanner })));
-const WebView2ApprovalSmoke = lazy(() => import("./lib/useWebView2ApprovalSmoke").then((module) => ({ default: module.WebView2ApprovalSmoke })));
 
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
 type DecisionSurfaceKind = MockDecisionSurfaceKind | "extension_form";
@@ -4296,7 +4295,6 @@ export default function App() {
   return (
     <ShellExpandProvider>
     <UpdaterProvider>
-    {window.__REASONIX_WEBVIEW2_APPROVAL_SMOKE__ === true && <Suspense fallback={null}><WebView2ApprovalSmoke activeTabId={activeTabId} approval={state.approval} /></Suspense>}
     <ShellHotkeys />
     <TextSizeHotkeys />
       <div

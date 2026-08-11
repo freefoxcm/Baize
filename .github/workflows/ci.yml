@@ -365,6 +365,7 @@ jobs:
           pnpm --dir frontend test:task-monitor
           pnpm --dir frontend test:workspace
           pnpm --dir frontend test:motion
+          pnpm --dir frontend test:motion-browser
           pnpm --dir frontend test:transcript
           pnpm --dir frontend test:transcript-browser
 
@@ -472,21 +473,26 @@ jobs:
       - name: Test native motion contracts
         run: pnpm --dir frontend test:motion
 
+      - name: Test WebView2 native smoke state machine
+        shell: pwsh
+        run: ../scripts/test-webview2-native-smoke.ps1 -SelfTest
+
       # Build the real Wails executable on every desktop PR and exercise the
-      # approval interaction in Microsoft's installed WebView2 runtime. The
-      # frontend and bindings were already built above, so this skips only
+      # exact production startup path in Microsoft's installed WebView2 runtime.
+      # The frontend and bindings were already built above, so this skips only
       # duplicate build work, not the native shell.
-      - name: Build Wails executable for WebView2 smoke
+      - name: Build Wails executable for native startup smoke
         timeout-minutes: 10
         run: wails build -clean -s -skipbindings -nopackage -platform windows/amd64 -webview2 embed
 
-      - name: Smoke-test Wails approval in WebView2
+      - name: Smoke-test Wails/WebView2 native startup
         shell: pwsh
         timeout-minutes: 2
         run: |
-          ../scripts/test-webview2-approval-smoke.ps1 `
+          ../scripts/test-webview2-native-smoke.ps1 `
             -ExecutablePath "build/bin/reasonix-desktop.exe" `
-            -TimeoutSeconds 60
+            -TimeoutSeconds 60 `
+            -HealthySeconds 5
 
       - name: test (Windows desktop and update helper)
         # The desktop module compiles Wails + webview2 (CGO) plus the whole

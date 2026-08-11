@@ -3091,6 +3091,7 @@ export const zh: Record<DictKey, string> = {
   "context.windowStatusWatch": "即将压缩",
   "context.windowStatusPastCompact": "已到压缩阈值",
   "context.windowStatusNearLimit": "接近窗口上限",
+  "context.windowStatusOverLimit": "已超过窗口上限",
   "context.windowUsageSummary": "{pct}% 已用",
   "context.windowCompactRemaining": "{used} / {window} · 距压缩还剩 {tokens}",
   "context.windowCompactDistance": "距压缩",

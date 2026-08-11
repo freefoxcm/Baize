@@ -25303,17 +25303,6 @@ body > .mermaid-diagram--fullscreen {
   background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
 }
 
-.context-panel__progress-segment {
-  display: block;
-  height: 100%;
-  min-width: 0;
-}
-
-.context-panel__progress-segment--prompt { background: #13a7a5; }
-.context-panel__progress-segment--completion { background: #2f6df6; }
-.context-panel__progress-segment--reasoning { background: #f97316; }
-.context-panel__progress-segment--other { background: var(--border); }
-
 .context-panel__compact-marker {
   position: absolute;
   top: 0;
@@ -25328,7 +25317,11 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .context-panel__progress-fill {
-  display: none;
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, #fff), var(--accent));
 }
 
 .context-panel__session-section,
@@ -31870,21 +31863,12 @@ body > .mermaid-diagram--fullscreen {
   overflow: hidden;
   background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
 }
-.context-ring-popover__seg {
+.context-ring-popover__fill {
   height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, #fff), var(--accent));
   transition: width 0.3s var(--ease-out);
-}
-.context-ring-popover__seg--prompt {
-  background: color-mix(in srgb, var(--accent) 68%, var(--fg));
-}
-.context-ring-popover__seg--completion {
-  background: color-mix(in srgb, var(--accent) 48%, var(--fg));
-}
-.context-ring-popover__seg--reasoning {
-  background: color-mix(in srgb, var(--warn) 56%, var(--fg));
-}
-.context-ring-popover__seg--other {
-  background: color-mix(in srgb, var(--fg-faint) 22%, var(--fg));
 }
 /* 进度条标记线 */
 .context-ring-popover__mark {
@@ -34182,14 +34166,6 @@ body > .mermaid-diagram--fullscreen {
 .app--creation .context-panel__compact-marker {
   background: color-mix(in srgb, var(--fg) 60%, var(--creation-panel-card));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--creation-panel-card) 88%, transparent);
-}
-
-.app--creation .context-panel__progress-fill {
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, #fff), var(--accent));
 }
 
 .app--creation .context-panel__session-metrics {
