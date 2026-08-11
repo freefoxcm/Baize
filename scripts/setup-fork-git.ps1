@@ -31,4 +31,4 @@ Invoke-Git config --local merge.baize.driver true
 Invoke-Git remote set-url --push upstream DISABLED
 
 Write-Host "Baize fork Git settings installed for $repoRoot"
-Write-Host "upstream is fetch-only; custom/baize remains the integration branch"
+Write-Host "upstream is fetch-only; main-v2 is the mirror and custom/baize is the integration branch"

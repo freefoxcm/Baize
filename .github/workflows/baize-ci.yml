@@ -1,0 +1,86 @@
+name: Baize CI
+
+on:
+  push:
+    branches: [custom/baize]
+  pull_request:
+    branches: [custom/baize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baize-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux quality and full tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Check changed-line whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base="HEAD^"
+          fi
+          git diff --check "$base...HEAD"
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted="$(git ls-files '*.go' | xargs -r gofmt -l)"
+          test -z "$unformatted" || {
+            printf 'Go files need gofmt:\n%s\n' "$unformatted" >&2
+            exit 1
+          }
+      - run: node --check internal/serve/assets/baize.js
+      - run: go vet ./...
+      - run: go run ./tools/repolint
+      - run: go test ./... -count=1
+      - name: Build CLI
+        env:
+          CGO_ENABLED: "0"
+        run: go build -o "$RUNNER_TEMP/reasonix" ./cmd/reasonix
+      - name: Validate Baize workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/baize-*.yml
+      - name: Test fork maintenance scripts
+        run: bash scripts/fork-maintenance.test.sh
+
+  windows:
+    name: Windows build and focused tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - run: node --check internal/serve/assets/baize.js
+      - name: Focused Windows tests
+        shell: pwsh
+        run: go test ./internal/cli ./internal/serve ./internal/i18n ./internal/boot -count=1
+      - name: Build CLI
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "0"
+          go build -o "$env:RUNNER_TEMP\reasonix.exe" ./cmd/reasonix
+      - name: Test PowerShell fork maintenance scripts
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/fork-maintenance.test.ps1

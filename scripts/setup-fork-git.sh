@@ -24,4 +24,4 @@ git config --local merge.baize.driver true
 git remote set-url --push upstream DISABLED
 
 echo "Baize fork Git settings installed for $repo_root"
-echo "upstream is fetch-only; custom/baize remains the integration branch"
+echo "upstream is fetch-only; main-v2 is the mirror and custom/baize is the integration branch"

@@ -1,6 +1,36 @@
 #!/bin/sh
-# Go-native pre-push gate replacing the retired v1 npm hook (install: make hooks).
-# Full tests run in CI; vet is the fast, cross-platform local check.
-set -e
-go vet ./...
-go run ./tools/repolint
+set -eu
+
+zero=0000000000000000000000000000000000000000
+pushes_main=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[ -n "${local_ref:-}" ] || continue
+	if [ "$remote_ref" != "refs/heads/main-v2" ]; then
+		continue
+	fi
+	pushes_main=1
+	if [ "$local_sha" = "$zero" ]; then
+		echo "error: deleting the protected main-v2 upstream mirror is forbidden" >&2
+		exit 1
+	fi
+	git fetch --quiet upstream main-v2
+	expected=$(git rev-parse upstream/main-v2)
+	if [ "$local_sha" != "$expected" ]; then
+		echo "error: main-v2 must exactly match upstream/main-v2" >&2
+		echo "  pushing:  $local_sha" >&2
+		echo "  upstream: $expected" >&2
+		exit 1
+	fi
+	if [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+		echo "error: non-fast-forward updates to main-v2 are forbidden" >&2
+		exit 1
+	fi
+done
+
+# The mirror has already been tested by upstream. Baize branches keep the local
+# fast gate; the balanced GitHub workflow runs the full suite.
+if [ "$pushes_main" -eq 0 ]; then
+	go vet ./...
+	go run ./tools/repolint
+fi
