@@ -39,7 +39,9 @@ GitHub 侧状态；管理员可用 `--apply` 幂等设置默认分支、Workflow
 
 上游 Workflow 文件继续保留以减少合并冲突，但在 GitHub 仓库级禁用。
 官方发布、签名、npm、Cloudflare、Pages、E2E、标签、定时维护和社区机器人
-均不运行。
+均不运行。GitHub 可能额外显示平台托管的
+`dynamic/dependabot/update-graph`；它不是仓库自有 Workflow。禁用它会同时
+关闭依赖图与漏洞告警，因此不计入 Baize allowlist 检查。
 
 ## 获取并整合上游
 
