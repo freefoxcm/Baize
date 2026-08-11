@@ -289,6 +289,7 @@ func cliServeCompletionFlags(model, profile, help cliCompletionFlag) []cliComple
 	return []cliCompletionFlag{
 		model, profile,
 		completionFlag("--max-steps --addr", cliCompletionStaticValue),
+		completionFlag("--dir", cliCompletionPathValue),
 		// Serve/Web resume accepts file paths, not branch IDs.
 		completionFlag("--resume", cliCompletionPathValue),
 		completionFlag("--auth", cliCompletionStaticValue, "none", "token", "password"),

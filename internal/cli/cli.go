@@ -565,13 +565,9 @@ func runAgent(args []string, version string) int {
 		return 2
 	}
 	allowedTools = uniqueStrings(append(allowedTools, permissions.allow...))
-	if rc := chdirTo(*dir); rc != 0 {
-		return rc
-	}
-	workspaceRoot, err := workspaceRootForDir(*dir)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
-		return 1
+	workspaceRoot, code := prepareCLIWorkspace(*dir)
+	if code != 0 {
+		return code
 	}
 	cfg, _ := config.Load()
 	configureCLIThemeFromConfigForTTYOutput()
@@ -799,6 +795,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
 	addr := fs.String("addr", "127.0.0.1:8787", "listen address")
 	resume := fs.String("resume", "", "resume a saved session file")
+	dir := fs.String("dir", "", "change to this directory first (project root); config, sandbox and file tools resolve from here")
 	sessionIDValue := ""
 	sessionID := &sessionIDValue
 	if opts.command == "web" {
@@ -857,10 +854,18 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 		fmt.Println(h)
 		return 0
 	}
+	workspaceRoot, code := prepareCLIWorkspace(*dir)
+	if code != 0 {
+		return code
+	}
 
 	ctx := context.Background()
 	bc := serve.NewBroadcaster()
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+		return 1
+	}
 	applyServeLanguage(cfg)
 
 	// Build serve config, merging CLI flags over config file.
@@ -938,6 +943,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	// rebuilds this controller in place before the normal web UI is exposed.
 	ctrl, err := setupProfileWithOverrides(ctx, *model, *maxSteps, false, bc, profile, cliBuildOverrides{
 		OnSessionRecovered: cliSessionRecoveredHandler(leases),
+		WorkspaceRoot:      workspaceRoot,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
@@ -1021,13 +1027,9 @@ func chatREPL(args []string, version string) int {
 		return 2
 	}
 	allowedTools = uniqueStrings(append(allowedTools, permissions.allow...))
-	if rc := chdirTo(*dir); rc != 0 {
-		return rc
-	}
-	workspaceRoot, err := workspaceRootForDir(*dir)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
-		return 1
+	workspaceRoot, code := prepareCLIWorkspace(*dir)
+	if code != 0 {
+		return code
 	}
 	// Bubble Tea owns the terminal from the resume picker through controller
 	// shutdown. Start diagnostics before config/controller work so hangs leave a
@@ -1304,13 +1306,10 @@ func chatREPL(args []string, version string) int {
 	// subprocesses — operations that corrupt bubbletea's terminal raw mode
 	// when executed while the TUI is alive.
 	launchWeb := false
-	launchWebPath := ""
-	launchWebSessionID := ""
-	launchWebModelRef := ""
-	launchWebProfile := ""
+	var launchWebArgs []string
 	if fm, ok := final.(chatTUI); ok {
 		launchWeb = fm.launchWebOnExit
-		launchWebProfile = fm.runtimeProfile
+		launchWebArgs = webHandoffArgs(fm.launchWebResumePath, fm.launchWebSessionID, fm.launchWebModelRef, fm.runtimeProfile, fm.launchWebWorkspaceRoot)
 		for _, oc := range fm.oldControllers {
 			if c, ok := oc.(*control.Controller); ok {
 				reporter.RecordRecovery(c.DrainRecoveryMetrics())
@@ -1318,9 +1317,6 @@ func chatREPL(args []string, version string) int {
 			oc.Close()
 		}
 		if fm.ctrl != nil {
-			launchWebPath = fm.launchWebResumePath
-			launchWebSessionID = fm.launchWebSessionID
-			launchWebModelRef = fm.launchWebModelRef
 			if c, ok := fm.ctrl.(*control.Controller); ok {
 				reporter.RecordRecovery(c.DrainRecoveryMetrics())
 			}
@@ -1344,7 +1340,7 @@ func chatREPL(args []string, version string) int {
 		// session as already in use. The deferred Release remains as a harmless
 		// final guard for every other return path.
 		leases.Release()
-		return runWebCommand(webHandoffArgs(launchWebPath, launchWebSessionID, launchWebModelRef, launchWebProfile))
+		return runWebCommand(launchWebArgs)
 	}
 	return 0
 }

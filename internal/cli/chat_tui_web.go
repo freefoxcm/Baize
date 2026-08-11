@@ -12,10 +12,11 @@ import (
 // A fresh session carries only its reserved identity; an existing transcript
 // also carries the materialized path so the Web controller can resume it.
 type webHandoffState struct {
-	launchWebOnExit     bool
-	launchWebResumePath string
-	launchWebSessionID  string
-	launchWebModelRef   string
+	launchWebOnExit        bool
+	launchWebResumePath    string
+	launchWebSessionID     string
+	launchWebModelRef      string
+	launchWebWorkspaceRoot string
 }
 
 func (m *chatTUI) runHelpOrWebSlash(input, command string) tea.Cmd {
@@ -56,10 +57,11 @@ func (m *chatTUI) runWebSlash() tea.Cmd {
 	m.launchWebResumePath = resumePath
 	m.launchWebSessionID = agent.BranchID(m.ctrl.SessionPath())
 	m.launchWebModelRef = m.modelRef
+	m.launchWebWorkspaceRoot = m.ctrl.WorkspaceRoot()
 	return shutdownNow
 }
 
-func webHandoffArgs(sessionPath, sessionID, modelRef, profile string) []string {
+func webHandoffArgs(sessionPath, sessionID, modelRef, profile, workspaceRoot string) []string {
 	args := []string{}
 	if sessionPath != "" {
 		args = append(args, "--resume", sessionPath)
@@ -71,6 +73,9 @@ func webHandoffArgs(sessionPath, sessionID, modelRef, profile string) []string {
 	}
 	if profile != "" {
 		args = append(args, "--profile", profile)
+	}
+	if workspaceRoot != "" {
+		args = append(args, "--dir", workspaceRoot)
 	}
 	return args
 }

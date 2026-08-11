@@ -1876,7 +1876,6 @@ func currentModelRef(c control.SessionAPI) string {
 	return strings.TrimSpace(c.Label())
 }
 
-// status returns a combined status snapshot.
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	used, window := s.ctl().ContextSnapshot()
 	hit, miss := s.ctl().SessionCache()
@@ -1890,6 +1889,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"goal":             s.ctl().Goal(),
 		"goalStatus":       s.ctl().GoalStatus(),
 		"cwd":              s.ctl().SessionDir(),
+		"workspaceRoot":    s.ctl().WorkspaceRoot(),
 		"used":             used,
 		"window":           window,
 		"cacheHit":         hit,

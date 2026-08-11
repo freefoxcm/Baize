@@ -830,7 +830,7 @@ func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
 		`if(e.key==='Escape'&&calSelected)`,
 		`const parts=trimmed.split(/[\\/]/);`,
 		`const trimmed=raw.replace(/[\\/]+$/,'');`,
-		`welcomeCwd.title=cwd;`,
+		`const cwd=String(s.workspaceRoot||s.cwd||'-');`,
 		`.welcome__pill strong{flex:0 0 auto;`,
 		`showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('6m',true);}`,
 		`.welcome__calendar{width:fit-content;min-width:min(360px,100%);max-width:min(600px,100%);`,

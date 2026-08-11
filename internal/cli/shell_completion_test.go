@@ -96,6 +96,13 @@ func TestCLICompletionListsCommandFlags(t *testing.T) {
 		}
 	}
 
+	for _, command := range []string{"serve", "web"} {
+		got = cliCompletionCandidatesWithValues(root, 2, []string{"reasonix", command, "--d"}, values)
+		if want := []string{"--dir"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s --d completion = %v, want %v", command, got, want)
+		}
+	}
+
 	got = cliCompletionCandidatesWithValues(root, 1, []string{"reasonix", "--d"}, values)
 	for _, want := range []string{"--dir", "--dangerously-skip-permissions"} {
 		if !containsCompletionValue(got, want) {

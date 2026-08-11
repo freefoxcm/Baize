@@ -138,6 +138,24 @@ func TestRunWebHelpDoesNotOpenBrowser(t *testing.T) {
 	}
 }
 
+func TestServeAndWebHelpListDir(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func([]string) int
+	}{{name: "serve", run: runServe}, {name: "web", run: runWeb}} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := captureStdout(t, func() {
+				if code := tc.run([]string{"--help"}); code != 0 {
+					t.Fatalf("--help = %d, want 0", code)
+				}
+			})
+			if !strings.Contains(out, "-dir string") {
+				t.Fatalf("help missing --dir:\n%s", out)
+			}
+		})
+	}
+}
+
 func TestLaunchWebBrowserInvokesOpenerWithResolvedURL(t *testing.T) {
 	previous := openBrowserURL
 	t.Cleanup(func() { openBrowserURL = previous })
@@ -159,8 +177,8 @@ func TestLaunchWebBrowserInvokesOpenerWithResolvedURL(t *testing.T) {
 }
 
 func TestWebHandoffArgsResumeSameSessionOnDeterministicPort(t *testing.T) {
-	got := webHandoffArgs("/tmp/session.jsonl", "session", "deepseek/deepseek-v4-flash", "delivery")
-	want := "--resume /tmp/session.jsonl --model deepseek/deepseek-v4-flash --profile delivery"
+	got := webHandoffArgs("/tmp/session.jsonl", "session", "deepseek/deepseek-v4-flash", "delivery", "/tmp/workspace")
+	want := "--resume /tmp/session.jsonl --model deepseek/deepseek-v4-flash --profile delivery --dir /tmp/workspace"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("webHandoffArgs() = %q, want %q", strings.Join(got, " "), want)
 	}

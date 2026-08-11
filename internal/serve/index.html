@@ -3748,7 +3748,7 @@ function fetchStatus(){
     if(welcomeModel)welcomeModel.textContent=s.label||'-';
     const cml=$('#composer-model-value');if(cml){const cur=modelsCache.find(m=>m.active);cml.textContent=(s.label||'-')+(cur&&cur.provider?' · '+providerLabel(cur.provider):'');}
     if(welcomeCwd){
-      const cwd=String(s.cwd||'-');
+      const cwd=String(s.workspaceRoot||s.cwd||'-');
       welcomeCwd.textContent=workspaceDisplayName(cwd);
       welcomeCwd.title=cwd;
       welcomeCwd.setAttribute('aria-label',__('workspace')+': '+cwd);

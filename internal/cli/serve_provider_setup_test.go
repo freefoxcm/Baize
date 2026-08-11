@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -15,6 +16,7 @@ import (
 )
 
 const serveMissingKeyHelperEnv = "REASONIX_TEST_SERVE_MISSING_KEY_HELPER"
+const serveDirHelperEnv = "REASONIX_TEST_SERVE_DIR_HELPER"
 
 // TestServeStartsWithMissingProviderKey exercises the real runServe lifecycle:
 // the listener and port file must become available before a Provider key exists,
@@ -132,6 +134,110 @@ api_key_env = "REASONIX_TEST_REMOTE_MISSING_KEY"
 	}
 	if !bytes.Contains(body, []byte("Reasonix Provider Setup")) {
 		t.Fatalf("missing-key Serve did not show setup page:\n%s", body)
+	}
+}
+
+func TestServeDirPinsWorkspaceRoot(t *testing.T) {
+	if os.Getenv(serveDirHelperEnv) == "1" {
+		if err := os.Setenv("REASONIX_HOME", os.Getenv("REASONIX_TEST_SERVE_HOME")); err != nil {
+			os.Exit(2)
+		}
+		code := runServe([]string{
+			"--model", "remote-demo/model-a",
+			"--dir", os.Getenv("REASONIX_TEST_SERVE_WORKSPACE"),
+			"--addr", "127.0.0.1:0",
+			"--port-file", os.Getenv("REASONIX_TEST_SERVE_PORT_FILE"),
+			"--auth", "none",
+		})
+		os.Exit(code)
+	}
+
+	home := t.TempDir()
+	configBody := `default_model = "remote-demo/model-a"
+
+[[providers]]
+name = "remote-demo"
+kind = "openai"
+base_url = "https://example.invalid/v1"
+models = ["model-a"]
+default = "model-a"
+api_key_env = "REASONIX_TEST_SERVE_DIR_KEY"
+`
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workspace := filepath.Join(repo, "nested")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	portFile := filepath.Join(home, "serve-dir.addr")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestServeDirPinsWorkspaceRoot$")
+	cmd.Env = replaceServeTestEnv(os.Environ(),
+		serveDirHelperEnv+"=1",
+		"REASONIX_HOME="+home,
+		"REASONIX_TEST_SERVE_HOME="+home,
+		"REASONIX_CREDENTIALS_STORE=file",
+		"REASONIX_TEST_SERVE_DIR_KEY=test-key",
+		"REASONIX_TEST_SERVE_WORKSPACE="+workspace,
+		"REASONIX_TEST_SERVE_PORT_FILE="+portFile,
+	)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	})
+
+	var addr string
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(portFile); err == nil {
+			addr = strings.TrimSpace(string(data))
+			if addr != "" {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if addr == "" {
+		t.Fatalf("Serve did not publish its port:\n%s", output.String())
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Get("http://" + addr + "/status")
+	if err != nil {
+		t.Fatalf("GET /status: %v\n%s", err, output.String())
+	}
+	defer resp.Body.Close()
+	var body struct {
+		WorkspaceRoot string `json:"workspaceRoot"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !sameConfigPath(body.WorkspaceRoot, workspace) {
+		t.Fatalf("workspaceRoot = %q, want explicit nested directory %q", body.WorkspaceRoot, workspace)
+	}
+}
+
+func TestServeRejectsInvalidDirBeforeStartup(t *testing.T) {
+	isolateCLIConfigHome(t)
+	missing := filepath.Join(t.TempDir(), "missing")
+	errOut := captureStderr(t, func() {
+		if rc := runServe([]string{"--dir", missing, "--addr", "127.0.0.1:0"}); rc != 2 {
+			t.Fatalf("serve --dir missing rc = %d, want 2", rc)
+		}
+	})
+	if !strings.Contains(errOut, missing) {
+		t.Fatalf("serve --dir missing stderr = %q, want path", errOut)
 	}
 }
 

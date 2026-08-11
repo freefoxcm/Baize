@@ -199,7 +199,13 @@ reasonix report delete [ID]     # 不发送，直接删除
 ```bash
 cd your-project
 reasonix web
+
+# 从其他目录启动时等价的写法：
+reasonix web --dir /path/to/your-project
 ```
+
+`--dir` 会在 Web 进程的整个生命周期内固定工作区。该路径在运行 Reasonix
+的主机上解析，而不是在浏览器所在主机上解析；连接到同一进程的所有浏览器标签页共享该工作区。
 
 如果想启动前台 Web 服务并打印地址、但不自动新开浏览器标签页，可使用
 `reasonix web --no-open`。底层的 `reasonix serve`
@@ -219,6 +225,7 @@ reasonix web
 
 ```bash
 reasonix serve --auth token
+reasonix serve --dir /srv/project --auth token
 reasonix serve --addr 0.0.0.0:8787 --auth token
 reasonix serve --auth password --password 'temporary-password'
 ```

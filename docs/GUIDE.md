@@ -221,7 +221,14 @@ transcript onto disk, so the first Web turn continues the same session identity.
 ```bash
 cd your-project
 reasonix web
+
+# Equivalent when starting from another directory:
+reasonix web --dir /path/to/your-project
 ```
+
+`--dir` fixes the workspace for the lifetime of the Web process. The path is
+resolved on the machine running Reasonix, not on the machine running the
+browser. All browser tabs connected to that process share the same workspace.
 
 Use `reasonix web --no-open` when you want to start the foreground Web server
 and print its URL without opening a browser tab. The lower-level
@@ -246,6 +253,7 @@ or put it behind a reverse proxy, enable authentication before sharing the URL:
 
 ```bash
 reasonix serve --auth token
+reasonix serve --dir /srv/project --auth token
 reasonix serve --addr 0.0.0.0:8787 --auth token
 reasonix serve --auth password --password 'temporary-password'
 ```
