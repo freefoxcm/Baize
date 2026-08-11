@@ -98,15 +98,19 @@ Use `go test ./path/to/target/` to detect cycles **before** pushing. A `[setup f
 
 ## Baize fork maintenance
 
-- Develop and deploy from `custom/baize`; `upstream-sync/main-v2` is a clean
-  mirror and must only fast-forward to `upstream/main-v2`.
+- Develop and deploy from `custom/baize`; start agent work on `feat/*` or
+  `fix/*`. `main-v2` is the clean mirror and must exactly match
+  `upstream/main-v2`.
 - Integrate upstream with a controlled `--no-commit` merge into
-  `custom/baize`. Never rebase that branch and never commit on the sync branch.
+  `custom/baize`. Never rebase that branch and never commit on `main-v2`.
 - Baize owns the frontend paths marked `merge=baize` in `.gitattributes`.
   Audit upstream WebUI changes and record every decision in
   `docs/UPSTREAM_SYNC_LOG.md`; backend files always use normal merges.
 - Run `scripts/setup-fork-git` once per clone and follow the full bilingual
   workflow in `docs/FORK_MAINTENANCE.md`.
+- Only the three `.github/workflows/baize-*` workflows are active in this fork;
+  upstream release, deploy, site, scheduled, and community workflows stay
+  tracked but are disabled in GitHub settings.
 
 ## PR metadata gates
 

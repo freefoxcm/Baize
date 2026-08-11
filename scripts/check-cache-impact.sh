@@ -39,7 +39,7 @@ else
   base="${CACHE_IMPACT_BASE_SHA:-${BASE_SHA:-}}"
   head="${CACHE_IMPACT_HEAD_SHA:-${HEAD_SHA:-HEAD}}"
   if [[ -z "$base" ]]; then
-    base="$(git merge-base origin/main-v2 "$head" 2>/dev/null || git merge-base main-v2 "$head")"
+    base="$(git merge-base origin/custom/baize "$head" 2>/dev/null || git merge-base custom/baize "$head")"
   fi
   diff_base="$base"
   if merge_base="$(git merge-base "$base" "$head" 2>/dev/null)"; then
