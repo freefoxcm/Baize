@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"reasonix/internal/evidence"
+	"reasonix/internal/planmode"
 	"reasonix/internal/tool"
 )
 
@@ -96,6 +97,36 @@ func TestTodoWriteRejectsInitialCompletedWithoutBaseline(t *testing.T) {
 
 	if _, err := (todoWrite{}).Execute(ctx, args); err == nil || !strings.Contains(err.Error(), "cannot start completed") {
 		t.Fatalf("initial completed todo without baseline should be rejected: %v", err)
+	}
+}
+
+func TestTodoWriteAllowsPlanningItemCompletionWithoutCompleteStep(t *testing.T) {
+	ledger := evidence.NewLedger()
+	ledger.Record(evidence.Receipt{
+		ToolName: "todo_write",
+		Success:  true,
+		Todos:    []evidence.TodoItem{{Content: "Analyze root cause", Status: "in_progress"}},
+	})
+	ctx := planmode.WithActive(evidence.WithLedger(context.Background(), ledger), true)
+	args := json.RawMessage(`{"todos":[
+		{"content":"Analyze root cause","status":"completed"},
+		{"content":"Draft the plan","status":"in_progress"}
+	]}`)
+
+	if _, err := (todoWrite{}).Execute(ctx, args); err != nil {
+		t.Fatalf("planning status update should not require complete_step: %v", err)
+	}
+}
+
+func TestTodoWriteAllowsInitialCompletedPlanningItem(t *testing.T) {
+	ctx := planmode.WithActive(evidence.WithLedger(context.Background(), evidence.NewLedger()), true)
+	args := json.RawMessage(`{"todos":[
+		{"content":"Inspect existing code","status":"completed"},
+		{"content":"Draft the plan","status":"in_progress"}
+	]}`)
+
+	if _, err := (todoWrite{}).Execute(ctx, args); err != nil {
+		t.Fatalf("an initial planning snapshot may include completed analysis: %v", err)
 	}
 }
 

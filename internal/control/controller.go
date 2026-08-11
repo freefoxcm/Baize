@@ -4739,7 +4739,7 @@ func (c *Controller) SessionPersistedState() (agent.PersistedState, bool) {
 // measures it, so the gauge and the trigger can never disagree. Both zero means
 // no data yet — a gauge hides itself.
 func (c *Controller) ContextSnapshot() (int, int) {
-	if c.executor == nil {
+	if c == nil || c.executor == nil {
 		return 0, 0
 	}
 	return c.executor.ContextUsedTokens(), c.executor.ContextWindow()

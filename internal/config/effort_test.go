@@ -486,3 +486,54 @@ func TestEffectiveEffortMiniMax(t *testing.T) {
 		t.Errorf("explicit EffectiveEffort = %q, want disabled", got)
 	}
 }
+
+func TestNormalizeStoredEffortForModel(t *testing.T) {
+	tests := []struct {
+		name string
+		e    ProviderEntry
+		want string
+	}{
+		{
+			name: "empty effort stays auto",
+			e:    ProviderEntry{Name: "opencode-go", Model: "glm-5.2"},
+			want: "",
+		},
+		{
+			name: "supported level preserved",
+			e: ProviderEntry{
+				Name: "opencode-go", Kind: "openai", Model: "deepseek-v4-flash", Effort: "disabled",
+				ModelOverrides: map[string]ProviderModelOverride{
+					"deepseek-v4-flash": {ReasoningProtocol: "deepseek", SupportedEfforts: []string{"disabled", "high", "max"}},
+				},
+			},
+			want: "disabled",
+		},
+		{
+			name: "unsupported model degrades to auto",
+			e: ProviderEntry{
+				Name: "opencode-go", Kind: "openai", Model: "glm-5.2", Effort: "disabled",
+				ModelOverrides: map[string]ProviderModelOverride{
+					"deepseek-v4-flash": {ReasoningProtocol: "deepseek", SupportedEfforts: []string{"disabled", "high", "max"}},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "level outside vocabulary degrades to auto",
+			e: ProviderEntry{
+				Name: "opencode-go", Kind: "openai", Model: "kimi-k3", Effort: "low",
+				ModelOverrides: map[string]ProviderModelOverride{
+					"kimi-k3": {ReasoningProtocol: "openai", SupportedEfforts: []string{"high", "max"}},
+				},
+			},
+			want: "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizeStoredEffortForModel(&tc.e); got != tc.want {
+				t.Fatalf("NormalizeStoredEffortForModel = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -271,6 +272,43 @@ func TestCompactEmitsEvents(t *testing.T) {
 	}
 	if startedAt > doneAt {
 		t.Errorf("CompactionStarted (%d) must precede CompactionDone (%d)", startedAt, doneAt)
+	}
+}
+
+// TestCompactUpdatesContextGauge: a successful compaction must move the
+// context gauge to the projection size immediately, without overwriting
+// lastUsage (tokPerChar depends on the real usage ratio).
+
+// TestEstimateRequestTokens pins the request-scope accounting: the system
+// prompt is counted once (in msgs or via the argument), and tool schemas that
+// ride every request are always included.
+func TestEstimateRequestTokens(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys prompt"},
+		{Role: provider.RoleUser, Content: "hello"},
+	}
+	base := estimateMessagesTokens(msgs)
+	// System message absent from msgs: added from the argument.
+	ext := estimateMessagesTokens(msgs[1:]) + estimateTextTokens("sys prompt")
+	if got := estimateRequestTokens("sys prompt", nil, msgs[1:]); got != ext {
+		t.Errorf("external system: got %d, want %d", got, ext)
+	}
+	// System message already embedded: no double count — only the extra
+	// message framing separates the two forms.
+	if got := estimateRequestTokens("sys prompt", nil, msgs); got != ext+4 {
+		t.Errorf("embedded system: got %d, want %d", got, ext+4)
+	}
+	if got := estimateRequestTokens("sys prompt", nil, msgs); got != base {
+		t.Errorf("embedded system: got %d, want %d", got, base)
+	}
+	// Tool schemas always ride the request.
+	schemas := []provider.ToolSchema{{Name: "read", Description: "read a file"}}
+	if b, err := json.Marshal(schemas); err != nil {
+		t.Fatalf("marshal schemas: %v", err)
+	} else {
+		if got, want := estimateRequestTokens("", schemas, msgs[1:]), estimateMessagesTokens(msgs[1:])+estimateTextTokens(string(b)); got != want {
+			t.Errorf("with schemas: got %d, want %d", got, want)
+		}
 	}
 }
 

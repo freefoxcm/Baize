@@ -526,10 +526,52 @@ func (c *Controller) managementNotice(trimmed string) bool {
 			return true
 		}
 		c.notice(c.mcpListText())
+	case "/forget":
+		name := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if name == "" {
+			c.notice("usage: /forget <item>")
+			return true
+		}
+		if err := c.ForgetMemory(name); err != nil {
+			c.notice("forget: " + err.Error())
+		} else {
+			c.notice("forgotten " + name)
+		}
+	case "/help":
+		c.notice(c.helpText())
 	default:
 		return false
 	}
 	return true
+}
+
+func (c *Controller) helpText() string {
+	var b strings.Builder
+	b.WriteString(i18n.M.HelpHeaderCommands)
+	for _, line := range strings.Split(i18n.M.HelpCommands, "\n") {
+		b.WriteString("\n" + line)
+	}
+	for _, cmd := range c.Commands() {
+		if cmd.Hidden {
+			continue
+		}
+		desc := cmd.Description
+		if desc == "" {
+			desc = cmd.ArgHint
+		}
+		if desc == "" {
+			desc = "custom command"
+		}
+		fmt.Fprintf(&b, "\n  /%-16s %s", cmd.Name, desc)
+	}
+	if skills := c.Skills(); len(skills) > 0 {
+		b.WriteString("\n" + i18n.M.HelpHeaderSkills)
+		for _, sk := range skills {
+			fmt.Fprintf(&b, "\n  /%-16s %s", sk.SlashName(), sk.Description)
+		}
+	}
+	b.WriteString("\n" + i18n.M.HelpMoreFmt)
+	return b.String()
 }
 
 func (c *Controller) modelListText() string {

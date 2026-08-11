@@ -46,6 +46,7 @@ type batchExecution struct {
 	results            []string
 	outcomes           []toolOutcome
 	images             [][]string
+	durations          []int64
 	executions         []*tool.ShellExecution
 	recoveryStopTurn   bool
 	recoveryStopReason string
@@ -119,7 +120,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) bat
 			calls[i].ResolvedReadOnly = &readOnly
 			surfaceWriters[i] = !readOnly
 		}
-		if calls[i].Name == "complete_step" && outcomes[i].errMsg == "" {
+		if calls[i].Name == "complete_step" && !outcomes[i].blocked && outcomes[i].errMsg == "" {
 			completedStepInBatch = true
 		}
 		durations[i] = time.Since(start).Milliseconds()
@@ -380,6 +381,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) bat
 		results:            results,
 		outcomes:           outcomes,
 		images:             images,
+		durations:          durations,
 		executions:         executions,
 		recoveryStopTurn:   recoveryBatchStop,
 		recoveryStopReason: recoveryStopReason,

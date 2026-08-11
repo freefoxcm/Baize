@@ -1799,7 +1799,7 @@ func (c *Config) EnabledPlugins(workspace string, activation *MCPActivationStore
 }
 
 // DefaultSystemPrompt is used when config provides none.
-const DefaultSystemPrompt = `You are Reasonix, a coding agent.
+const DefaultSystemPrompt = `You are Baize, an intelligent agent.
 Use the available tools when they help you complete the user's request.
 Keep changes focused and responses concise.`
 

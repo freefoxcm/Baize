@@ -861,6 +861,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	ctx := context.Background()
 	bc := serve.NewBroadcaster()
 	cfg, _ := config.Load()
+	applyServeLanguage(cfg)
 
 	// Build serve config, merging CLI flags over config file.
 	serveCfg := serveConfigWithCommandDefaults(opts.command, authExplicit, cfg.Serve)
@@ -966,6 +967,10 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 
 	srv := serve.New(ctrl, bc, serveCfg)
 	srv.SetSessionLeases(leases)
+	// Desktop parity for the standalone serve process: apply the configured
+	// desktop default tool-approval mode (auto unless configured otherwise).
+	serve.ApplyDesktopDefaultApprovalMode(ctrl)
+
 	return runServeFrontend(ctrl, srv, serveCfg, serveFrontendOptions{
 		command: opts.command, address: *addr,
 		portFile: *portFile, tokenFile: *tokenFile, pidFile: *pidFile,

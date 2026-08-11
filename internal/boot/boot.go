@@ -409,6 +409,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opts.EffortOverride == nil {
+		// A stored effort is provider-scoped, so on mixed-gateway providers the
+		// active model may not support that vocabulary (e.g. /effort disabled
+		// set on deepseek-v4-flash, then switching to a plain OpenAI model on
+		// the same provider). Degrade to auto instead of hard-failing the
+		// switch; the provider keeps its stored level for models that accept it.
+		entry.Effort = config.NormalizeStoredEffortForModel(entry)
+	}
 	if opts.EffortOverride != nil {
 		entry.Effort = *opts.EffortOverride
 		if entry.Kind == "anthropic" && strings.TrimSpace(entry.Effort) != "" && strings.TrimSpace(entry.Thinking) == "" {
@@ -2022,6 +2030,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 					}
 				}
 			} else if re, ok := cfg.ResolveModel(recoveryModel); ok {
+				// Same provider-scoped-effort degradation as the main provider.
+				re.Effort = config.NormalizeStoredEffortForModel(re)
 				if rProv, err := NewProviderWithProxy(re, proxySpec); err == nil {
 					ctrlOpts.RecoveryReviewer = recovery.NewSessionWithSink(rProv, re.Price, modelRefFromEntry(re), sink)
 				} else {
@@ -2048,6 +2058,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		if evalModel != "" {
 			if re, ok := cfg.ResolveModel(evalModel); ok {
+				// Same provider-scoped-effort degradation as the main provider.
+				re.Effort = config.NormalizeStoredEffortForModel(re)
 				if eProv, err := NewProviderWithProxy(re, proxySpec); err == nil {
 					ctrlOpts.GoalEvaluator = goaleval.NewSessionWithSink(eProv, re.Price, modelRefFromEntry(re), sink)
 				} else {

@@ -205,6 +205,13 @@ func sessionKeyForPasswordHash(passwordHash string) []byte {
 // guard (the login form uses application/x-www-form-urlencoded, not JSON).
 func (ag *authGate) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Brand assets are intentionally public so the password login page and
+		// browser tab can render them before an authenticated session exists.
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+			(r.URL.Path == "/assets/logo-wordmark.svg" || r.URL.Path == "/assets/logo-symbol.svg") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if ag.mode == authInvalid {
 			ag.deny(w, r)
 			return

@@ -489,7 +489,10 @@ jobs:
             -TimeoutSeconds 60
 
       - name: test (Windows desktop and update helper)
-        timeout-minutes: 15
+        # The desktop module compiles Wails + webview2 (CGO) plus the whole
+        # reasonix dependency tree; a cold or stale Go build cache pushes a
+        # clean go test ./... past 15 minutes on Windows runners.
+        timeout-minutes: 30
         run: go test ./...
 
       # Installer packaging is packaging validation, not a code gate: run it

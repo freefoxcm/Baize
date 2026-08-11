@@ -92,6 +92,36 @@ func TestInvalidAuthModeFailsClosed(t *testing.T) {
 	}
 }
 
+func TestBrandAssetsArePublicInAuthenticatedModes(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.ServeConfig
+	}{
+		{name: "token", cfg: config.ServeConfig{AuthMode: "token", Token: "secret"}},
+		{name: "password", cfg: config.ServeConfig{AuthMode: "password", PasswordHash: mustHash("test")}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ag := newAuthGate(test.cfg)
+			handler := ag.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			for _, path := range []string{"/assets/logo-wordmark.svg", "/assets/logo-symbol.svg"} {
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+				if recorder.Code != http.StatusOK {
+					t.Fatalf("GET %s status = %d, want 200 without authentication", path, recorder.Code)
+				}
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/assets/vendor.min.js", nil))
+			if recorder.Code != http.StatusUnauthorized {
+				t.Fatalf("non-brand asset status = %d, want 401", recorder.Code)
+			}
+		})
+	}
+}
+
 // ── Token mode tests ──
 
 func TestTokenModeNoAuthReturns401(t *testing.T) {

@@ -256,7 +256,12 @@ func (s *SubagentStore) CleanupStaleRunning() (int, error) {
 	info, err := os.Stat(s.dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			// os.ReadDir reports a non-directory path as "not exist" on some
+			// platforms. Only an actually missing store is an empty store; an
+			// existing file at this path is storage corruption and must surface.
+			if _, statErr := os.Stat(s.dir); os.IsNotExist(statErr) {
+				return 0, nil
+			}
 		}
 		return 0, err
 	}

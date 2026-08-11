@@ -50,6 +50,18 @@ func SessionContext(sessionPath string) string {
 	return sessionStem(sessionPath) + ".context.json"
 }
 
+// SessionApprovalMode is the per-session tool-approval-mode sidecar
+// (<id>.approval.json). Frontends that bind mode to sessions (serve) persist
+// the current Ask/Auto/YOLO posture here so a restart or a session switch
+// restores what the user last chose.
+func SessionApprovalMode(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".approval.json"
+}
+
 // sessionStem strips the .jsonl suffix so a sidecar sits beside the session as
 // <id>.<kind> rather than <id>.jsonl.<kind>.
 func sessionStem(sessionPath string) string {
@@ -208,5 +220,6 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionConflictLog(sessionPath),
 		SessionRecoveryState(sessionPath),
 		SessionContext(sessionPath),
+		SessionApprovalMode(sessionPath),
 	}
 }

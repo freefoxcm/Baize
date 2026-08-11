@@ -126,7 +126,7 @@ func TestNormalize(t *testing.T) {
 }
 
 // TestDetectLanguagePriority verifies override beats env and that REASONIX_LANG
-// beats LANG. With a clean env we fall back to English.
+// beats LANG. With a clean env we fall back to Chinese (project default).
 func TestDetectLanguagePriority(t *testing.T) {
 	t.Setenv("REASONIX_LANG", "")
 	t.Setenv("LC_ALL", "")
@@ -134,8 +134,8 @@ func TestDetectLanguagePriority(t *testing.T) {
 	t.Setenv("LANG", "")
 	defer DetectLanguage("") // restore default for other tests
 
-	if got := DetectLanguage(""); got != "en" {
-		t.Errorf("clean env: got %q, want en", got)
+	if got := DetectLanguage(""); got != "zh" {
+		t.Errorf("clean env: got %q, want zh", got)
 	}
 
 	t.Setenv("LANG", "zh_CN.UTF-8")

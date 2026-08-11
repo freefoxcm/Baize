@@ -381,6 +381,19 @@ func TestReceiptFromToolCallExtractsCompleteStepIndex(t *testing.T) {
 	}
 }
 
+func TestReceiptFromToolCallPrefersCompleteStepTitleOverIndex(t *testing.T) {
+	receipt := ReceiptFromToolCall("complete_step", json.RawMessage(`{
+		"step":"Cross rendering",
+		"step_index":2,
+		"result":"done",
+		"evidence":[{"kind":"manual","summary":"checked"}]
+	}`), true, true)
+
+	if receipt.Step != "Cross rendering" {
+		t.Fatalf("complete_step receipt should retain semantic title, got %+v", receipt)
+	}
+}
+
 func TestLedgerMatchesLatestSuccessfulTodoStep(t *testing.T) {
 	ledger := NewLedger()
 	ledger.Record(Receipt{

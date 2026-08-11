@@ -83,9 +83,13 @@ type Message struct {
 	Name            string            `json:"name,omitempty"`            // tool message: tool name
 	MemoryCitations []MemoryCitation  `json:"memoryCitations,omitempty"` // local UI metadata; provider requests ignore it
 	WorkDurationMs  int64             `json:"workDurationMs,omitempty"`  // local UI metadata; provider requests ignore it
-	CreatedAt       int64             `json:"createdAt,omitempty"`       // local UI metadata; unix milliseconds; stripped before provider requests
-	Edited          bool              `json:"edited,omitempty"`          // local UI metadata; provider requests ignore it
-	Original        string            `json:"original,omitempty"`        // user prompt before inline edit
+	// ToolDurationMs is the wall-clock execution time of a tool result, in
+	// milliseconds. Local UI metadata (the web/desktop card meta shows it
+	// after a history rebuild); provider requests ignore it.
+	ToolDurationMs int64  `json:"toolDurationMs,omitempty"`
+	CreatedAt      int64  `json:"createdAt,omitempty"` // local UI metadata; unix milliseconds; stripped before provider requests
+	Edited         bool   `json:"edited,omitempty"`    // local UI metadata; provider requests ignore it
+	Original       string `json:"original,omitempty"`  // user prompt before inline edit
 	// LocalOnly marks durable transcript content that must never be sent to a
 	// model provider. Interrupted streaming output uses it so every frontend can
 	// replay what the user saw without feeding partial reasoning or tool-call

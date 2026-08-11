@@ -3655,6 +3655,8 @@ func TestApprovalAllowOnce(t *testing.T) {
 }
 
 func TestMemoryApprovalRequestShowsRememberPayload(t *testing.T) {
+	i18n.DetectLanguage("en")
+	t.Cleanup(func() { i18n.DetectLanguage("en") })
 	approvals := make(chan event.Approval, 1)
 	c := New(Options{Sink: event.FuncSink(func(e event.Event) {
 		if e.Kind == event.ApprovalRequest {
@@ -3870,6 +3872,8 @@ func TestHeadlessGateRefusesFreshHumanApprovalTools(t *testing.T) {
 }
 
 func TestMemoryApprovalSubjectsAndNotifications(t *testing.T) {
+	i18n.DetectLanguage("en")
+	t.Cleanup(func() { i18n.DetectLanguage("en") })
 	forgetSubject := approvalDisplaySubject("forget", "", json.RawMessage(`{"name":"wrong-memory"}`))
 	if forgetSubject != `Archive memory "wrong-memory"` {
 		t.Fatalf("forget approval subject = %q", forgetSubject)
@@ -4203,6 +4207,8 @@ func TestApprovalPersistenceFailureKeepsSessionGrant(t *testing.T) {
 }
 
 func TestPlanModeReadOnlyTrustApprovalPersistsBashCommandTrust(t *testing.T) {
+	i18n.DetectLanguage("en")
+	t.Cleanup(func() { i18n.DetectLanguage("en") })
 	ids := make(chan string, 2)
 	var approval event.Approval
 	var notices []string

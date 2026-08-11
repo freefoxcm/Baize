@@ -322,6 +322,27 @@ func normalizeStoredEffort(raw string) string {
 	return level
 }
 
+// NormalizeStoredEffortForModel downgrades a provider-scoped stored effort to
+// auto when the resolved model's capability vocabulary does not include it.
+// Stored effort lives on the provider, so on mixed-gateway providers the
+// active model may not support the stored level (e.g. /effort disabled set on
+// deepseek-v4-flash, then switching to a plain OpenAI model on the same
+// provider). Degrading instead of hard-failing keeps model switches working;
+// the provider keeps its stored level for models that do accept it.
+func NormalizeStoredEffortForModel(e *ProviderEntry) string {
+	if e == nil {
+		return ""
+	}
+	effort := normalizeStoredEffort(e.Effort) // auto/off normalize to "" == auto
+	if effort == "" {
+		return ""
+	}
+	if cap := EffortCapabilityForEntry(e); !cap.Supported || !containsString(cap.Levels, effort) {
+		return ""
+	}
+	return effort
+}
+
 // ReasoningProtocolForEntry resolves the provider request shape for reasoning
 // controls. Explicit config wins, then the model capability registry, then legacy
 // endpoint heuristics.

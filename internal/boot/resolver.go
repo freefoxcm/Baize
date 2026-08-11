@@ -68,6 +68,11 @@ func (r *LocalProviderResolver) Resolve(selection provider.Selection) (provider.
 	}
 	if selection.Effort != nil {
 		entry.Effort = *selection.Effort
+	} else {
+		// Provider-scoped stored effort may not fit the selected model's
+		// capability vocabulary (mixed-gateway providers); degrade to auto so
+		// model switches don't hard-fail (see NormalizeStoredEffortForModel).
+		entry.Effort = config.NormalizeStoredEffortForModel(entry)
 	}
 	return NewProviderWithProxy(entry, r.proxy)
 }

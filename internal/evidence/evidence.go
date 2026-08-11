@@ -2563,13 +2563,19 @@ func stringField(fields map[string]json.RawMessage, key string) string {
 // step id survives a replan, an index survives a retitle, the title survives
 // neither.
 func completeStepIdentity(fields map[string]json.RawMessage) string {
+	// Most stable first: a step id survives a replan, the semantic title beats
+	// a positional index (new executions reject title/index conflicts), and the
+	// index remains the legacy fallback for index-only callers.
 	if id := stringField(fields, "step_id"); id != "" {
 		return id
+	}
+	if step := stringField(fields, "step"); step != "" {
+		return step
 	}
 	if n, ok := intField(fields, "step_index"); ok && n > 0 {
 		return strconv.Itoa(n)
 	}
-	return stringField(fields, "step")
+	return ""
 }
 
 func intField(fields map[string]json.RawMessage, key string) (int, bool) {

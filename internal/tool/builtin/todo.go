@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"reasonix/internal/evidence"
+	"reasonix/internal/planmode"
 	"reasonix/internal/tool"
 )
 
@@ -30,7 +31,7 @@ type todoItem struct {
 func (todoWrite) Name() string { return "todo_write" }
 
 func (todoWrite) Description() string {
-	return "Record and update a structured task list for the current work. Send the COMPLETE list every call — it replaces the previous one. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
+	return "Record and update a structured task list for the current work. Send the COMPLETE list every call — it replaces the previous one. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). During Plan mode, update planning-item statuses with todo_write itself; complete_step is unavailable until the plan is approved. After approval, execution-step completion requires complete_step evidence and the host advances the list automatically. Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
 }
 
 func (todoWrite) Schema() json.RawMessage {
@@ -105,8 +106,14 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 	if err := verifyCompletedTodoPositions(ctx, p.Todos); err != nil {
 		return "", err
 	}
-	if err := verifyTodoCompletionTransitions(ctx, p.Todos); err != nil {
-		return "", err
+	// Planning todos describe the model's analysis workflow, not approved
+	// execution work. They therefore move through statuses with todo_write
+	// itself. Once the plan is approved, the ordinary evidence-backed
+	// complete_step requirement remains mandatory.
+	if !planmode.Active(ctx) {
+		if err := verifyTodoCompletionTransitions(ctx, p.Todos); err != nil {
+			return "", err
+		}
 	}
 	return fmt.Sprintf("Todos updated: %d total — %d completed, %d in progress, %d pending.",
 		len(p.Todos), done, active, pending), nil

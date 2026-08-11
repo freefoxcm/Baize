@@ -303,6 +303,13 @@ type Messages struct {
 	ListMcpHeader       string // "mcp servers"
 	ListMcpNone         string // no mcp servers
 
+	// /help quick reference (the Submit path). HelpCommands is one
+	// newline-joined line per builtin command, mirroring the catalogue.
+	HelpHeaderCommands string // "commands:"
+	HelpHeaderSkills   string // "skills:"
+	HelpMoreFmt        string // "more: /docs (...), /skill (...), /mcp (...)"
+	HelpCommands       string // newline-joined builtin command lines
+
 	// in-chat memory/model/rewind notices.
 
 	MemoryEditHint               string
@@ -607,11 +614,12 @@ func (m Messages) ProviderStatusMessage(status int) string {
 	return ""
 }
 
-// M is the active catalogue. DetectLanguage replaces it; English is the
-// default so any code path that runs before detection still has text.
+// M is the active catalogue. DetectLanguage replaces it; Chinese is the
+// fallback default (project preference: unconfigured environments resolve to
+// zh), so any code path that runs before detection still has text.
 var (
-	M               = English
-	currentLanguage = "en"
+	M               = Chinese
+	currentLanguage = "zh"
 )
 
 // CurrentLanguage returns the language tag installed by the latest
@@ -622,17 +630,17 @@ func CurrentLanguage() string {
 }
 
 // DetectLanguage selects a catalogue from override (e.g. cfg.Language) or the
-// environment and installs it as M. Returns the resolved tag ("en", "zh") so
-// callers can log or expose it.
+// environment and installs it as M. Returns the resolved tag ("en", "zh",
+// "zh-TW") so callers can log or expose it.
 //
-// Priority: override > REASONIX_LANG > LC_ALL > LC_MESSAGES > LANG > "en".
+// Priority: override > REASONIX_LANG > LC_ALL > LC_MESSAGES > LANG > "zh".
 func DetectLanguage(override string) string {
 	for _, c := range append([]string{override}, envCandidates()...) {
 		if tag := normalize(c); tag != "" {
 			return setLanguage(tag)
 		}
 	}
-	return setLanguage("en")
+	return setLanguage("zh")
 }
 
 func envCandidates() []string {

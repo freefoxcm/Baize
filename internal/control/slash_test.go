@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"reasonix/internal/event"
+	"reasonix/internal/i18n"
 	"reasonix/internal/instruction"
 	"reasonix/internal/memory"
 	"reasonix/internal/skill"
@@ -520,5 +521,82 @@ func TestManagementMigrateFromImportsExplicitSessions(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing notice %q in:\n%s", want, joined)
 		}
+	}
+}
+
+func TestManagementForgetRemovesMemory(t *testing.T) {
+	userDir := filepath.Join(t.TempDir(), "reasonix home")
+	cwd := filepath.Join(t.TempDir(), "project")
+	store := memory.StoreFor(userDir, cwd)
+	saved, err := store.SaveWithOptions(memory.Memory{
+		Name: "forget-me", Title: "Forget me", Description: "to be deleted",
+		Type: memory.TypeProject, Body: "Temporary fact.",
+	}, memory.SaveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notices []string
+	c := New(Options{
+		Memory: &memory.Set{Store: store, CWD: cwd, UserDir: userDir},
+		Sink: event.FuncSink(func(e event.Event) {
+			if e.Kind == event.Notice {
+				notices = append(notices, e.Text)
+			}
+		}),
+	})
+
+	if !c.managementNotice("/forget " + saved.Memory.ID) {
+		t.Fatal("/forget was not handled")
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "forgotten") {
+		t.Fatalf("/forget notice missing confirmation:\n%s", joined)
+	}
+	if _, ok := c.Memory().Store.Read(saved.Memory.ID); ok {
+		t.Fatal("memory still active after /forget")
+	}
+
+	// Missing argument reports usage instead of erroring.
+	notices = nil
+	if !c.managementNotice("/forget") {
+		t.Fatal("bare /forget was not handled")
+	}
+	if !strings.Contains(strings.Join(notices, "\n"), "usage: /forget") {
+		t.Fatalf("bare /forget notice = %v", notices)
+	}
+}
+
+func TestManagementHelpNotice(t *testing.T) {
+	isolateControlConfigHome(t)
+	var notices []string
+	c := New(Options{Sink: event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice {
+			notices = append(notices, e.Text)
+		}
+	})})
+	if !c.managementNotice("/help") {
+		t.Fatal("/help was not handled")
+	}
+	if len(notices) != 1 {
+		t.Fatalf("/help notices = %v", notices)
+	}
+	joined := notices[0]
+	for _, want := range []string{"commands:", "/docs", "/effort", "/memory"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("/help missing %q:\n%s", want, joined)
+		}
+	}
+}
+func TestManagementHelpLocalized(t *testing.T) {
+	t.Cleanup(func() { i18n.DetectLanguage("en") })
+	i18n.DetectLanguage("zh")
+	c := New(Options{})
+	if got := c.helpText(); !strings.Contains(got, "命令：") || !strings.Contains(got, "显示分支树") || !strings.Contains(got, "更多：/docs") {
+		t.Fatalf("zh help missing localized markers: %q", got)
+	}
+	i18n.DetectLanguage("en")
+	c = New(Options{})
+	if got := c.helpText(); !strings.Contains(got, "commands:") || !strings.Contains(got, "show branch tree") {
+		t.Fatalf("en help regressed to non-English: %q", got)
 	}
 }

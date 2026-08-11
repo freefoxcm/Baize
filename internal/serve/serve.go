@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,12 @@ var indexHTML []byte
 //go:embed logo-wordmark.svg
 var logoWordmarkSVG []byte
 
+//go:embed logo-symbol.svg
+var logoSymbolSVG []byte
+
+//go:embed assets/vendor.min.js
+var vendorJS []byte
+
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
 type Server struct {
@@ -54,20 +61,31 @@ type Server struct {
 	bindMu sync.Mutex
 	ctrl   control.SessionAPI
 	bc     *Broadcaster
+	// profileMu guards tokenMode, which the /profile switch mutates (under
+	// bindMu) and GET /profile reads. build() reads it to pass TokenMode to
+	// boot.Build, mapping full/economy/delivery onto the runtime profile.
+	profileMu sync.RWMutex
+	tokenMode string
 	// buildController builds the replacement controller during a model switch.
 	// Nil in production (switchModel falls back to boot.Build); tests inject a
 	// fake so switchModel can be exercised without real provider IO.
 	buildController func(ctx context.Context, ref string) (*control.Controller, error)
+	titleProv       provider.Provider // lightweight flash provider for session titles
+	titlePrice      *provider.Pricing
+	titleModelRef   string
+	titleUsageSink  event.Sink
+	titles          *titleCache
+	auth            *authGate // nil when auth is disabled
+	// statsDir resolves the usage-stats directory for the token calendar.
+	// Defaults to config.StatsDir; tests inject a temp dir.
+	statsDir func() string
+	// now supplies the local calendar day for usage range resolution. Tests
+	// inject a fixed clock so month/year and month-end boundaries stay stable.
+	now func() time.Time
 	// rebuildController rebuilds the same model/runtime generation for an
 	// extension reload. Tests inject it to exercise publication and failure
 	// paths without starting real providers or sidecars.
 	rebuildController func(ctx context.Context, old *control.Controller, ref string) (*control.Controller, error)
-	titleProv         provider.Provider // lightweight flash provider for session titles
-	titlePrice        *provider.Pricing
-	titleModelRef     string
-	titleUsageSink    event.Sink
-	titles            *titleCache
-	auth              *authGate // nil when auth is disabled
 	providerSetupMu   sync.RWMutex
 	providerSetup     providerSetupState
 	// leases guards the active session file against other runtimes (a desktop
@@ -81,13 +99,32 @@ type Server struct {
 // serveCfg controls authentication (none, token, or password).
 func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) *Server {
 	s := &Server{
-		ctrl:   ctrl,
-		bc:     bc,
-		titles: newTitleCache(ctrl.SessionDir()),
-		auth:   newAuthGate(serveCfg),
+		ctrl:     ctrl,
+		bc:       bc,
+		titles:   newTitleCache(ctrl.SessionDir()),
+		auth:     newAuthGate(serveCfg),
+		statsDir: config.StatsDir,
+		now:      time.Now,
 	}
+	s.tokenMode = boot.TokenModeFull
 	s.initTitleProvider()
 	return s
+}
+
+// ApplyDesktopDefaultApprovalMode applies the desktop-default tool approval
+// posture to a freshly constructed controller — desktop parity: new sessions
+// default to auto (config desktop.default_tool_approval_mode) instead of the
+// kernel's conservative ask. Runtime switches keep whatever the user picked;
+// when the field is not set, the controller's existing posture is left alone.
+func ApplyDesktopDefaultApprovalMode(ctrl control.SessionAPI) {
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	if cfg.Desktop.DefaultToolApprovalMode == "" {
+		return
+	}
+	ctrl.SetToolApprovalMode(cfg.DesktopDefaultToolApprovalMode())
 }
 
 // ctl returns the current controller. Handlers must read it through here, never
@@ -192,14 +229,11 @@ func titleProviderConfig(entry *config.ProviderEntry) provider.Config {
 // switchModel rebuilds the controller with a new model, carrying over the
 // conversation history. This replicates the TUI/desktop model-switch path.
 //
-// The heavy steps — Snapshot (may touch disk), Build (provider init IO), and the
-// old controller's Close (jobs.CloseWithGrace up to 15s + SessionEnd hook) — all
-// run OFF s.mu. Holding the write lock across them would wedge every HTTP handler
-// on s.ctl()'s RLock for the duration, stalling the whole serve frontend
-// (mirrors the acp rebuildSession fix and PR #5920). bindMu serializes the
-// switch against every other session-path-changing entry point (/resume,
-// /new, /fork), preserving the old "second switch waits" semantics without
-// pinning s.mu.
+// The heavy steps — Snapshot, Build (provider init IO), and the old
+// controller's Close — all run OFF s.mu: holding the write lock across them
+// would wedge every HTTP handler on s.ctl()'s RLock (mirrors the acp
+// rebuildSession fix and PR #5920). bindMu serializes the switch against
+// /resume, /new, and /fork, preserving "second switch waits" semantics.
 func (s *Server) switchModel(ctx context.Context, ref string) error {
 	s.bindMu.Lock()
 	defer s.bindMu.Unlock()
@@ -222,9 +256,8 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 		slog.Warn("serve: snapshot before model switch", "err", err)
 	}
 	// Capture the continue path and history only after Snapshot: a snapshot
-	// conflict can retarget cur to a recovery branch (or adopt the newer disk
-	// transcript), and a pre-snapshot capture would bind the rebuilt controller
-	// back to the original file, re-conflicting on every later save.
+	// conflict can retarget cur to a recovery branch, and a pre-snapshot capture
+	// would bind the rebuild back to the original file, re-conflicting later.
 	prevPath := cur.SessionPath()
 	carried := cur.History()
 
@@ -255,11 +288,14 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	// this session.
 	if prev, ok := cur.(*control.Controller); ok {
 		newCtrl.RestoreSessionAuthorizations(prev.SessionAuthorizations())
+		// Carry the runtime approval posture across the rebuild: boot.Build
+		// starts from config defaults, so without this a live ask/auto/yolo
+		// choice resets after every model/effort switch.
+		newCtrl.SetToolApprovalMode(prev.ToolApprovalMode())
 	}
 	// Persist before publishing the replacement. A failed write leaves cur and
 	// the on-disk transcript coherent and lets the caller retry; publishing first
-	// would report a successful switch whose refreshed system contract disappears
-	// on restart. AdoptHistory retained the loaded CAS baseline for this rewrite.
+	// would report a switch whose system contract disappears on restart.
 	if newPath != "" {
 		if err := newCtrl.Snapshot(); err != nil {
 			newCtrl.Close()
@@ -283,9 +319,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 
 	// Publish the swap under a short write lock. bindMu already serializes
 	// switches — today the only writer of s.ctrl — so the identity re-check is
-	// defensive: it keeps a future controller-swapping path (or a test doing so)
-	// from being silently clobbered after the off-lock build. On a mismatch,
-	// discard the fresh controller off-lock instead of leaking it.
+	// defensive against a future controller-swapping path clobbering the swap.
 	s.mu.Lock()
 	if s.ctrl != cur {
 		s.mu.Unlock()
@@ -307,19 +341,32 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 }
 
 // build returns the replacement controller for a model switch, using the
-// injected builder in tests and boot.Build in production.
+// injected builder in tests and boot.Build in production. TokenMode is read
+// from the current /profile setting so a work-mode switch rebuilds the
+// controller under the target runtime profile's tool contract.
 func (s *Server) build(ctx context.Context, ref string) (*control.Controller, error) {
 	if s.buildController != nil {
 		return s.buildController(ctx, ref)
 	}
+	s.profileMu.RLock()
+	tokenMode := s.tokenMode
+	s.profileMu.RUnlock()
 	opts := boot.Options{
 		Model:       ref,
 		Sink:        s.bc,
 		Stderr:      os.Stderr,
 		StatsSource: "serve",
+		TokenMode:   tokenMode,
 	}
+	// Rebuilds (model/effort/work-mode switches) must keep the serving
+	// workspace's session store and workspace root; boot.Build would otherwise
+	// fall back to the global session dir, orphaning GET /sessions. build() runs
+	// before the replacement is published, so s.ctl() still holds the old one.
+	cur := s.ctl()
+	opts.SessionDir = cur.SessionDir()
+	opts.WorkspaceRoot = cur.WorkspaceRoot()
 	// Keep the logical-session private temporary directory across model switches.
-	if cur, ok := s.ctl().(*control.Controller); ok && cur != nil {
+	if cur, ok := cur.(*control.Controller); ok && cur != nil {
 		opts.SessionTemp = cur.SessionTemp()
 	}
 	return boot.Build(ctx, opts)
@@ -447,6 +494,169 @@ func (s *Server) switchEffort(ctx context.Context, level string) error {
 	return s.switchModel(ctx, entry.Name+"/"+entry.Model)
 }
 
+// effort reports the reasoning-effort capability of the active provider
+// (desktop EffortSwitcher data: supported / levels / current / default).
+func (s *Server) effort(w http.ResponseWriter, _ *http.Request) {
+	cfg, err := config.Load()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ref := currentModelRef(s.ctl())
+	entry, ok := cfg.ResolveModel(ref)
+	if !ok {
+		writeJSON(w, map[string]any{"supported": false, "levels": []string{}, "current": "", "default": ""})
+		return
+	}
+	cap := config.EffortCapabilityForEntry(entry)
+	// Report the runtime-normalized effort: a provider-scoped stored level the
+	// active model cannot express degrades to auto at build time, so the UI
+	// must not keep advertising the stored value (which no longer applies).
+	current := config.NormalizeStoredEffortForModel(entry)
+	if current == "" {
+		// "auto" means "don't override the provider default"; an unset stored
+		// effort (explicit /effort auto and never-set both store "") behaves
+		// the same, so surface it as auto instead of collapsing to the model's
+		// default level (which would highlight "high" after picking auto).
+		current = "auto"
+	}
+	writeJSON(w, map[string]any{
+		"supported": cap.Supported,
+		"levels":    cap.Levels,
+		"current":   current,
+		"default":   cap.Default,
+	})
+}
+
+// setEffort switches the reasoning-effort level of the active provider.
+func (s *Server) setEffort(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Level string `json:"level"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Level == "" {
+		http.Error(w, "missing level", http.StatusBadRequest)
+		return
+	}
+	if controllerHasActiveRuntimeWork(s.ctl()) {
+		http.Error(w, "cannot change effort while work is running", http.StatusConflict)
+		return
+	}
+	if err := s.switchEffort(r.Context(), req.Level); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// switchProfile rebuilds the controller under a new runtime profile (work
+// mode). It mirrors switchModel's Snapshot/Build/Adopt/Close skeleton so the
+// conversation, history, and session authorizations carry across the rebuild.
+func (s *Server) switchProfile(ctx context.Context, mode string) error {
+	s.bindMu.Lock()
+	defer s.bindMu.Unlock()
+
+	cur := s.ctl()
+	if controllerHasActiveRuntimeWork(cur) {
+		return fmt.Errorf("cannot switch work mode while active work or background jobs are running")
+	}
+	ref := currentModelRef(cur)
+	if err := cur.Snapshot(); err != nil {
+		slog.Warn("serve: snapshot before work-mode switch", "err", err)
+	}
+	prevPath := cur.SessionPath()
+	carried := cur.History()
+
+	s.profileMu.Lock()
+	s.tokenMode = mode
+	s.profileMu.Unlock()
+
+	newCtrl, err := s.build(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("switch work mode: %w", err)
+	}
+	newPath := agent.ContinueSessionPath(prevPath, newCtrl.SessionDir(), newCtrl.Label())
+	if fresh := newCtrl.History(); len(fresh) > 0 && fresh[0].Role == provider.RoleSystem {
+		if len(carried) > 0 && carried[0].Role == provider.RoleSystem {
+			carried[0] = fresh[0]
+		} else {
+			carried = append([]provider.Message{fresh[0]}, carried...)
+		}
+	}
+	newCtrl.AdoptHistory(carried, newPath)
+	if prev, ok := cur.(*control.Controller); ok {
+		newCtrl.RestoreSessionAuthorizations(prev.SessionAuthorizations())
+		// Keep the runtime approval posture across work-mode rebuilds too.
+		newCtrl.SetToolApprovalMode(prev.ToolApprovalMode())
+	}
+	if newPath != "" {
+		if err := newCtrl.Snapshot(); err != nil {
+			newCtrl.Close()
+			return fmt.Errorf("switch work mode: snapshot adopted history: %w", err)
+		}
+	}
+	activePath := newCtrl.SessionPath()
+	if err := s.rebindSessionLease(activePath); err != nil {
+		newCtrl.Close()
+		if errors.Is(err, agent.ErrSessionLeaseHeld) {
+			return fmt.Errorf("switch work mode: %s", sessionInUseError(err))
+		}
+		slog.Error("serve: bind replacement session lease", "err", err)
+		return fmt.Errorf("switch work mode: unable to secure replacement session")
+	}
+	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
+	s.mu.Lock()
+	if s.ctrl != cur {
+		s.mu.Unlock()
+		if restoreErr := s.rebindSessionLease(cur.SessionPath()); restoreErr != nil {
+			newCtrl.Close()
+			slog.Error("serve: restore outgoing session lease after aborted work-mode switch", "err", restoreErr)
+			return fmt.Errorf("switch work mode: session changed during switch")
+		}
+		newCtrl.Close()
+		return fmt.Errorf("switch work mode: session changed during switch")
+	}
+	s.ctrl = newCtrl
+	s.mu.Unlock()
+	cur.Close()
+	return nil
+}
+
+// profile reports the current work mode (runtime profile) as full/economy/delivery.
+func (s *Server) profile(w http.ResponseWriter, _ *http.Request) {
+	s.profileMu.RLock()
+	mode := s.tokenMode
+	s.profileMu.RUnlock()
+	writeJSON(w, map[string]any{"mode": mode})
+}
+
+// setProfile switches the work mode (runtime profile) for the active session.
+func (s *Server) setProfile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Mode == "" {
+		http.Error(w, "missing mode", http.StatusBadRequest)
+		return
+	}
+	raw := strings.ToLower(strings.TrimSpace(req.Mode))
+	switch raw {
+	case boot.TokenModeFull, boot.TokenModeEconomy, boot.TokenModeDelivery:
+	default:
+		http.Error(w, "invalid mode", http.StatusBadRequest)
+		return
+	}
+	mode := boot.NormalizeTokenMode(raw)
+	if controllerHasActiveRuntimeWork(s.ctl()) {
+		http.Error(w, "cannot switch work mode while work is running", http.StatusConflict)
+		return
+	}
+	if err := s.switchProfile(r.Context(), mode); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func controllerHasActiveRuntimeWork(ctrl control.SessionAPI) bool {
 	if ctrl == nil {
 		return false
@@ -491,12 +701,24 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /", s.index)
 	mux.HandleFunc("GET /sessions/{id}", s.index)
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
+	mux.HandleFunc("GET /assets/logo-symbol.svg", s.logoSymbol)
+	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
 	mux.HandleFunc("GET /provider-setup", s.providerSetupStatus)
 	mux.HandleFunc("POST /provider-setup", s.providerSetupSave)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
+	mux.HandleFunc("GET /usage/calendar", s.usageCalendar)
 	mux.HandleFunc("POST /submit", s.submit)
+	mux.HandleFunc("POST /delivery-recovery", s.deliveryRecovery)
+	mux.HandleFunc("POST /steer", s.steer)
+	mux.HandleFunc("POST /edit", s.edit)
+	mux.HandleFunc("GET /file", s.file)
+	mux.HandleFunc("POST /attach", s.attach)
+	mux.HandleFunc("GET /effort", s.effort)
+	mux.HandleFunc("POST /effort", s.setEffort)
+	mux.HandleFunc("GET /profile", s.profile)
+	mux.HandleFunc("POST /profile", s.setProfile)
 	s.registerInboxRoutes(mux)
 	mux.HandleFunc("POST /cancel", s.cancel)
 	mux.HandleFunc("POST /approve", s.approve)
@@ -627,10 +849,26 @@ func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(html))
 }
 
+func (s *Server) logoSymbol(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(logoSymbolSVG)
+}
+
 func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = w.Write(logoWordmarkSVG)
+}
+
+// vendorJS serves the embedded rendering libraries (marked + DOMPurify +
+// highlight.js, bundled by scripts/build-serve-vendor.mjs). Long cache: the
+// bundle is versioned by the build, so a stale copy only persists for one
+// browser session at most.
+func (s *Server) vendorJSHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(vendorJS)
 }
 
 // sseKeepaliveInterval is how often the /events handler emits a `: ping`
@@ -696,9 +934,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 }
 
 // submit runs raw user input as a turn (slash commands and @-references
-// resolved by the controller). Returns 202 — output arrives on the event stream.
-// An optional "format":"json_object" asks the model for structured JSON output
-// on this turn (text.format on the wire).
+// resolved by the controller). Returns 202 — output arrives on the event
+// stream; intercepted commands (/model, /effort, /switch) return 204.
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Input  string `json:"input"`
@@ -734,17 +971,36 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Intercept /effort <level> for reasoning effort switching.
-	if strings.HasPrefix(trimmed, "/effort ") {
-		level := strings.TrimSpace(strings.TrimPrefix(trimmed, "/effort"))
-		if level != "" {
-			if err := s.switchEffort(r.Context(), level); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
+	// /switch must restore the target session's approval mode (desktop parity).
+	if strings.HasPrefix(trimmed, "/switch ") {
+		if err := s.switchSession(trimmed); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// Intercept /effort <level> for reasoning-effort switching; bare /effort
+	// reports the current level and available levels (mirrors how /model
+	// lists models instead of switching). The controller's Submit path has no
+	// /effort case, so without this the bare command would surface as
+	// "unknown command". /thinking is the same knob under its historical name.
+	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") || trimmed == "/thinking" || strings.HasPrefix(trimmed, "/thinking ") {
+		level := strings.TrimSpace(strings.TrimPrefix(trimmed, "/effort"))
+		if strings.HasPrefix(trimmed, "/thinking") {
+			level = strings.TrimSpace(strings.TrimPrefix(trimmed, "/thinking"))
+		}
+		if level == "" {
+			// Bare command reports the current level and available levels.
+			s.effort(w, r)
+			return
+		}
+		if err := s.switchEffort(r.Context(), level); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 	// Serialize turn admission with controller-generation rebuilds. Admission
 	// marks an ordinary turn running synchronously, so a reload that follows
@@ -772,6 +1028,237 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	s.bindMu.Unlock()
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// deliveryRecovery continues a turn that ended at the final-readiness gate.
+// It mirrors Desktop's recovery action: a paused Goal is resumed first so its
+// delivery scope/checkpoint survive, then the controller receives a one-shot
+// authorization to reuse the immediately preceding delivery evidence ledger.
+func (s *Server) deliveryRecovery(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Display string `json:"display"`
+		Input   string `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" {
+		http.Error(w, "missing input", http.StatusBadRequest)
+		return
+	}
+	body.Input = strings.TrimSpace(body.Input)
+	body.Display = strings.TrimSpace(body.Display)
+	if body.Display == "" {
+		body.Display = body.Input
+	}
+	if strings.HasPrefix(body.Input, "!") {
+		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
+		return
+	}
+
+	// Keep recovery admission in the same generation/session critical section
+	// as ordinary submit. A Goal with persisted delivery state must be running
+	// before SubmitDeliveryRecovery starts its continuation.
+	s.bindMu.Lock()
+	defer s.bindMu.Unlock()
+	ctl := s.ctl()
+	if strings.TrimSpace(ctl.Goal()) != "" && ctl.GoalStatus() != control.GoalStatusRunning {
+		if !ctl.ResumeGoal() {
+			http.Error(w, "goal cannot be resumed for delivery recovery", http.StatusConflict)
+			return
+		}
+	}
+	ctl.SubmitDeliveryRecovery(body.Display, body.Input)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		http.Error(w, "missing text", http.StatusBadRequest)
+		return
+	}
+	// TrySteer reports whether the active turn accepted the guidance. A
+	// rejection means the turn exited between the client's running check and
+	// the enqueue; the client keeps the text queued and retries it as a
+	// regular follow-up after the turn (Desktop guidance-queue semantics).
+	if !s.ctl().TrySteer(body.Text) {
+		http.Error(w, "no active turn accepted the guidance", http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// edit re-submits an edited user message. display is what the transcript
+// shows, input is what the agent receives, original is the pre-edit text the
+// controller uses to mark the edit. Output arrives on the event stream.
+func (s *Server) edit(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Display  string `json:"display"`
+		Input    string `json:"input"`
+		Original string `json:"original"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" {
+		http.Error(w, "missing input", http.StatusBadRequest)
+		return
+	}
+	if strings.HasPrefix(strings.TrimSpace(body.Input), "!") {
+		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
+		return
+	}
+	s.ctl().SubmitEditedDisplay(body.Display, body.Input, body.Original)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// file serves workspace images referenced from markdown (agent output or
+// pasted attachments). Access is confined to the workspace root: absolute
+// paths must resolve inside it, and symlinks that escape it are refused.
+// Only raster image types are served; SVG is excluded (script-in-SVG risk).
+func (s *Server) file(w http.ResponseWriter, r *http.Request) {
+	root := s.ctl().WorkspaceRoot()
+	if root == "" {
+		http.Error(w, "no workspace", http.StatusNotFound)
+		return
+	}
+	raw := r.URL.Query().Get("path")
+	if raw == "" {
+		http.Error(w, "missing path", http.StatusBadRequest)
+		return
+	}
+	clean, err := securePathJoin(root, raw)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	fi, err := os.Stat(clean)
+	if err != nil || fi.IsDir() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if fi.Size() > 10<<20 {
+		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	ct := imageContentType(clean)
+	if ct == "" {
+		http.Error(w, "unsupported type", http.StatusUnsupportedMediaType)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	http.ServeFile(w, r, clean)
+}
+
+// attach saves a pasted/dropped file (base64 in JSON — the CSRF guard
+// requires application/json) under <workspace>/.reasonix/attachments/ and
+// returns the workspace-relative path for use as a markdown image reference.
+func (s *Server) attach(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // base64
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Data == "" {
+		http.Error(w, "missing data", http.StatusBadRequest)
+		return
+	}
+	root := s.ctl().WorkspaceRoot()
+	if root == "" {
+		http.Error(w, "no workspace", http.StatusNotFound)
+		return
+	}
+	raw, err := base64.StdEncoding.DecodeString(body.Data)
+	if err != nil {
+		http.Error(w, "bad base64", http.StatusBadRequest)
+		return
+	}
+	if len(raw) > 10<<20 {
+		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	name := sanitizeFilename(filepath.Base(body.Name))
+	if name == "" {
+		name = "paste.png"
+	}
+	dir := filepath.Join(root, ".reasonix", "attachments")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	final := filepath.Join(dir, time.Now().Format("20060102-150405")+"-"+name)
+	if err := os.WriteFile(final, raw, 0o644); err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	rel, err := filepath.Rel(root, final)
+	if err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"path": filepath.ToSlash(rel)})
+}
+
+// securePathJoin resolves raw (absolute or workspace-relative) against root,
+// rejects anything outside it, and refuses symlink escapes.
+func securePathJoin(root, raw string) (string, error) {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	// Normalize the root the same way the target gets normalized below: on
+	// macOS /var is a symlink to /private/var, so an unresolved root would
+	// never match the EvalSymlinks'd target (and vice versa). If the root
+	// does not exist yet, EvalSymlinks fails and the raw form is kept.
+	if resolved, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootAbs = resolved
+	}
+	p := raw
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(rootAbs, filepath.FromSlash(p))
+	}
+	clean := filepath.Clean(p)
+	// Resolve the candidate's own symlinks too (macOS /var → /private/var):
+	// an absolute raw path may come in unresolved and must still compare
+	// against the normalized root in the same space.
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		clean = resolved
+	}
+	if clean != rootAbs && !strings.HasPrefix(clean, rootAbs+string(os.PathSeparator)) {
+		return "", errors.New("outside workspace")
+	}
+	eval, err := filepath.EvalSymlinks(clean)
+	if err != nil {
+		return "", err
+	}
+	if eval != rootAbs && !strings.HasPrefix(eval, rootAbs+string(os.PathSeparator)) {
+		return "", errors.New("symlink escape")
+	}
+	return eval, nil
+}
+
+func imageContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	}
+	return ""
+}
+
+func sanitizeFilename(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' || r > 127 {
+			return r
+		}
+		return '-'
+	}, name)
+	return strings.Trim(name, ".-")
 }
 
 func (s *Server) cancel(w http.ResponseWriter, _ *http.Request) {
@@ -827,6 +1314,7 @@ func (s *Server) newSession(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.ctl().SetToolApprovalMode(defaultApprovalMode()) // fresh session = configured default
 	// Fresh path — the lease follows it; failure is theoretical but not silent.
 	if err := s.rebindSessionLease(s.ctl().SessionPath()); err != nil {
 		http.Error(w, sessionInUseError(err), http.StatusConflict)
@@ -839,6 +1327,8 @@ type historyToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
+	Added     int    `json:"added,omitempty"`
+	Removed   int    `json:"removed,omitempty"`
 }
 
 type historyMessage struct {
@@ -848,17 +1338,32 @@ type historyMessage struct {
 	ToolCalls  []historyToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string            `json:"toolCallId,omitempty"`
 	ToolName   string            `json:"toolName,omitempty"`
+	DurationMs int64             `json:"durationMs,omitempty"` // tool result wall-clock time
 }
 
 func historyMessages(msgs []provider.Message) []historyMessage {
 	out := make([]historyMessage, 0, len(msgs))
+	// CreatedAt of the most recent assistant message that issued tool calls;
+	// used to estimate the duration of tool results from sessions that
+	// predate ToolDurationMs persistence.
+	var lastToolCallAt int64
 	for _, m := range msgs {
-		// Steer messages are surfaced as a notice, not a user message.
 		if m.Role == provider.RoleUser {
+			// Steer messages are surfaced as a notice, not a user message.
 			if steerText, isSteer := agent.SteerText(m.Content); isSteer {
 				out = append(out, historyMessage{Role: "notice", Content: "↪ " + steerText})
 				continue
 			}
+			// Desktop-consistent display: system-injected compose prefixes
+			// (plan-mode marker, language directives, transient blocks) and
+			// referenced-context preambles are stripped so history shows the
+			// user's actual text; synthetic or empty turns are dropped.
+			text := control.StripReferencedContextPrefix(control.StripComposePrefixes(agent.UserMessageText(m)))
+			if text == "" || control.IsSyntheticUserMessage(text) {
+				continue
+			}
+			out = append(out, historyMessage{Role: string(m.Role), Content: text})
+			continue
 		}
 		hm := historyMessage{Role: string(m.Role), Content: m.Content}
 		if m.Role == provider.RoleAssistant {
@@ -866,13 +1371,23 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 			if len(m.ToolCalls) > 0 {
 				hm.ToolCalls = make([]historyToolCall, len(m.ToolCalls))
 				for i, tc := range m.ToolCalls {
-					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments}
+					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments, Added: tc.Added, Removed: tc.Removed}
 				}
+				lastToolCallAt = m.CreatedAt
 			}
 		}
 		if m.Role == provider.RoleTool {
 			hm.ToolCallID = m.ToolCallID
 			hm.ToolName = m.Name
+			hm.DurationMs = m.ToolDurationMs
+			// Sessions predating ToolDurationMs (older than the duration
+			// persistence change) have no recorded execution time; estimate it
+			// from the persisted CreatedAt delta between the tool result and
+			// the assistant message that issued the calls. Parallel batches
+			// share the same start, so each result shows the batch span.
+			if hm.DurationMs == 0 && lastToolCallAt > 0 && m.CreatedAt > lastToolCallAt {
+				hm.DurationMs = m.CreatedAt - lastToolCallAt
+			}
 		}
 		out = append(out, hm)
 	}
@@ -1026,6 +1541,7 @@ func (s *Server) fork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, sessionInUseError(err), http.StatusConflict)
 		return
 	}
+	s.persistApprovalMode() // the fork inherits the source session's posture
 	writeJSON(w, map[string]string{"path": path})
 }
 
@@ -1081,7 +1597,9 @@ func (s *Server) toolApprovalMode(w http.ResponseWriter, r *http.Request) {
 	}
 	switch strings.ToLower(strings.TrimSpace(body.Mode)) {
 	case control.ToolApprovalAsk, control.ToolApprovalAuto, control.ToolApprovalYolo:
-		s.ctl().SetToolApprovalMode(body.Mode)
+		cur := s.ctl() // one snapshot: a concurrent switchModel must not split mode/path
+		cur.SetToolApprovalMode(body.Mode)
+		persistApprovalModeFor(cur)
 	default:
 		http.Error(w, "mode must be ask, auto, or yolo", http.StatusBadRequest)
 		return
@@ -1203,6 +1721,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		hook()
 	}
 	s.ctl().Resume(loaded, realPath)
+	s.applySessionApprovalMode(realPath) // restore the session's own posture
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1506,6 +2025,86 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		out = []sessionEntry{}
 	}
 	writeJSON(w, out)
+}
+
+const usageCalendarDateLayout = "2006-01-02"
+
+// usageCalendarRange resolves the welcome-page presets into inclusive local
+// calendar boundaries. Rolling month presets clamp month-end dates (May 31
+// minus three months is February 28/29 rather than a normalized March date).
+func usageCalendarRange(now time.Time, preset string) (key string, from, to time.Time, err error) {
+	y, m, d := now.Date()
+	to = time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+	key = strings.TrimSpace(preset)
+	if key == "" {
+		key = "6m"
+	}
+	switch key {
+	case "year":
+		from = time.Date(y, time.January, 1, 0, 0, 0, 0, now.Location())
+	case "3m":
+		from = addCalendarMonthsClamped(to, -3)
+	case "6m":
+		from = addCalendarMonthsClamped(to, -6)
+	default:
+		return "", time.Time{}, time.Time{}, fmt.Errorf("invalid usage calendar range %q", key)
+	}
+	return key, from, to, nil
+}
+
+func addCalendarMonthsClamped(day time.Time, delta int) time.Time {
+	y, m, d := day.Date()
+	target := time.Date(y, m+time.Month(delta), 1, 0, 0, 0, 0, day.Location())
+	last := target.AddDate(0, 1, -1).Day()
+	if d > last {
+		d = last
+	}
+	return time.Date(target.Year(), target.Month(), d, 0, 0, 0, 0, day.Location())
+}
+
+// usageCalendar serves the welcome-page Token activity heatmap. Presets end
+// today and aggregate only rows labelled with this frontend's StatsSource
+// ("serve"). Per-day requests, turns and model detail ride in the response.
+func (s *Server) usageCalendar(w http.ResponseWriter, r *http.Request) {
+	key, from, to, err := usageCalendarRange(s.now(), r.URL.Query().Get("range"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rs, err := stats.NewWriter(s.statsDir()).Query(stats.SourceFilter{
+		Source: "serve",
+		From:   from,
+		To:     to,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type dayEntry struct {
+		Day      string           `json:"day"`
+		Tokens   int64            `json:"tokens"`
+		Requests int              `json:"requests"`
+		Turns    int              `json:"turns"`
+		ByModel  map[string]int64 `json:"byModel,omitempty"`
+	}
+	daysOut := make([]dayEntry, 0, len(rs.Daily))
+	var max int64
+	for _, d := range rs.Daily {
+		if int64(d.Total) > max {
+			max = int64(d.Total)
+		}
+		daysOut = append(daysOut, dayEntry{Day: d.Day, Tokens: int64(d.Total), Requests: d.Requests, Turns: d.Turns, ByModel: d.ByModel})
+	}
+	writeJSON(w, map[string]any{
+		"range":      key,
+		"from":       from.Format(usageCalendarDateLayout),
+		"to":         to.Format(usageCalendarDateLayout),
+		"days":       daysOut,
+		"max":        max,
+		"total":      rs.Tokens,
+		"turns":      rs.Turns,
+		"activeDays": rs.ActiveDays,
+	})
 }
 
 // deleteSession removes a saved session by the session name returned from /sessions.

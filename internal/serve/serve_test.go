@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"reasonix/internal/jobs"
 	"reasonix/internal/permission"
 	"reasonix/internal/provider"
+	_ "reasonix/internal/provider/anthropic" // register the kind: boot.Build resolves the default deepseek-flash entry, whose kind is now anthropic
 	"reasonix/internal/tool"
 )
 
@@ -69,41 +71,26 @@ type fakeRunner struct{ got chan string }
 
 func (f fakeRunner) Run(_ context.Context, input string) error { f.got <- input; return nil }
 
-type serveApprovalWriter struct{}
-
-func (serveApprovalWriter) Name() string        { return "serve_write" }
-func (serveApprovalWriter) Description() string { return "write a test file" }
-func (serveApprovalWriter) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`)
-}
-func (serveApprovalWriter) ReadOnly() bool { return false }
-func (serveApprovalWriter) Execute(context.Context, json.RawMessage) (string, error) {
-	return "ok", nil
+type deliveryRecoveryController struct {
+	control.SessionAPI
+	goal         string
+	goalStatus   string
+	resumeResult bool
+	resumed      bool
+	submitted    chan [2]string
 }
 
-type serveApprovalProvider struct {
-	mu   sync.Mutex
-	turn int
-}
-
-func (p *serveApprovalProvider) Name() string { return "serve-approval-test" }
-func (p *serveApprovalProvider) Stream(context.Context, provider.Request) (<-chan provider.Chunk, error) {
-	p.mu.Lock()
-	turn := p.turn
-	p.turn++
-	p.mu.Unlock()
-
-	ch := make(chan provider.Chunk, 2)
-	if turn == 0 {
-		ch <- provider.Chunk{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{
-			ID: "serve-approval-1", Name: "serve_write", Arguments: `{"path":"a.txt"}`,
-		}}
-	} else {
-		ch <- provider.Chunk{Type: provider.ChunkText, Text: "done"}
+func (c *deliveryRecoveryController) Goal() string       { return c.goal }
+func (c *deliveryRecoveryController) GoalStatus() string { return c.goalStatus }
+func (c *deliveryRecoveryController) ResumeGoal() bool {
+	c.resumed = true
+	if c.resumeResult {
+		c.goalStatus = control.GoalStatusRunning
 	}
-	ch <- provider.Chunk{Type: provider.ChunkDone}
-	close(ch)
-	return ch, nil
+	return c.resumeResult
+}
+func (c *deliveryRecoveryController) SubmitDeliveryRecovery(display, input string) {
+	c.submitted <- [2]string{display, input}
 }
 
 func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
@@ -145,6 +132,187 @@ func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 		case <-deadline:
 			t.Fatal("never saw turn_done on the stream")
 		}
+	}
+}
+
+func TestServeDeliveryRecoveryEndpoint(t *testing.T) {
+	baseBC := NewBroadcaster()
+	base := control.New(control.Options{Sink: baseBC})
+	wrapped := &deliveryRecoveryController{
+		SessionAPI:   base,
+		goal:         "ship the change",
+		goalStatus:   control.GoalStatusBlocked,
+		resumeResult: true,
+		submitted:    make(chan [2]string, 1),
+	}
+	srv := httptest.NewServer(New(wrapped, baseBC, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/delivery-recovery", "application/json", strings.NewReader(`{"input":" Continue checks "}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("delivery recovery status = %d, want 202", resp.StatusCode)
+	}
+	if !wrapped.resumed {
+		t.Fatal("blocked Goal was not resumed before delivery recovery")
+	}
+	select {
+	case got := <-wrapped.submitted:
+		if got != [2]string{"Continue checks", "Continue checks"} {
+			t.Fatalf("delivery recovery submission = %#v", got)
+		}
+	default:
+		t.Fatal("delivery recovery was not submitted")
+	}
+}
+
+func TestServeDeliveryRecoveryRejectsInvalidOrUnresumableRequests(t *testing.T) {
+	baseBC := NewBroadcaster()
+	base := control.New(control.Options{Sink: baseBC})
+	wrapped := &deliveryRecoveryController{
+		SessionAPI: base,
+		goal:       "already complete",
+		goalStatus: control.GoalStatusComplete,
+		submitted:  make(chan [2]string, 1),
+	}
+	handler := New(wrapped, baseBC, config.ServeConfig{}).Handler()
+
+	cases := []struct {
+		body string
+		want int
+	}{
+		{body: `{}`, want: http.StatusBadRequest},
+		{body: `{"input":"!rm file"}`, want: http.StatusForbidden},
+		{body: `{"input":"continue"}`, want: http.StatusConflict},
+	}
+	for _, tc := range cases {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/delivery-recovery", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(recorder, req)
+		if recorder.Code != tc.want {
+			t.Fatalf("delivery recovery body %s status = %d, want %d", tc.body, recorder.Code, tc.want)
+		}
+	}
+	select {
+	case got := <-wrapped.submitted:
+		t.Fatalf("invalid recovery unexpectedly submitted: %#v", got)
+	default:
+	}
+}
+
+// TestHistoryMessagesCarriesToolDuration verifies /history serializes the
+// persisted tool-execution duration so the web UI can show it after a rebuild.
+func TestHistoryMessagesCarriesToolDuration(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleAssistant, Content: "plan", ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: "echo"}, {ID: "c2", Name: "edit_file", Arguments: "{}", Added: 3, Removed: 1}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "out", ToolDurationMs: 2500},
+	}
+	hm := historyMessages(msgs)
+	var toolMsg historyMessage
+	for _, m := range hm {
+		if m.Role == "tool" {
+			toolMsg = m
+		}
+	}
+	if toolMsg.ToolCallID != "c1" {
+		t.Fatalf("tool message missing: %+v", hm)
+	}
+	if toolMsg.DurationMs != 2500 {
+		t.Fatalf("durationMs = %d, want 2500", toolMsg.DurationMs)
+	}
+	b, err := json.Marshal(toolMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"durationMs":2500`) {
+		t.Fatalf("history JSON omits durationMs: %s", b)
+	}
+
+	// The assistant message's tool calls carry the +/- line tallies the web UI
+	// shows on history-rebuilt diff cards.
+	var assistantMsg historyMessage
+	for _, m := range hm {
+		if m.Role == "assistant" {
+			assistantMsg = m
+		}
+	}
+	if len(assistantMsg.ToolCalls) != 2 {
+		t.Fatalf("assistant tool calls = %+v", assistantMsg.ToolCalls)
+	}
+	if assistantMsg.ToolCalls[1].Added != 3 || assistantMsg.ToolCalls[1].Removed != 1 {
+		t.Fatalf("diff tallies = +%d -%d, want +3 -1", assistantMsg.ToolCalls[1].Added, assistantMsg.ToolCalls[1].Removed)
+	}
+	b, err = json.Marshal(assistantMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"added":3`) || !strings.Contains(string(b), `"removed":1`) {
+		t.Fatalf("history JSON omits diff tallies: %s", b)
+	}
+	// A call without tallies omits both fields (old sessions).
+	if strings.Contains(string(b), `"added":0`) || strings.Contains(string(b), `"removed":0`) {
+		t.Fatalf("zero tallies should be omitted: %s", b)
+	}
+
+	// Zero duration (old sessions) is omitted from the wire form.
+	msgs[1].ToolDurationMs = 0
+	hm = historyMessages(msgs)
+	toolMsg = historyMessage{}
+	for _, m := range hm {
+		if m.Role == "tool" {
+			toolMsg = m
+		}
+	}
+	b, err = json.Marshal(toolMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "durationMs") {
+		t.Fatalf("zero duration should be omitted: %s", b)
+	}
+}
+
+// TestHistoryMessagesDurationFallback verifies that tool results from
+// sessions predating ToolDurationMs persistence estimate their duration from
+// the CreatedAt delta with the issuing assistant message.
+func TestHistoryMessagesDurationFallback(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleAssistant, Content: "plan", CreatedAt: 1000, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: "echo"}}},
+		{Role: provider.RoleTool, ToolCallID: "c1", Name: "bash", Content: "out", CreatedAt: 4234},
+	}
+	hm := historyMessages(msgs)
+	if hm[1].DurationMs != 3234 {
+		t.Fatalf("fallback duration = %d, want 3234 (4234-1000)", hm[1].DurationMs)
+	}
+
+	// Recorded durations win over the fallback.
+	msgs[1].ToolDurationMs = 2500
+	hm = historyMessages(msgs)
+	if hm[1].DurationMs != 2500 {
+		t.Fatalf("recorded duration = %d, want 2500", hm[1].DurationMs)
+	}
+	msgs[1].ToolDurationMs = 0
+
+	// A parallel batch shares the issuing assistant's start; each result gets
+	// its own span.
+	msgs = append(msgs,
+		provider.Message{Role: provider.RoleAssistant, Content: "plan2", CreatedAt: 5000, ToolCalls: []provider.ToolCall{{ID: "c2", Name: "bash", Arguments: "x"}, {ID: "c3", Name: "bash", Arguments: "y"}}},
+		provider.Message{Role: provider.RoleTool, ToolCallID: "c2", Name: "bash", Content: "a", CreatedAt: 6400},
+		provider.Message{Role: provider.RoleTool, ToolCallID: "c3", Name: "bash", Content: "b", CreatedAt: 7200},
+	)
+	hm = historyMessages(msgs)
+	if hm[3].DurationMs != 1400 || hm[4].DurationMs != 2200 {
+		t.Fatalf("batch fallback durations = %d/%d, want 1400/2200", hm[3].DurationMs, hm[4].DurationMs)
+	}
+
+	// A standalone tool result without any issuing assistant omits the field.
+	hm = historyMessages([]provider.Message{{Role: provider.RoleTool, ToolCallID: "x", Name: "bash", Content: "o", CreatedAt: 1234}})
+	if hm[0].DurationMs != 0 {
+		t.Fatalf("standalone duration = %d, want 0", hm[0].DurationMs)
 	}
 }
 
@@ -192,6 +360,90 @@ func TestServeEndpoints(t *testing.T) {
 
 	if resp, _ := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{}`)); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("empty submit should be 400, got %d", resp.StatusCode)
+	}
+}
+
+// steerBlockingProvider keeps the model stream open until the turn's context
+// is cancelled, so steer admission can be observed while the turn is active.
+// It signals through started once the agent has entered the tool loop (the
+// steer intake is open only from that point on).
+type steerBlockingProvider struct {
+	started chan struct{}
+}
+
+func (steerBlockingProvider) Name() string { return "steer-test" }
+
+func (p steerBlockingProvider) Stream(ctx context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
+	select {
+	case p.started <- struct{}{}:
+	default:
+	}
+	ch := make(chan provider.Chunk)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
+}
+
+// TestServeSteer covers the /steer endpoint contract: whitespace text is
+// rejected (400), steer without an active turn is refused (409, the client
+// keeps the text queued and retries), and an active turn accepts the guidance
+// (202) until the turn ends.
+func TestServeSteer(t *testing.T) {
+	bc := NewBroadcaster()
+	started := make(chan struct{}, 1)
+	ag := agent.New(steerBlockingProvider{started: started}, tool.NewRegistry(), agent.NewSession(""), agent.Options{}, bc)
+	ctrl := control.New(control.Options{Runner: ag, Executor: ag, Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	postSteer := func(text string) int {
+		resp, err := http.Post(srv.URL+"/steer", "application/json", strings.NewReader(`{"text":`+strconv.Quote(text)+`}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Whitespace-only text is rejected before any steer admission logic.
+	if got := postSteer("  "); got != http.StatusBadRequest {
+		t.Fatalf("empty steer status = %d, want 400", got)
+	}
+
+	// No active turn: the steer is not queued (client keeps it and retries).
+	if got := postSteer("late guidance"); got != http.StatusConflict {
+		t.Fatalf("idle steer status = %d, want 409", got)
+	}
+
+	// Start a turn and keep it alive, then steer into it.
+	resp, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"work"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit status = %d, want 202", resp.StatusCode)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("agent never entered the tool loop")
+	}
+	if got := postSteer("keep the diff small"); got != http.StatusAccepted {
+		t.Fatalf("active steer status = %d, want 202", got)
+	}
+
+	// Once the turn ends, steer admission closes again.
+	resp, err = http.Post(srv.URL+"/cancel", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitNotRunning(t, ctrl)
+	if got := postSteer("after the turn"); got != http.StatusConflict {
+		t.Fatalf("post-turn steer status = %d, want 409", got)
 	}
 }
 
@@ -394,6 +646,91 @@ func TestServeCompactEndpoint(t *testing.T) {
 	}
 }
 
+func TestServeIndexPage(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("index status = %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("index content-type = %q, want text/html", ct)
+	}
+}
+
+func TestServeEditResubmitsMessage(t *testing.T) {
+	bc := NewBroadcaster()
+	got := make(chan string, 1)
+	ctrl := control.New(control.Options{Runner: fakeRunner{got: got}, Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	sub, cancel := bc.Subscribe()
+	defer cancel()
+
+	resp, err := http.Post(srv.URL+"/edit", "application/json",
+		strings.NewReader(`{"display":"fixed text","input":"fixed text","original":"original text"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("edit status = %d, want 202", resp.StatusCode)
+	}
+
+	select {
+	case in := <-got:
+		if in != "fixed text" {
+			t.Errorf("runner ran %q, want the edited input", in)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner never ran")
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case data := <-sub:
+			var w eventwire.Event
+			if err := json.Unmarshal(data, &w); err == nil && w.Kind == "turn_done" {
+				return
+			}
+		case <-deadline:
+			t.Fatal("never saw turn_done on the stream")
+		}
+	}
+}
+
+func TestServeEditRejectsEmptyAndShell(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	for name, body := range map[string]string{
+		"empty input": `{"display":"","input":"","original":""}`,
+		"shell input": `{"display":"!ls","input":"!ls","original":"x"}`,
+		"malformed":   `not json`,
+	} {
+		resp, err := http.Post(srv.URL+"/edit", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status = %d, want 400/403", name, resp.StatusCode)
+		}
+	}
+}
+
 func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
@@ -406,6 +743,114 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	}
 }
 
+func TestServeBrandingAndAssets(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		"<title>Baize</title>",
+		"href=\"/assets/logo-symbol.svg\"",
+		"alt=\"Baize\" class=\"brand-wordmark brand-wordmark--sidebar\"",
+		"alt=\"Baize\" class=\"brand-wordmark brand-wordmark--welcome\"",
+		"'placeholder': 'Message Baize...  / for commands'",
+		"'placeholder': '给 Baize 发消息...  / 查看命令'",
+		"Automatic retries paused. Baize stopped repeated attempts",
+		"已暂停自动重试。Baize 已停止重复尝试",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing Baize branding %q", want)
+		}
+	}
+	for _, old := range []string{"<title>Reasonix</title>", "alt=\"Reasonix\"", "Message Reasonix", "给 Reasonix 发消息", "Reasonix stopped repeated attempts"} {
+		if strings.Contains(html, old) {
+			t.Fatalf("serve index still contains retired display branding %q", old)
+		}
+	}
+
+	login := string(loginHTML)
+	for _, want := range []string{"<title>Baize — Login</title>", "href=\"/assets/logo-symbol.svg\"", "src=\"/assets/logo-wordmark.svg\" alt=\"Baize\""} {
+		if !strings.Contains(login, want) {
+			t.Fatalf("login page missing Baize branding %q", want)
+		}
+	}
+	if strings.Contains(login, "Reasonix") {
+		t.Fatalf("login page still contains retired display branding: %s", login)
+	}
+
+	for name, asset := range map[string][]byte{"wordmark": logoWordmarkSVG, "symbol": logoSymbolSVG} {
+		body := string(asset)
+		if !strings.Contains(body, "aria-label=\"Baize\"") || !strings.Contains(body, "<path ") {
+			t.Fatalf("%s SVG is missing Baize accessibility metadata or path geometry", name)
+		}
+		if strings.Contains(body, "<image") || strings.Contains(body, "Reasonix") {
+			t.Fatalf("%s SVG embeds raster content or retired branding", name)
+		}
+	}
+}
+
+func TestServeBrandAssetRoutes(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	t.Cleanup(func() { ctrl.Close() })
+	handler := New(ctrl, bc, config.ServeConfig{}).Handler()
+	for _, path := range []string{"/assets/logo-wordmark.svg", "/assets/logo-symbol.svg"} {
+		t.Run(path, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("GET %s status = %d, want 200", path, recorder.Code)
+			}
+			if got := recorder.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
+				t.Fatalf("GET %s Content-Type = %q", path, got)
+			}
+			if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=3600" {
+				t.Fatalf("GET %s Cache-Control = %q", path, got)
+			}
+			if !strings.Contains(recorder.Body.String(), "aria-label=\"Baize\"") {
+				t.Fatalf("GET %s did not return the Baize SVG", path)
+			}
+		})
+	}
+}
+
+func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		`'usage_calendar': 'Token activity'`,
+		`'cal_range_year': 'This year'`,
+		`'cal_range_6m': 'Last 6 months'`,
+		`'cal_range_3m': 'Last 3 months'`,
+		`data-cal-range="6m" aria-pressed="true"`,
+		`'usage_calendar': 'Token活动'`,
+		`data-cal-range="year"`,
+		`data-cal-range="6m"`,
+		`data-cal-range="3m"`,
+		`fetch('/usage/calendar?range='+encodeURIComponent(calRange)`,
+		`grid.style.gridTemplateColumns='repeat('+calWeeks`,
+		`role="tooltip"`,
+		`cell.onfocus=()=>showCalTip`,
+		`if(e.key==='Escape'&&calSelected)`,
+		`const parts=trimmed.split(/[\\/]/);`,
+		`const trimmed=raw.replace(/[\\/]+$/,'');`,
+		`welcomeCwd.title=cwd;`,
+		`.welcome__pill strong{flex:0 0 auto;`,
+		`showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('6m',true);}`,
+		`.welcome__calendar{width:fit-content;min-width:min(360px,100%);max-width:min(600px,100%);`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing Token activity/workspace support %q", want)
+		}
+	}
+	yearPos := strings.Index(html, `data-cal-range="year"`)
+	sixMonthPos := strings.Index(html, `data-cal-range="6m"`)
+	threeMonthPos := strings.Index(html, `data-cal-range="3m"`)
+	if yearPos < 0 || sixMonthPos < 0 || threeMonthPos < 0 || !(yearPos < sixMonthPos && sixMonthPos < threeMonthPos) {
+		t.Fatalf("Token activity ranges are not ordered year, 6m, 3m: %d, %d, %d", yearPos, sixMonthPos, threeMonthPos)
+	}
+	for _, old := range []string{"CAL_DAYS = 120", "/usage/calendar?days=", `data-cal-range="month"`, "AI coding agent", "AI 编码助手"} {
+		if strings.Contains(html, old) {
+			t.Fatalf("serve index still contains removed welcome content %q", old)
+		}
+	}
+}
 func TestServeIndexReportsSessionDeleteFailures(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
@@ -442,11 +887,44 @@ func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
 	for _, want := range []string{
 		"e.outcome==='recovery_paused'",
 		"showNotice('⏸ '+__('recovery_paused'))",
-		"'recovery_paused': 'Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
-		"'recovery_paused': '已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
+		"'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
+		"'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing recovery pause support %q", want)
+		}
+	}
+}
+
+func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		"e.outcome==='final_readiness'",
+		"showDeliveryReadiness(e)",
+		"post('/delivery-recovery',{display:prompt,input:prompt})",
+		"'delivery_incomplete_title': 'Delivery checks are not complete'",
+		"'delivery_incomplete_title': '交付检查尚未完成'",
+		"project_check:'delivery_requirement_project_check'",
+		"clearDeliveryCards()",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing final-readiness recovery support %q", want)
+		}
+	}
+}
+
+func TestServeIndexHidesInternalTodoToolsAndMarksSignableTodo(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		"return n==='todo_write'||n==='exit_plan_mode';",
+		"if(hiddenTranscriptTool(tool&&tool.name))return;",
+		"filter(tc=>!hiddenTranscriptTool(tc.name))",
+		"'todo_signable': 'sign off now'",
+		"'todo_signable': '当前可签收'",
+		"todoIsPhaseSignoff(todosState,i)?__('todo_phase_signoff'):__('todo_signable')",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing internal-tool/todo presentation support %q", want)
 		}
 	}
 }
@@ -458,7 +936,7 @@ func TestServeIndexRendersAndReloadsExtensions(t *testing.T) {
 		"case 'extension_status': if(e.extension)renderExtensionSurface(e.extension); break;",
 		"const node=el('div','notice'",
 		"post('/extensions/reload',{})",
-		"{cmd:'reload',sig:'/reload'",
+		"{cmd:'reload-cmd',sig:'/reload-cmd'",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing extension support %q", want)
@@ -978,7 +1456,333 @@ func TestServeContextEndpoint(t *testing.T) {
 	}
 }
 
-// TestServeEventsReplaysPendingAskOnAttach proves a late /events subscriber
+// planApprovingRunner simulates the planner runner: it requests host approval
+// for the plan (via the controller-wired PlannerPlanApprover) before executing
+// the plan body, exactly like boot's planner path.
+type planApprovingRunner struct {
+	approver agent.PlannerPlanApprover
+}
+
+func (r *planApprovingRunner) SetPlannerPlanApprover(a agent.PlannerPlanApprover) { r.approver = a }
+func (r *planApprovingRunner) Run(ctx context.Context, input string) error {
+	executed := false
+	err := r.approver.RunWithPlannerApproval(ctx, "plan text", func(ctx context.Context) error {
+		executed = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	_ = executed
+	return nil
+}
+
+// TestServePlanApprovalPostureMatrix drives a plan-mode turn through the serve
+// HTTP stack and proves the plan approval (exit_plan_mode, a fresh human
+// decision) surfaces as an approval_request in every tool-approval mode —
+// auto/yolo must never silently approve a plan.
+func TestServePlanApprovalPostureMatrix(t *testing.T) {
+	for _, mode := range []string{"ask", "auto", "yolo"} {
+		t.Run(mode, func(t *testing.T) {
+			bc := NewBroadcaster()
+			runner := &planApprovingRunner{}
+			ctrl := control.New(control.Options{Runner: runner, Sink: bc})
+			ctrl.EnableInteractiveApproval()
+			ctrl.SetPlanMode(true)
+			ctrl.SetToolApprovalMode(mode)
+			srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+			defer srv.Close()
+
+			sub, cancel := bc.Subscribe()
+			defer cancel()
+
+			if _, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"draft a plan"}`)); err != nil {
+				t.Fatal(err)
+			}
+			approvalID := ""
+			deadline := time.After(5 * time.Second)
+		wait:
+			for {
+				select {
+				case data := <-sub:
+					var w eventwire.Event
+					if err := json.Unmarshal(data, &w); err == nil && w.Kind == "approval_request" && w.Approval != nil && w.Approval.Tool == "exit_plan_mode" {
+						approvalID = w.Approval.ID
+						break wait
+					}
+				case <-deadline:
+					t.Fatalf("mode %s: no exit_plan_mode approval_request received", mode)
+				}
+			}
+			// Approve the plan through the HTTP endpoint; the plan body must
+			// then run to completion.
+			payload := `{"id":"` + approvalID + `","allow":true,"session":false}`
+			resp, err := http.Post(srv.URL+"/approve", "application/json", strings.NewReader(payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("approve status = %d", resp.StatusCode)
+			}
+			deadline = time.After(5 * time.Second)
+			for {
+				select {
+				case data := <-sub:
+					var w eventwire.Event
+					if err := json.Unmarshal(data, &w); err == nil && w.Kind == "turn_done" {
+						return // plan approved and executed
+					}
+				case <-deadline:
+					t.Fatalf("mode %s: turn did not complete after approval", mode)
+				}
+			}
+		})
+	}
+}
+
+func TestUsageCalendarRange(t *testing.T) {
+	loc := time.FixedZone("test", 8*60*60)
+	tests := []struct {
+		name, now, preset, wantKey, wantFrom, wantTo string
+		wantErr                                      bool
+	}{
+		{name: "default six months", now: "2026-08-04", wantKey: "6m", wantFrom: "2026-02-04", wantTo: "2026-08-04"},
+		{name: "month is no longer supported", now: "2026-08-04", preset: "month", wantErr: true},
+		{name: "year", now: "2026-08-04", preset: "year", wantKey: "year", wantFrom: "2026-01-01", wantTo: "2026-08-04"},
+		{name: "three months", now: "2026-08-04", preset: "3m", wantKey: "3m", wantFrom: "2026-05-04", wantTo: "2026-08-04"},
+		{name: "six months crosses year", now: "2026-03-04", preset: "6m", wantKey: "6m", wantFrom: "2025-09-04", wantTo: "2026-03-04"},
+		{name: "month end clamps", now: "2025-05-31", preset: "3m", wantKey: "3m", wantFrom: "2025-02-28", wantTo: "2025-05-31"},
+		{name: "leap month end clamps", now: "2024-05-31", preset: "3m", wantKey: "3m", wantFrom: "2024-02-29", wantTo: "2024-05-31"},
+		{name: "invalid", now: "2026-08-04", preset: "90", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			now, err := time.ParseInLocation(usageCalendarDateLayout, tc.now, loc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			key, from, to, err := usageCalendarRange(now, tc.preset)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("usageCalendarRange error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key != tc.wantKey || from.Format(usageCalendarDateLayout) != tc.wantFrom || to.Format(usageCalendarDateLayout) != tc.wantTo {
+				t.Fatalf("range = %q %s..%s, want %q %s..%s", key, from.Format(usageCalendarDateLayout), to.Format(usageCalendarDateLayout), tc.wantKey, tc.wantFrom, tc.wantTo)
+			}
+		})
+	}
+}
+
+// TestServeUsageCalendar drives GET /usage/calendar against a temp stats dir
+// seeded with daily stats files (stats record JSONL). Usage/turn rows must
+// aggregate into the preset range contract, month boundaries must be honored,
+// and rows from other sources (desktop/cli) must be excluded.
+func TestServeUsageCalendar(t *testing.T) {
+	dir := t.TempDir()
+	dayLayout := "2006-01-02"
+	writeRow := func(day time.Time, model, source string, total int, turn bool) {
+		line := map[string]any{"ts": day.Format(time.RFC3339), "model": model, "source": source, "total": total}
+		if turn {
+			line = map[string]any{"ts": day.Format(time.RFC3339), "source": source, "turn": true}
+		}
+		b, err := json.Marshal(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, day.Format(dayLayout)+".jsonl")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write(append(b, '\n')); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	now := time.Date(2026, time.August, 4, 12, 0, 0, 0, time.FixedZone("test", 8*60*60))
+	writeRow(now, "deepseek/deepseek-v4-flash", "serve", 300, false)
+	writeRow(now, "deepseek/deepseek-v4-flash", "serve", 700, false)
+	writeRow(now, "", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -1), "opencode-go/glm-5.2", "serve", 500, false)
+	writeRow(now.AddDate(0, 0, -1), "opencode-go/glm-5.2", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -3), "deepseek/deepseek-v4-pro", "serve", 200, false)
+	writeRow(now.AddDate(0, 0, -3), "", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -3), "", "serve", 0, true)
+	writeRow(now.AddDate(0, 0, -1), "opencode-go/glm-5.2", "cli", 9999, false)             // other source: excluded
+	writeRow(now.AddDate(0, 0, -200), "deepseek/deepseek-v4-flash", "serve", 12345, false) // outside window
+
+	ctrl := control.New(control.Options{})
+	bc := NewBroadcaster()
+	srv := New(ctrl, bc, config.ServeConfig{})
+	srv.statsDir = func() string { return dir }
+	srv.now = func() time.Time { return now }
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	var got struct {
+		Days []struct {
+			Day      string           `json:"day"`
+			Tokens   int64            `json:"tokens"`
+			Requests int              `json:"requests"`
+			Turns    int              `json:"turns"`
+			ByModel  map[string]int64 `json:"byModel"`
+		} `json:"days"`
+		Range      string `json:"range"`
+		From       string `json:"from"`
+		To         string `json:"to"`
+		Max        int64  `json:"max"`
+		Total      int64  `json:"total"`
+		Turns      int64  `json:"turns"`
+		ActiveDays int    `json:"activeDays"`
+	}
+	resp, err := http.Get(ts.URL + "/usage/calendar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Range != "6m" || got.From != "2026-02-04" || got.To != "2026-08-04" {
+		t.Fatalf("range = %q %s..%s, want 6m 2026-02-04..2026-08-04", got.Range, got.From, got.To)
+	}
+	if got.Total != 1000+500+200 {
+		t.Fatalf("total = %d, want 1700", got.Total)
+	}
+	if got.Max != 1000 {
+		t.Fatalf("max = %d, want 1000", got.Max)
+	}
+	if got.Turns != 1+1+2 {
+		t.Fatalf("turns = %d, want 4", got.Turns)
+	}
+	if got.ActiveDays != 3 {
+		t.Fatalf("activeDays = %d, want 3", got.ActiveDays)
+	}
+	type daySummary struct {
+		tokens          int64
+		requests, turns int
+		byModel         map[string]int64
+	}
+	byDay := map[string]daySummary{}
+	for _, d := range got.Days {
+		byDay[d.Day] = daySummary{tokens: d.Tokens, requests: d.Requests, turns: d.Turns, byModel: d.ByModel}
+	}
+	today := byDay[now.Format(dayLayout)]
+	if today.tokens != 1000 || today.requests != 2 || today.turns != 1 {
+		t.Fatalf("today = %+v, want 1000 tokens, 2 requests, 1 turn", today)
+	}
+	if today.byModel["deepseek/deepseek-v4-flash"] != 1000 {
+		t.Fatalf("today model split = %#v, want flash=1000", today.byModel)
+	}
+	yesterday := byDay[now.AddDate(0, 0, -1).Format(dayLayout)]
+	if yesterday.tokens != 500 || yesterday.requests != 1 || yesterday.turns != 1 {
+		t.Fatalf("yesterday = %+v, want 500 tokens, 1 request, 1 turn (cli row excluded)", yesterday)
+	}
+	if yesterday.byModel["opencode-go/glm-5.2"] != 500 {
+		t.Fatalf("yesterday model split = %#v, want glm=500", yesterday.byModel)
+	}
+	if _, ok := byDay[now.AddDate(0, 0, -200).Format(dayLayout)]; ok {
+		t.Fatal("out-of-window day leaked")
+	}
+	// Day ordering must be ascending and contiguous (Query contract).
+	if len(got.Days) != 182 {
+		t.Fatalf("days = %d, want 182 for February 4..August 4", len(got.Days))
+	}
+	for i := 1; i < len(got.Days); i++ {
+		if got.Days[i].Day <= got.Days[i-1].Day {
+			t.Fatalf("days not ascending at %d: %s <= %s", i, got.Days[i].Day, got.Days[i-1].Day)
+		}
+	}
+	for _, tc := range []struct {
+		rangeKey string
+		from     string
+		days     int
+	}{
+		{rangeKey: "year", from: "2026-01-01", days: 216},
+		{rangeKey: "6m", from: "2026-02-04", days: 182},
+		{rangeKey: "3m", from: "2026-05-04", days: 93},
+	} {
+		resp, err := http.Get(ts.URL + "/usage/calendar?range=" + tc.rangeKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ranged struct {
+			Range string            `json:"range"`
+			From  string            `json:"from"`
+			To    string            `json:"to"`
+			Days  []json.RawMessage `json:"days"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&ranged); err != nil {
+			resp.Body.Close()
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("range %q status = %d", tc.rangeKey, resp.StatusCode)
+		}
+		if ranged.Range != tc.rangeKey || ranged.From != tc.from || ranged.To != "2026-08-04" || len(ranged.Days) != tc.days {
+			t.Fatalf("range %q response = %+v (%d days)", tc.rangeKey, ranged, len(ranged.Days))
+		}
+	}
+	bad, err := http.Get(ts.URL + "/usage/calendar?range=bogus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid range status = %d, want 400", bad.StatusCode)
+	}
+}
+
+type serveApprovalWriter struct{}
+
+func (serveApprovalWriter) Name() string        { return "serve_write" }
+func (serveApprovalWriter) Description() string { return "write a test file" }
+func (serveApprovalWriter) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`)
+}
+func (serveApprovalWriter) ReadOnly() bool { return false }
+func (serveApprovalWriter) Execute(context.Context, json.RawMessage) (string, error) {
+	return "ok", nil
+}
+
+type serveApprovalProvider struct {
+	mu   sync.Mutex
+	turn int
+}
+
+func (p *serveApprovalProvider) Name() string { return "serve-approval-test" }
+func (p *serveApprovalProvider) Stream(context.Context, provider.Request) (<-chan provider.Chunk, error) {
+	p.mu.Lock()
+	turn := p.turn
+	p.turn++
+	p.mu.Unlock()
+
+	ch := make(chan provider.Chunk, 2)
+	if turn == 0 {
+		ch <- provider.Chunk{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{
+			ID: "serve-approval-1", Name: "serve_write", Arguments: `{"path":"a.txt"}`,
+		}}
+	} else {
+		ch <- provider.Chunk{Type: provider.ChunkText, Text: "done"}
+	}
+	ch <- provider.Chunk{Type: provider.ChunkDone}
+	close(ch)
+	return ch, nil
+}
+
 // receives a still-blocked ask_request. Without replay, the browser attaches to
 // a healthy-looking session that never surfaces the parked prompt (#7643).
 func TestServeEventsReplaysPendingAskOnAttach(t *testing.T) {

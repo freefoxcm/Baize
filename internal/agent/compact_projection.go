@@ -205,7 +205,7 @@ func (a *Agent) compressVisibleRange(
 	}
 
 	projection := buildVisibleCompressionProjection(snap.visible, plan, summary)
-	projectionTokens := estimateMessagesTokens(a.providerProjectionMessages(projection))
+	projectionTokens := a.estimateRequest(a.providerProjectionMessages(projection))
 	tele.ProjectionTokens = projectionTokens
 	result.Messages = len(plan.fold)
 	result.ProjectionTokens = projectionTokens
@@ -255,7 +255,7 @@ func (a *Agent) explicitCompressionSnapshotCurrent(snap explicitCompressionSnaps
 }
 
 func (a *Agent) planVisibleCompression(snap explicitCompressionSnapshot, direction string, anchorIndex int, preview string) (visibleCompressionPlan, bool) {
-	sourceTokens := estimateMessagesTokens(snap.visible)
+	sourceTokens := a.estimateRequest(snap.visible)
 	plan := visibleCompressionPlan{result: tool.CompressResult{
 		Status:           "noop",
 		Direction:        direction,

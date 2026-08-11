@@ -301,6 +301,32 @@ var ChineseTraditional = Messages{
 	ListHooksNone:       "無生效 hooks — 在 .reasonix/settings.json（專案）或 <Reasonix home>/settings.json（全域）設定",
 	ListMcpHeader:       "MCP 伺服器",
 	ListMcpNone:         "未連線 MCP 伺服器 — 在 reasonix.toml（[[plugins]]）或專案 .mcp.json 中新增",
+	HelpHeaderCommands:  "命令：",
+	HelpHeaderSkills:    "技能：",
+	HelpMoreFmt:         "更多：/docs（文件）、/skill（技能管理）、/mcp（伺服器）",
+	HelpCommands: "  /tree               顯示分支樹\n" +
+		"  /branch <name>      建立分支\n" +
+		"  /switch <id>        切換分支\n" +
+		"  /rewind [turn]      回退對話\n" +
+		"  /compact            壓縮上下文\n" +
+		"  /new                新增工作階段\n" +
+		"  /clear              清空上下文\n" +
+		"  /model [ref]        列出或切換模型\n" +
+		"  /effort [level]     推理努力\n" +
+		"  /thinking [level]   /effort 的別名\n" +
+		"  /goal [task]        目標模式\n" +
+		"  /provider [name]    列出或切換服務商\n" +
+		"  /mcp                MCP 伺服器\n" +
+		"  /skill              技能\n" +
+		"  /hooks              鉤子\n" +
+		"  /memory             記憶\n" +
+		"  /forget <item>      忘記記憶\n" +
+		"  /plan-exec          執行計畫任務\n" +
+		"  /prometheus <task>  需求訪談規劃\n" +
+		"  /migrate            遷移舊資料\n" +
+		"  /reload-cmd         重新載入命令\n" +
+		"  /plugins            外掛\n" +
+		"  /docs [query]       文件",
 
 	MemoryEditHint:               "可直接編輯記憶文件，或輸入 “/remember 內容” 快速記錄；文件變動會在下次會話生效",
 	ForgetUsage:                  "用法：/forget <name> — name 是 /memory 中顯示的條目標識",

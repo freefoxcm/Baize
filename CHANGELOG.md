@@ -48,6 +48,83 @@ branch.
 
 ### Added
 
+- **Serve defaults tool approval to `auto`** (desktop parity): a freshly
+  built serve controller applies `desktop.default_tool_approval_mode`
+  (auto unless configured otherwise) instead of the kernel's conservative
+  ask. Runtime modebar switches are unaffected.
+- **Error messages width-bounded**: `.msg--error` now respects
+  `--chat-maxw` like regular messages, so notices such as
+  `✗ context canceled` no longer stretch across the full transcript width.
+- **Ask card aligned with desktop AskCard**: questions render as a
+  row-list (numbered options + "Other answer" expandable row + red
+  "Skip and keep chatting" row), a confirm bar with a dynamic label
+  (Next / Submit / Skip-and-keep-chatting), answered-summary crumbs,
+  a Back pill in a quick-actions row, a `q.header` badge and a
+  Stop-task button, a "Question 1/2" progress badge, and desktop keyboard
+  parity (digits, arrows, Enter, ←/Backspace back, **Esc now stops the
+  task** via `POST /cancel` instead of skipping).
+
+- **`/effort` command fixed**: a bare `/effort` submit is now intercepted by
+  the serve backend and reports the current reasoning-effort capability (same
+  payload as `GET /effort`) instead of falling through to the controller's
+  "unknown command" notice — symmetric with how `/model` lists models.
+- **Ask decision shelf (desktop `.prompt-shelf` parity)**: questions are no
+  longer stacked into the transcript. `showAsk` renders a single card into a
+  new `#ask-slot` in the footer (above the composer, `--chat-maxw`-centered,
+  `max-height:min(82vh,720px)` scrollable). Multi-question asks advance one
+  question at a time with a `1/N` progress badge, Back, custom-answer input,
+  Skip / just-chat, and full keyboard support (digits 1-9, arrows, Enter,
+  Esc). Concurrent asks queue instead of racing: answers are only sent via
+  `POST /answer` once all questions are answered, and the wait-timer resumes
+  exactly once.
+
+- Welcome-page **Token activity** uses the Codex-style seven-row, week-column
+  heatmap with theme-derived activity levels and presets for the last six
+  months (the default), the last three months, and this year. Hover, focus, or
+  tap a
+  day for a floating requests / turns / per-model breakdown without shifting
+  the welcome layout. The new `GET /usage/calendar?range=year|6m|3m`
+  endpoint aggregates existing `serve` stats rows, so historical usage needs
+  no new ledger. Long Windows and POSIX workspace paths now display their final
+  folder while keeping the complete path available as hover/accessibility text.
+  Model listing is unified: `/model` output de-duplicates identical model
+  names across provider aliases (deepseek / deepseek-flash / deepseek-pro),
+  matching the frontend catalog; and typing `/model ` in the composer opens an
+  argument palette (desktop ArgMenu) with the de-duplicated model refs — type
+  to filter, arrows + Enter or click to fill the ref, current model tagged.
+- Run-strip desktop parity: the ticker now counts NET work time (approval/ask
+  waits are paused and excluded via `waitAccumMs`), waits freeze the ticker and
+  show a stable status line, and retry shows only its own copy. The footer
+  status text is back to pure connection state (connected/reconnecting/
+  disconnected) — running state lives solely in the composer run-strip. The
+  strip matches the desktop styles (accent color, 6px currentColor dot, warn
+  waiting tint, `tabular-nums`) and gained `sr-only` announce + `aria-hidden`
+  ticker for accessibility.
+  The footer toolbar is gone: the connection dot/label, turn-info and the
+  duplicate balance display were all redundant with the sidebar status block.
+  Connection state now lives solely in the sidebar dot (with a tooltip), the
+  approval slot sits directly above the composer card, and the duplicate
+  `#approval-slot` element was removed.
+  Approval-mode parity with desktop: the ask/auto/yolo modebar stays usable
+  while a turn is running (only a decision surface — an approval/ask card —
+  disables it), and plan approvals (`exit_plan_mode`, a fresh human decision)
+  render as a dedicated card ("Approve plan" / deny, no session/persist
+  grants) with a matching run-strip "Waiting for plan approval…" line.
+  `TestServePlanApprovalPostureMatrix` proves the plan card surfaces over HTTP
+  in ask, auto, and yolo alike.
+  The slash-command palette now anchors to the composer card (previously the
+  full-width footer), so it matches the input width exactly and opens just
+  above it — desktop `.slashmenu` positioning (`bottom: calc(100% + 6px)`,
+  `left: 0; right: 0`), with a 360px/50vh height cap.
+  The sidebar nav is trimmed to "New session" only: the compact / rewind /
+  branches / models entries are gone (their modals remain reachable via slash
+  commands), and the stats entry moved into the status block at the bottom of
+  the sidebar as a bare icon button next to the connection dot/model.
+  The stats icon now sits at the right of the "Status" heading (with a hover
+  tooltip), the sidebar nav no longer claims flex space (so the session list
+  grows to fill the freed height), and `applyStaticI18n` now translates
+  `aria-label` attributes too.
+
 - Added `[ui].show_turn_usage` so CLI/TUI users can hide per-request token and
   cost receipts from transcript scrollback without disabling usage accounting.
 
@@ -155,6 +232,78 @@ multiple Desktop stability improvements.
 - Added `reasonix serve --port-file/--token-file/--pid-file` so a supervised
   headless serve can bind an ephemeral port and read its auth token from a file
   (keeping it out of `ps`).
+- The serve WebUI tool-call cards and turn summary bars now cap at the same
+  width as messages (760px), so history-rebuilt cards no longer overhang the
+  transcript. Tool approval requests render as a desktop-style decision shelf
+  (amber tool badge, monospace subject block, single-column action list with
+  `1-4` number keys, select-then-confirm bar) instead of the old horizontal
+  button row, and usage events no longer emit metric rows into the chat —
+  tokens/cost/cache accumulate into the footer ticker, sidebar, and stats
+  modal, matching the desktop app. Approval shelves with long subjects or
+  reasons now cap their body/action regions with scrollable max-heights (the
+  confirm bar stays visible), and continuing an older session from the history
+  rebuild correctly opens a fresh turn container for new messages — the
+  rebuild also gates in-flight SSE events (`historyPending`) so nothing is
+  lost or double-rendered while the transcript reloads. Approval action
+  buttons now use fixed labels with a short description line (the full command
+  stays in the subject block; the matched rule is shown as a tooltip), and the
+  approval shelf is pinned to a fixed slot above the composer instead of
+  scrolling with the transcript — a new request replaces the previous card.
+  The shelf now sits directly below the to-dos panel (desktop footer order),
+  and reasoning blocks match the desktop ReasoningPanel: a single head button
+  ("Thinking…" with a shimmer while streaming, "Thinking done · Ns" after),
+  auto-collapse that a manual toggle overrides, a left-border body without an
+  inner scrollbar, streaming truncation at 12k chars / 240 lines, and no copy
+  button. The chat column width is now a single `--chat-maxw` variable set to
+  960px — matching the desktop app's `--maxw` — and every constrained element
+  (messages, tool cards, turn summaries, notices, approvals, todos) consumes
+  it instead of nine hardcoded 760px rules. Completed turns now auto-fold
+  their tool calls and reasoning behind a desktop-style count summary bar
+  ("Working…" while running, "Worked · 2 tools · 1 thought" after), both for
+  history rebuilds and live turns at `turn_done`; a manual toggle overrides
+  the auto behavior. User messages now render as right-aligned bubbles
+  (desktop style) instead of left caret lines, and `/history` strips the
+  system-injected compose prefixes (plan-mode marker, language directives,
+  transient blocks, referenced-context preambles) plus synthetic/empty user
+  turns — so history shows the user's actual text, matching the desktop app.
+  The turn fold bar now sits after the user message (desktop TurnCollapse
+  position) and is styled as a borderless inline button with a hover tint
+  instead of a bordered card, aligned to the message column width.
+  The composer is now a desktop-style card: a run strip above the input
+  (spinner-word ticker, elapsed time, live token count; "waiting for
+  approval/answer" and retry states), an ↑ send / ⏹ stop button pair, and a
+  bottom meta bar with an ask/auto/yolo approval modebar (toolbar auto/yolo
+  buttons removed) and an inline model switcher opening the models modal.
+  The composer meta bar is now fully desktop-aligned: a Direct/Plan/Goal task
+  mode trigger (toolbar plan/goal buttons removed), modebar thumb colors per
+  mode (ask neutral, auto blue, yolo red with white active text), a model
+  switcher popover (search, provider grouping with current group first,
+  check mark on the active model, `label · provider` trigger), and an effort
+  switcher backed by new GET/POST /effort endpoints (hidden when the active
+  provider does not support effort).
+  Composer width now matches the message column (960px, desktop --maxw) and
+  the card uses overflow:visible so the upward menus are no longer clipped.
+  The approval modebar thumb/text details are aligned item-by-item with
+  desktop (14px icons, fg-dim inactive text, 620 weight, elevated ask thumb).
+  Work mode (runtime profile) is now a separate control from execution mode,
+  matching desktop: execution method shows Standard/Plan/Goal, and a new Work
+  mode trigger switches Balanced/Lightweight/Delivery via new GET/POST
+  /profile endpoints (rebuilds the controller under boot.Options.TokenMode;
+  in-memory, resets to full on restart).
+  The model switcher groups by the mapped provider label instead of the raw
+  provider name, so deepseek / deepseek-flash / deepseek-pro collapse into a
+  single provider group; same-named models inside a group are de-duplicated
+  (active/default entry wins).
+- The serve WebUI now renders assistant messages with GFM markdown, syntax
+  highlighting (highlight.js), collapsible reasoning blocks that auto-expand
+  while streaming and auto-collapse when done, per-turn grouping with a
+  foldable tool-call summary bar, unified-diff previews in tool cards, and
+  collapsible tool errors. Messages get hover actions (copy, inline edit via
+  the new `POST /edit` endpoint), markdown images render through the new
+  workspace-confined `GET /file` endpoint with a click-to-zoom lightbox, and
+  pasted/dropped images upload via `POST /attach`. Rendering libraries
+  (marked + DOMPurify + highlight.js) are embedded in the binary — no network
+  or build step required; rebuild with `scripts/build-serve-vendor.mjs`.
 - Added an authenticated, loopback-only Provider setup page for `reasonix
   serve`. A Serve whose selected Provider is missing its API key now remains
   reachable, stores the submitted key in that host's Reasonix credential file,
