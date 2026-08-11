@@ -12,7 +12,7 @@ import (
 )
 
 // TestVendorBundleServed checks the embedded rendering libraries are reachable
-// at /assets/vendor.min.js and that index.html references them.
+// and load before the Baize application that consumes them.
 func TestVendorBundleServed(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc})
@@ -44,7 +44,7 @@ func TestVendorBundleServed(t *testing.T) {
 		}
 	}
 
-	// index.html must load the bundle before its own script.
+	// index.html must load the bundle before the Baize application script.
 	htmlResp, err := http.Get(srv.URL + "/")
 	if err != nil {
 		t.Fatal(err)
@@ -54,11 +54,15 @@ func TestVendorBundleServed(t *testing.T) {
 	if _, err := html.ReadFrom(htmlResp.Body); err != nil {
 		t.Fatal(err)
 	}
-	idx := bytes.Index(html.Bytes(), []byte(`<script src="/assets/vendor.min.js">`))
-	if idx < 0 {
+	vendorIndex := bytes.Index(html.Bytes(), []byte(`<script src="/assets/vendor.min.js">`))
+	if vendorIndex < 0 {
 		t.Fatal("index.html does not reference /assets/vendor.min.js")
 	}
-	if idx > bytes.Index(html.Bytes(), []byte(`const { marked, DOMPurify, hljs }`)) {
-		t.Error("vendor script must load before the inline script uses the libraries")
+	appIndex := bytes.Index(html.Bytes(), []byte(`<script src="/assets/baize.js">`))
+	if appIndex < 0 || vendorIndex > appIndex {
+		t.Error("vendor script must load before the Baize application script")
+	}
+	if !bytes.Contains(baizeJS, []byte(`const { marked, DOMPurify, hljs } = window.Vendor;`)) {
+		t.Error("Baize application must consume the embedded vendor global")
 	}
 }
