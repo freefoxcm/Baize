@@ -743,6 +743,28 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	}
 }
 
+func TestServeIndexKeepsToolCardHeaderOnOneRow(t *testing.T) {
+	html := string(indexHTML)
+	for _, want := range []string{
+		".card-main{display:flex;align-items:center;gap:8px;min-width:0}",
+		".card-title{display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 auto}",
+		".card-head .subject{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:60%}",
+		".card-meta{display:flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap;font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing single-row tool-card header CSS %q", want)
+		}
+	}
+	for _, unwanted := range []string{
+		".card-main{display:grid;gap:2px;min-width:0}",
+		".card-head .name{color:var(--fg);font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:55%}",
+	} {
+		if strings.Contains(html, unwanted) {
+			t.Fatalf("serve index restored superseded tool-card header CSS %q", unwanted)
+		}
+	}
+}
+
 func TestServeBrandingAndAssets(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
