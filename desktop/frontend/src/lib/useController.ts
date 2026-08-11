@@ -8,7 +8,7 @@ import { asArray } from "./array";
 import { addBreadcrumb } from "./breadcrumbs";
 import { app, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTopicActivation } from "./bridge";
 import { invalidateCache } from "./composerHistory";
-import { formatContextMaintenanceNotice } from "./contextMaintenanceTypes";
+import { formatContextMaintenanceNotice, isNewMaintenanceOperation, rememberMaintenanceOperation } from "./contextMaintenanceTypes";
 import { formatGuardianAssessmentNotice } from "./guardianEvents";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { createRafBatch } from "./rafBatch";
@@ -467,6 +467,9 @@ interface State {
   // title…). Drives right-panel snapshot refreshes so sub-agent activity keeps
   // the session metrics live; state.usage stays executor-gated for the gauge.
   usageSeq: number;
+  // Bounded set of context_maintenance operationIds already shown as notices
+  // so reconnect/replay does not insert duplicate timeline cards.
+  seenMaintenanceOps: string[];
   // Extension UI surfaces (stage 8b2). See the ExtensionStatusEntry block
   // above for the keying/lifecycle rules.
   extensionStatuses: Record<string, ExtensionStatusEntry>;
@@ -524,6 +527,7 @@ export const initialState: State = {
   sessionGen: 0,
   contextPanelSeq: 0,
   usageSeq: 0,
+  seenMaintenanceOps: [],
   extensionStatuses: {},
   extensionNotifications: [],
   extensionGenerations: {},
@@ -1701,7 +1705,9 @@ function applyEvent(s: State, e: WireEvent): State {
     case "context_maintenance": {
       const m = e.maintenance;
       if (!m || m.status === "noop") return s;
-      return appendNoticeToState(s, m.status === "failed" ? "warn" : "info", formatContextMaintenanceNotice(m, t), m.reason);
+      if (!isNewMaintenanceOperation(s.seenMaintenanceOps, m.operationId)) return s;
+      const next = appendNoticeToState(s, m.status === "failed" ? "warn" : "info", formatContextMaintenanceNotice(m, t), m.reason);
+      return { ...next, seenMaintenanceOps: rememberMaintenanceOperation(s.seenMaintenanceOps, m.operationId) };
     }
     case "phase":
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "phase", id: `p${s.seq}`, text: e.text ?? "" }] };
@@ -3697,12 +3703,13 @@ export function useController() {
 
   const steerForTab = useCallback(async (tabId: string, text: string) => {
     if (!tabId) throw new Error(t("composer.workspaceStarting"));
-    // No optimistic user bubble: rewind/fork map turns by counting user items,
-    // and a steer is not a backend turn — the Steer event's ↪ notice is the
-    // visible confirmation (#3660). Keep backend rejection as a rejected
-    // promise: Composer retains the guidance item until TurnDone, then sends it
-    // as a normal follow-up instead of clearing running state prematurely.
-    await app.SteerForTab(tabId, text);
+    // Durable steer first: body is on disk before admission. Rejected steers
+    // become follow-ups automatically (disposition queued_followup).
+    const receipt = await app.EnqueueInboxSteer(tabId, text, text, "");
+    if (receipt?.error) throw new Error(receipt.error);
+    if (receipt?.disposition && receipt.disposition !== "steer_accepted") {
+      throw new Error("the turn ended before guidance could be applied; it will remain queued for the next turn");
+    }
   }, []);
 
   const steer = useCallback(async (text: string) => {
@@ -3729,29 +3736,32 @@ export function useController() {
     dispatchTo(activeTabId, { type: "extension_notifications_drained" });
   }, [activeTabId, dispatchTo]);
 
-  const cancelTab = useCallback((tabId: string) => {
+  const cancelTab = useCallback((tabId: string, inboxItemIDs: string[] = []) => {
     const cancelHydrateGeneration = bumpCancelHydrateSeq(tabId);
-    app.CancelTab(tabId)
+    const cancelRequest = inboxItemIDs.length > 0
+      ? app.CancelTabWithInboxItems(tabId, inboxItemIDs)
+      : app.CancelTab(tabId);
+    cancelRequest
       .then(() => scheduleCancelReconcile(tabId, 0, cancelHydrateGeneration))
       .catch((error) => {
         dispatchTo(tabId, { type: "local_notice", level: "warn", text: `Cancel failed: ${errorMessage(error)}` });
       });
   }, [bumpCancelHydrateSeq, dispatchTo, scheduleCancelReconcile]);
 
-  const cancel = useCallback((): string | undefined => {
+  const cancel = useCallback((inboxItemIDs: string[] = []): string | undefined => {
     const cur = stateRef.current;
     const tabId = activeTabId;
     if (cur.running && cur.pendingUser !== undefined) {
       const text = cur.pendingUser;
       if (tabId) {
         dispatchTo(tabId, { type: "unsend" });
-        cancelTab(tabId);
+        cancelTab(tabId, inboxItemIDs);
       }
       return text;
     }
     if (tabId) {
       dispatchTo(tabId, { type: "cancel_requested" });
-      cancelTab(tabId);
+      cancelTab(tabId, inboxItemIDs);
     }
     return undefined;
   }, [activeTabId, cancelTab, dispatchTo]);

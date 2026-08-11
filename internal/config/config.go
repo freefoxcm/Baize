@@ -293,17 +293,17 @@ type DesktopConfig struct {
 	CheckUpdates            *bool    `toml:"check_updates"`              // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
-	UpdateChannel     string   `toml:"update_channel"`
-	Telemetry         *bool    `toml:"telemetry"`          // anonymous launch ping plus scrubbed next-launch native crash diagnostics; nil keeps the default enabled
-	Metrics           *bool    `toml:"metrics"`            // aggregate desktop metrics (anonymous signal/bucket counts, including lifecycle health; no content); nil keeps the default enabled
-	ProviderAccess    []string `toml:"provider_access"`    // desktop-only list of provider entries shown in Settings > Model > Access
-	ExpandThinking    bool     `toml:"expand_thinking"`    // true = show reasoning text expanded by default; false = collapsed
-	ConversationWidth string   `toml:"conversation_width"` // standard|full; max transcript width; empty = standard
+	UpdateChannel        string   `toml:"update_channel"`
+	Telemetry            *bool    `toml:"telemetry"`       // anonymous launch ping plus scrubbed next-launch native crash diagnostics; nil keeps the default enabled
+	Metrics              *bool    `toml:"metrics"`         // aggregate desktop metrics (anonymous signal/bucket counts, including lifecycle health; no content); nil keeps the default enabled
+	ProviderAccess       []string `toml:"provider_access"` // desktop-only list of provider entries shown in Settings > Model > Access
+	ExpandThinking       bool     `toml:"expand_thinking"` // deprecated compatibility alias: true maps to auto
+	ReasoningDisplayMode string   `toml:"reasoning_display_mode"`
+	ConversationWidth    string   `toml:"conversation_width"` // standard|full; max transcript width; empty = standard
 }
 
-// DesktopExternalOpener returns the user-selected external opener id. The
-// desktop shell resolves it against applications installed on the current OS;
-// an empty or unavailable id safely falls back to the platform file manager.
+// DesktopExternalOpener returns the selected opener id; unavailable ids fall
+// back to the platform file manager in the desktop shell.
 func (c *Config) DesktopExternalOpener() string {
 	if c == nil {
 		return ""
@@ -1302,14 +1302,12 @@ type AgentConfig struct {
 	// Deprecated compatibility field paired with AutoPlan. Old TOML remains
 	// readable, but loading clears it and rendering omits it.
 	AutoPlanClassifier string `toml:"auto_plan_classifier"`
-	// Compaction window fractions: soft = notice only, compact = trigger, force = hard ceiling.
+	// Soft/snip/force are retired compatibility keys; only CompactRatio is active.
 	SoftCompactRatio    float64 `toml:"soft_compact_ratio"`
 	ToolResultSnipRatio float64 `toml:"tool_result_snip_ratio"`
 	CompactRatio        float64 `toml:"compact_ratio"`
 	CompactForceRatio   float64 `toml:"compact_force_ratio"`
-	// ContextEditing selects local maintenance (default) or explicitly opted-in
-	// Anthropic native tool clearing. Native is only honored by official
-	// Anthropic endpoints; compatible gateways remain local.
+	// ContextEditing is retired; native tool clearing is no longer an auto path.
 	ContextEditing string `toml:"context_editing"`
 	// Keep controls which compactable messages stay verbatim beyond the current
 	// user-fact/digest floor and recent tail. Empty uses the conservative default
@@ -1353,9 +1351,13 @@ type ProviderEntry struct {
 	resolvedSource    CredentialSource
 	BalanceURL        string `toml:"balance_url"` // optional; a provider-specific wallet-balance endpoint (DeepSeek: https://api.deepseek.com/user/balance). Empty = no balance readout.
 	ContextWindow     int    `toml:"context_window"`
-	// MaxOutputTokens is a protocol-neutral total output budget. Zero lets the
-	// provider choose a safe default, a positive value is explicit, and a
-	// negative value omits optional wire limits. Anthropic still requires one.
+	// MaxOutputTokens is a protocol-neutral total output budget for one turn.
+	// Zero means automatic (not unlimited): ordinary 16K, reasoning 32K, high/max
+	// 64K — DeepSeek's default effort is high, so auto is typically ~64K.
+	// User guidance: 0 recommended; 32768 ordinary coding/cost control;
+	// 65536 heavy reasoning/long tools; 131072 only after finish_reason=length.
+	// A negative value omits optional wire limits when the protocol allows;
+	// Anthropic still requires max_tokens. Never feeds compact_ratio.
 	MaxOutputTokens int                          `toml:"max_output_tokens"`
 	Price           *provider.Pricing            `toml:"price"`  // legacy/provider-wide fallback
 	Prices          map[string]*provider.Pricing `toml:"prices"` // optional per-model prices; keys are model ids
@@ -1827,14 +1829,15 @@ func Default() *Config {
 			SystemPrompt: DefaultSystemPrompt,
 			// Normal interactive execution has no configurable total round cap. It
 			// is bounded by adaptive progress guards and context compaction instead.
-			MaxSteps:               0,
-			PlannerMaxSteps:        0,
-			AutoPlan:               "off",
-			SoftCompactRatio:       0.5,
-			ToolResultSnipRatio:    0.6,
-			CompactRatio:           0.8,
-			CompactForceRatio:      0.9,
-			ContextEditing:         "local",
+			MaxSteps:        0,
+			PlannerMaxSteps: 0,
+			AutoPlan:        "off",
+			// Soft/snip/force are load-only compatibility; CompactRatio alone drives maintenance.
+			SoftCompactRatio:       0,
+			ToolResultSnipRatio:    0,
+			CompactRatio:           0.85,
+			CompactForceRatio:      0,
+			ContextEditing:         "",
 			MaxSubagentDepth:       2,
 			MaxSubagentConcurrency: 6,
 			MaxParallelWriters:     3,

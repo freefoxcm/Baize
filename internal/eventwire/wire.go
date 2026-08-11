@@ -37,6 +37,32 @@ type Event struct {
 	RetryMax        int                 `json:"retryMax,omitempty"`
 	RetryScope      string              `json:"retryScope,omitempty"` // "headers" | "stream"; omit for older clients
 	StreamAttempt   *StreamAttempt      `json:"streamAttempt,omitempty"`
+	// ItemID correlates Steer / TurnDone / unapplied-steer with a durable
+	// session-inbox entry. Empty for legacy text-only guidance.
+	ItemID    string            `json:"itemId,omitempty"`
+	Workspace *WorkspaceChanged `json:"workspace,omitempty"`
+}
+
+type WorkspaceChanged struct {
+	Revisions  WorkspaceRevision     `json:"revisions"`
+	Changes    []WorkspacePathChange `json:"changes"`
+	AllPaths   bool                  `json:"allPaths"`
+	Source     string                `json:"source"`
+	WatchState string                `json:"watchState"`
+}
+
+type WorkspaceRevision struct {
+	Content     uint64 `json:"content"`
+	Tree        uint64 `json:"tree"`
+	WorkingTree uint64 `json:"workingTree"`
+	GitMeta     uint64 `json:"gitMeta"`
+	Session     uint64 `json:"session"`
+}
+
+type WorkspacePathChange struct {
+	Path    string `json:"path"`
+	OldPath string `json:"oldPath,omitempty"`
+	Op      string `json:"op"`
 }
 
 // StreamAttempt is the JSON form of event.StreamAttemptInfo.
@@ -50,7 +76,7 @@ type StreamAttempt struct {
 
 // ToWire converts a typed runtime event into the shared frontend JSON contract.
 func ToWire(e event.Event) Event {
-	w := Event{Kind: kindNames[e.Kind], Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning}
+	w := Event{Kind: kindNames[e.Kind], Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID}
 	if len(e.MemoryCitations) > 0 {
 		w.MemoryCitations = ToWireMemoryCitations(e.MemoryCitations)
 	}
@@ -84,6 +110,19 @@ func ToWire(e event.Event) Event {
 			wt.Execution = toWireShellExecution(e.Tool.Execution)
 		}
 		w.Tool = wt
+	case event.WorkspaceChanged:
+		ws := e.Workspace
+		if ws == nil {
+			ws = &event.WorkspaceChangedPayload{}
+		}
+		changes := make([]WorkspacePathChange, 0, len(ws.Changes))
+		for _, c := range ws.Changes {
+			changes = append(changes, WorkspacePathChange{Path: c.Path, OldPath: c.OldPath, Op: c.Op})
+		}
+		w.Workspace = &WorkspaceChanged{
+			Revisions: WorkspaceRevision{Content: ws.Revisions.Content, Tree: ws.Revisions.Tree, WorkingTree: ws.Revisions.WorkingTree, GitMeta: ws.Revisions.GitMeta, Session: ws.Revisions.Session},
+			Changes:   changes, AllPaths: ws.AllPaths, Source: ws.Source, WatchState: string(ws.WatchState),
+		}
 	case event.Usage:
 		if u := e.Usage; u != nil {
 			w.Usage = &Usage{
@@ -509,6 +548,7 @@ var kindNames = map[event.Kind]string{
 	event.ExtensionStatus:         "extension_status",
 	event.StreamAttempt:           "stream_attempt",
 	event.ContextMaintenanceEvent: "context_maintenance",
+	event.WorkspaceChanged:        "workspace_changed",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

@@ -234,15 +234,15 @@ func TestCompactEmitsEvents(t *testing.T) {
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Content: "task"},
-		{Role: provider.RoleAssistant, Content: "step one"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("step one work ", 200)},
 		{Role: provider.RoleUser, Content: "more"},
-		{Role: provider.RoleAssistant, Content: "step two"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("step two work ", 200)},
 		{Role: provider.RoleUser, Content: "next"},
 		{Role: provider.RoleAssistant, Content: "ok"},
 	}}
 	var got []event.Event
 	sink := event.FuncSink(func(e event.Event) { got = append(got, e) })
-	a := New(prov, tool.NewRegistry(), sess, Options{RecentKeep: 2}, sink)
+	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 50_000, RecentKeep: 2}, sink)
 
 	if err := a.compact(context.Background(), "auto", "", true); err != nil {
 		t.Fatalf("compact: %v", err)
@@ -278,93 +278,6 @@ func TestCompactEmitsEvents(t *testing.T) {
 // TestCompactUpdatesContextGauge: a successful compaction must move the
 // context gauge to the projection size immediately, without overwriting
 // lastUsage (tokPerChar depends on the real usage ratio).
-func TestCompactUpdatesContextGauge(t *testing.T) {
-	prov := &fakeProvider{reply: "- goal: do X"}
-	sess := &Session{Messages: []provider.Message{
-		{Role: provider.RoleSystem, Content: "sys"},
-		{Role: provider.RoleUser, Content: "task"},
-		{Role: provider.RoleAssistant, Content: "step one"},
-		{Role: provider.RoleUser, Content: "more"},
-		{Role: provider.RoleAssistant, Content: "step two"},
-		{Role: provider.RoleUser, Content: "next"},
-		{Role: provider.RoleAssistant, Content: "ok"},
-	}}
-	a := New(prov, tool.NewRegistry(), sess, Options{RecentKeep: 2}, event.Discard)
-
-	if err := a.compact(context.Background(), "auto", "", true); err != nil {
-		t.Fatalf("compact: %v", err)
-	}
-	got, ok := a.ContextGaugeTokens()
-	if !ok || got == 0 {
-		t.Fatalf("ContextGaugeTokens = (%d, %v), want non-zero", got, ok)
-	}
-	if want := a.compactionState.Projection.ProjectionTokens; got != want {
-		t.Errorf("ContextGaugeTokens = %d, want projection tokens %d", got, want)
-	}
-	if u := a.LastUsage(); u != nil {
-		t.Errorf("lastUsage was overwritten by compaction: %+v", u)
-	}
-}
-
-// TestSetSessionSyncsContextGauge: switching sessions must point the gauge at
-// the new session's size, never the previous session's usage.
-func TestSetSessionSyncsContextGauge(t *testing.T) {
-	reg := tool.NewRegistry()
-	reg.Add(fakeTool{name: "read", readOnly: true})
-	a := New(&fakeProvider{}, reg, &Session{}, Options{}, event.Discard)
-	a.lastUsage.Store(&provider.Usage{PromptTokens: 999999})
-	sess := &Session{Messages: []provider.Message{
-		{Role: provider.RoleUser, Content: "hello world"},
-		{Role: provider.RoleAssistant, Content: "hi there"},
-	}}
-	want := estimateRequestTokens("", reg.Schemas(), sess.Messages)
-	a.SetSession(sess)
-	if got, ok := a.ContextGaugeTokens(); !ok || got != want {
-		t.Errorf("ContextGaugeTokens = (%d, %v), want %d", got, ok, want)
-	}
-	// Upstream SetSession resets per-session calibration: lastUsage is cleared
-	// so the previous session's tokPerChar cannot leak into budget math. The
-	// gauge still shows the fresh estimate via gaugeTokens.
-	if u := a.LastUsage(); u != nil {
-		t.Errorf("lastUsage = %+v, want nil after session switch (calibration reset)", u)
-	}
-}
-
-// TestSyncContextUsageUsesVisibleProjection: SyncContextUsage must gauge the
-// visible (projected) messages after a compaction, not the full canonical
-// transcript — a resumed session with a sidecar would otherwise over-report.
-func TestSyncContextUsageUsesVisibleProjection(t *testing.T) {
-	prov := &fakeProvider{reply: "- goal: do X"}
-	big := strings.Repeat("work line for the fold\n", 60) // large enough that the folded projection is genuinely smaller
-	sess := &Session{Messages: []provider.Message{
-		{Role: provider.RoleSystem, Content: "sys"},
-		{Role: provider.RoleUser, Content: big},
-		{Role: provider.RoleAssistant, Content: big},
-		{Role: provider.RoleUser, Content: big},
-		{Role: provider.RoleAssistant, Content: big},
-		{Role: provider.RoleUser, Content: big},
-		{Role: provider.RoleAssistant, Content: "ok"},
-	}}
-	a := New(prov, tool.NewRegistry(), sess, Options{RecentKeep: 2}, event.Discard)
-	if err := a.compact(context.Background(), "auto", "", true); err != nil {
-		t.Fatalf("compact: %v", err)
-	}
-	if len(a.compactionState.Projection.Messages) == 0 {
-		t.Fatal("compaction did not install a projection")
-	}
-	full := a.estimateRequest(sess.Messages)
-	a.SyncContextUsage()
-	got, ok := a.ContextGaugeTokens()
-	if !ok || got == 0 {
-		t.Fatalf("ContextGaugeTokens = (%d, %v), want non-zero", got, ok)
-	}
-	if want := a.estimateRequest(a.modelVisibleMessages()); got != want {
-		t.Errorf("ContextGaugeTokens = %d, want visible estimate %d", got, want)
-	}
-	if got >= full {
-		t.Errorf("ContextGaugeTokens = %d, want < full canonical estimate %d", got, full)
-	}
-}
 
 // TestEstimateRequestTokens pins the request-scope accounting: the system
 // prompt is counted once (in msgs or via the argument), and tool schemas that
@@ -403,16 +316,20 @@ func TestEstimateRequestTokens(t *testing.T) {
 // a PreCompact hook's output both reach the summarizer's system prompt.
 func TestCompactInjectsFocusAndPreCompactHook(t *testing.T) {
 	prov := &fakeProvider{reply: "- ok"}
+	big := strings.Repeat("step work detail ", 200)
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Content: "task"},
-		{Role: provider.RoleAssistant, Content: "step one"},
+		{Role: provider.RoleAssistant, Content: big},
 		{Role: provider.RoleUser, Content: "more"},
-		{Role: provider.RoleAssistant, Content: "step two"},
+		{Role: provider.RoleAssistant, Content: big},
 		{Role: provider.RoleUser, Content: "next"},
 		{Role: provider.RoleAssistant, Content: "ok"},
 	}}
-	a := New(prov, tool.NewRegistry(), sess, Options{RecentKeep: 2, Hooks: &stubHooks{preCompactOut: "KEEP-THE-MIGRATION-PLAN"}}, event.Discard)
+	a := New(prov, tool.NewRegistry(), sess, Options{
+		ContextWindow: 50_000, RecentKeep: 2,
+		Hooks: &stubHooks{preCompactOut: "KEEP-THE-MIGRATION-PLAN"},
+	}, event.Discard)
 
 	if err := a.compact(context.Background(), "manual", "focus on the auth refactor", true); err != nil {
 		t.Fatalf("compact: %v", err)
@@ -451,70 +368,59 @@ func TestCompactSkipsSingleSmallMessage(t *testing.T) {
 }
 
 func TestMaybeCompactThreshold(t *testing.T) {
-	// A large early user message gives the fold real value; with a 100-token window
-	// the soft (50%), trigger (80%), and force (90%) thresholds are easy to hit.
+	// compact_ratio is the sole trigger. Use a realistic window so hardInputCeiling
+	// (window−protocolReserve) stays above the fold trigger; tiny synthetic
+	// windows collapse hard to 1 and force every observation.
+	const window = 10_000
+	const ratio = 0.8 // fold trigger = 8000
 	newSess := func() *Session {
 		return &Session{Messages: []provider.Message{
 			{Role: provider.RoleSystem, Content: "sys"},
-			{Role: provider.RoleUser, Content: strings.Repeat("a ", 500)},
-			{Role: provider.RoleAssistant, Content: "b"},
+			{Role: provider.RoleUser, Content: "task"},
+			{Role: provider.RoleAssistant, Content: strings.Repeat("a ", 5000)},
 			{Role: provider.RoleUser, Content: "c"},
-			{Role: provider.RoleAssistant, Content: "d"},
+			{Role: provider.RoleAssistant, Content: strings.Repeat("b ", 5000)},
 			{Role: provider.RoleUser, Content: "e"},
 			{Role: provider.RoleAssistant, Content: "f"},
 		}}
 	}
+	opts := Options{ContextWindow: window, CompactRatio: ratio, RecentKeep: 2}
 
-	// Below 50% of the window: untouched.
+	// Below compact_ratio: untouched, no summarizer call.
 	sess := newSess()
-	a := New(&fakeProvider{reply: "s"}, tool.NewRegistry(), sess, Options{ContextWindow: 100, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 49})
+	prov := &fakeProvider{reply: "s"}
+	a := New(prov, tool.NewRegistry(), sess, opts, event.Discard)
+	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 7000})
 	if len(sess.Messages) != 7 {
 		t.Errorf("below threshold should not compact, len = %d", len(sess.Messages))
 	}
-
-	// At/above 50% only emits a soft notice; it does not rewrite the cache prefix.
-	sess = newSess()
-	prov := &fakeProvider{reply: "s"}
-	var notices []event.Event
-	a = New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 100, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.FuncSink(func(e event.Event) {
-		if e.Kind == event.Notice {
-			notices = append(notices, e)
-		}
-	}))
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 50})
-	if len(sess.Messages) != 7 {
-		t.Errorf("soft threshold should not compact, len = %d", len(sess.Messages))
-	}
 	if len(prov.got) != 0 {
-		t.Fatalf("soft threshold called summarizer: %+v", prov.got)
-	}
-	if len(notices) != 1 || notices[0].Text != "Context is getting large; preserving cache until cleanup is needed." || !strings.Contains(notices[0].Detail, "context reached 50%") {
-		t.Fatalf("soft threshold notice = %+v", notices)
-	}
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 60})
-	if len(notices) != 1 {
-		t.Fatalf("soft threshold notice should only emit once, got %d", len(notices))
+		t.Fatalf("below threshold called summarizer: %+v", prov.got)
 	}
 
-	// At/above 80%: compacts when the fold is economically worthwhile. The
-	// token-budgeted tail keeps the small recent messages, so the large early
-	// message is the only foldable region — folding it installs a summary at
-	// index 1 (the count is unchanged because one message becomes one summary).
+	// 60% is below the sole 80% trigger: still no maintenance.
 	sess = newSess()
-	a = New(&fakeProvider{reply: "s"}, tool.NewRegistry(), sess, Options{ContextWindow: 100, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 80})
-	if !hasCompactionSummary(visibleContext(a)) {
-		t.Errorf("compact threshold should fold the large early message into projection, got: %+v", visibleContext(a))
+	prov = &fakeProvider{reply: "s"}
+	a = New(prov, tool.NewRegistry(), sess, opts, event.Discard)
+	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 6000})
+	if a.currentProjectionVersion() != 0 || len(prov.got) != 0 {
+		t.Fatalf("60%% should not maintain: version=%d calls=%d", a.currentProjectionVersion(), len(prov.got))
 	}
-	// Canonical transcript remains full.
+
+	// At/above compact_ratio: one summary projection; canonical stays full.
+	sess = newSess()
+	a = New(&fakeProvider{reply: "s"}, tool.NewRegistry(), sess, opts, event.Discard)
+	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 8500})
+	if !hasCompactionSummary(visibleContext(a)) {
+		t.Errorf("compact threshold should install a summary projection, got: %+v", visibleContext(a))
+	}
 	if len(sess.Messages) != 7 {
 		t.Errorf("canonical should stay full after projection compact, len=%d", len(sess.Messages))
 	}
 
 	// No context window: compaction disabled.
 	sess = newSess()
-	a = New(&fakeProvider{reply: "s"}, tool.NewRegistry(), sess, Options{RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
+	a = New(&fakeProvider{reply: "s"}, tool.NewRegistry(), sess, Options{RecentKeep: 2}, event.Discard)
 	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 1 << 30})
 	if len(sess.Messages) != 7 {
 		t.Errorf("no window should disable compaction, len = %d", len(sess.Messages))
@@ -522,22 +428,27 @@ func TestMaybeCompactThreshold(t *testing.T) {
 }
 
 func TestMaybeCompactForceCeilingBypassesEconomics(t *testing.T) {
+	// Physical hard ceiling (window−reserve) forces a summary even when the fold
+	// is below the minFoldTokens economics floor — but the fold must still be
+	// large enough that the candidate lands under the compact_ratio trigger.
+	const window = 10_000
+	big := strings.Repeat("old analysis detail ", 400)
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
-		{Role: provider.RoleUser, Content: "small old request"},
-		{Role: provider.RoleAssistant, Content: "small old answer"},
+		{Role: provider.RoleUser, Content: "task"},
+		{Role: provider.RoleAssistant, Content: big},
 		{Role: provider.RoleUser, Content: "next"},
 		{Role: provider.RoleAssistant, Content: "ok"},
 	}}
 	prov := &fakeProvider{reply: "forced summary"}
-	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 100, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
+	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: window, CompactRatio: 0.85, RecentKeep: 2}, event.Discard)
 
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 90})
-	// Force bypasses economics and installs a projection summary; canonical stays.
+	// hard = 10000-256 = 9744; observe just above it.
+	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 9800})
 	if got := len(sess.Messages); got != 5 {
 		t.Fatalf("canonical len = %d, want 5: %+v", got, sess.Messages)
 	}
-	if sess.Messages[1].Content != "small old request" {
+	if sess.Messages[1].Content != "task" {
 		t.Fatalf("first user turn not pinned verbatim in canonical: %+v", sess.Messages[1])
 	}
 	proj := visibleContext(a)
@@ -550,6 +461,9 @@ func TestMaybeCompactForceCeilingBypassesEconomics(t *testing.T) {
 }
 
 func TestMaybeCompactSkipsLowValueRegionBeforeForceCeiling(t *testing.T) {
+	// Above compact_ratio but below the physical hard ceiling: low-value folds
+	// are rejected by foldEconomics without calling the summarizer.
+	const window = 10_000
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Content: "small old request"},
@@ -558,29 +472,38 @@ func TestMaybeCompactSkipsLowValueRegionBeforeForceCeiling(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "ok"},
 	}}
 	prov := &fakeProvider{reply: "should not summarize"}
-	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 100, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
+	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: window, CompactRatio: 0.85, RecentKeep: 2}, event.Discard)
 
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 80})
+	// fold trigger = 8500; hard = 9744. Observe between them.
+	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 8600})
 	if got := len(sess.Messages); got != 5 {
 		t.Fatalf("low-value region should not compact before force ceiling, len = %d", got)
 	}
 	if len(prov.got) != 0 {
 		t.Fatalf("summarizer was called for low-value non-forced region: %+v", prov.got)
 	}
+	if a.currentProjectionVersion() != 0 {
+		t.Fatalf("low-value region installed projection version %d", a.currentProjectionVersion())
+	}
 }
 
 func TestMaybeCompactFoldsSingleLargeMessageAtThreshold(t *testing.T) {
+	const window = 10_000
+	// Large assistant work (not the first user turn) so it is foldable, not pinned.
 	sess := &Session{Messages: []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
-		{Role: provider.RoleUser, Content: strings.Repeat("large prompt chunk ", 500)},
+		{Role: provider.RoleUser, Content: "task"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("large prompt chunk ", 500)},
 		{Role: provider.RoleUser, Content: "next"},
 		{Role: provider.RoleAssistant, Content: "ok"},
 	}}
-	a := New(&fakeProvider{reply: "single large summary"}, tool.NewRegistry(), sess, Options{ContextWindow: 100, RecentKeep: 2, ArchiveDir: t.TempDir()}, event.Discard)
+	a := New(&fakeProvider{reply: "single large summary"}, tool.NewRegistry(), sess, Options{
+		ContextWindow: window, CompactRatio: 0.8, RecentKeep: 2,
+	}, event.Discard)
 
-	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 80})
-	if got := len(sess.Messages); got != 4 {
-		t.Fatalf("canonical len = %d, want 4: %+v", got, sess.Messages)
+	prepareForObservedUsage(a, context.Background(), &provider.Usage{PromptTokens: 8500})
+	if got := len(sess.Messages); got != 5 {
+		t.Fatalf("canonical len = %d, want 5: %+v", got, sess.Messages)
 	}
 	proj := visibleContext(a)
 	if !hasCompactionSummary(proj) || !strings.Contains(joinContents(proj), "single large summary") {
@@ -651,7 +574,7 @@ func TestCompactKeepsActiveTurnVerbatim(t *testing.T) {
 		result,
 	}}
 	a := New(&fakeProvider{reply: "old work summary"}, tool.NewRegistry(), sess, Options{
-		ContextWindow: 100, RecentKeep: 1, ArchiveDir: t.TempDir(),
+		ContextWindow: 50_000, CompactRatio: 0.85, RecentKeep: 1,
 	}, event.Discard)
 	a.activeTurnCreatedAt.Store(currentCreatedAt)
 
@@ -760,22 +683,20 @@ func TestMaybeCompactDefersWhenOnlyActiveTurnRemains(t *testing.T) {
 	}
 }
 
-func TestCompactThresholdsReserveConfiguredOutputBudget(t *testing.T) {
+func TestCompactTriggerIgnoresConfiguredOutputBudget(t *testing.T) {
 	a := &Agent{
-		contextWindow:       100_000,
-		maxOutputTokens:     20_000,
-		softCompactRatio:    0.5,
-		toolResultSnipRatio: 0.8,
-		compactRatio:        0.9,
-		compactForceRatio:   0.95,
+		contextWindow:   100_000,
+		maxOutputTokens: 20_000,
+		compactRatio:    0.85,
 	}
-	soft, snip, high := a.compactThresholds()
-	// hard = 100000 - 20000 output - 256 protocol reserve.
-	if soft != 50_000 || snip != 79_744 || high != 79_744 {
-		t.Fatalf("thresholds = %d/%d/%d, want 50000/79744/79744", soft, snip, high)
+	if got := a.compactTrigger(); got != 85_000 {
+		t.Fatalf("trigger = %d, want 85000 (output budget must not change it)", got)
 	}
-	if got := a.minimumMaintenanceSavingsTokens(); got != 4096 {
-		t.Fatalf("minimum maintenance savings = %d, want 4096", got)
+	if got := a.hardInputCeiling(); got != 100_000-protocolReserveTokens {
+		t.Fatalf("hard ceiling = %d, want window minus protocol reserve only", got)
+	}
+	if got := a.checkpointCeiling(); got != 50_000 {
+		t.Fatalf("checkpoint ceiling = %d, want 50000", got)
 	}
 }
 

@@ -245,11 +245,12 @@ input,textarea{font:inherit;color:inherit}
 .card-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:7px 12px;font-size:13px;color:var(--fg-2);cursor:pointer;user-select:none;background:var(--card);transition:background .18s ease}
 .card-head:hover{background:var(--card-hover)}
 .card-head .ico{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);color:var(--fg-2);flex-shrink:0;font-size:10px}
-.card-main{display:flex;align-items:center;gap:8px;min-width:0}
-.card-title{display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 auto}
-.card-head .name{color:var(--fg);font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-head .subject{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:60%}
-.card-meta{display:flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap;font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.card-main{display:grid;gap:2px;min-width:0}
+.card-title{display:flex;align-items:center;gap:7px;min-width:0}
+/* The tool name identifies the call; the argument summary is what may shrink. */
+.card-head .name{color:var(--fg);font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:55%}
+.card-head .subject{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 0;min-width:0}
+.card-meta{display:flex;align-items:center;gap:8px;min-width:0;font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
 .card-badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;border:1px solid var(--border);font-size:10.5px;color:var(--muted);white-space:nowrap}
 .card-actions{display:flex;align-items:center;gap:4px}
 .card-action{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);color:var(--muted);transition:background .15s ease,color .15s ease,border-color .15s ease}
@@ -265,6 +266,12 @@ input,textarea{font:inherit;color:inherit}
 .card[data-tone="danger"] .card-badge{background:var(--danger-soft);border-color:transparent;color:var(--danger)}
 .card[data-tone="accent"] .card-badge{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
 .card .err-body{padding:6px 12px;color:var(--danger);background:var(--danger-soft);font-family:var(--mono);font-size:12px;white-space:pre-wrap;border-top:1px solid var(--border)}
+.card[data-open="false"] .card-body,.card[data-open="false"] .card-nest{display:none}
+.card-nest{border-top:1px solid var(--border);background:var(--bg-2);padding:4px 10px 8px}
+.card-nest__label{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);padding:4px 2px 2px}
+.card-nest .card{margin:6px 0 0;border-left:2px solid var(--border-strong);border-radius:0 var(--radius-lg) var(--radius-lg) 0;box-shadow:none}
+.card-nest .card-head{padding:5px 10px}
+.card--subagent-orphan{border-left:2px solid var(--border-strong)}
 .spin{animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -649,12 +656,17 @@ input,textarea{font:inherit;color:inherit}
   .slash-menu__foot{display:none}
   .card-head{grid-template-columns:auto minmax(0,1fr) auto}
   .card-actions{grid-column:3}
+  /* Narrow screens drop the badge, except when it carries the only signal that
+     the command never ran — a red icon alone reads as "failed". */
   .card-badge{display:none}
   .welcome__calendar{max-width:100%;padding:12px 11px 10px}
   .welcome__calendar-head{align-items:stretch;flex-direction:column;gap:8px}
   .welcome__calendar-ranges{width:100%;overflow-x:auto}
   .cal-range{flex:0 0 auto}
   .welcome__pill{max-width:calc(100vw - 32px)}
+  .card[data-state="blocked"] .card-head{grid-template-columns:auto minmax(0,1fr) auto auto}
+  .card[data-state="blocked"] .card-badge{display:inline-flex}
+  .card[data-state="blocked"] .card-actions{grid-column:4}
 }
 @media(min-width:769px){
   .menu-btn,.sidebar-overlay{display:none}
@@ -1159,6 +1171,9 @@ const __T = {
     'tool_args': 'Args',
     'tool_output': 'Output',
     'tool_lines': 'lines',
+    'tool_subcalls': 'sub-agent calls',
+    'tool_blocked': 'Blocked',
+    'tool_not_executed': 'not executed',
     'submit': 'Submit',
     'approval_title': 'Approval Required',
     'allow': 'Allow',
@@ -1409,6 +1424,9 @@ const __T = {
     'tool_args': '参数',
     'tool_output': '输出',
     'tool_lines': '行',
+    'tool_subcalls': '个子代理调用',
+    'tool_blocked': '已阻止',
+    'tool_not_executed': '未执行',
     'submit': '提交',
     'approval_title': '需要批准',
     'allow': '允许',

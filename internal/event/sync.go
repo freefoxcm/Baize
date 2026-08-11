@@ -101,3 +101,9 @@ func (s *syncSink) RecordDelegationAdmission(a DelegationAdmissionAudit) {
 		da.RecordDelegationAdmission(a)
 	}
 }
+
+func (s *syncSink) RecordWorkspaceMutation(m WorkspaceMutation) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	RecordWorkspaceMutation(s.inner, m)
+}

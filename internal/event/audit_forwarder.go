@@ -6,10 +6,9 @@ import (
 )
 
 // AuditForwarder forwards every optional sink capability to Inner. Embed it in
-// a wrapper that only passes audits through, so a channel added here reaches
-// every embedder without editing them. Hand-written forwarding lost three
-// audits at three wrappers, silently and with the tests green, because nine
-// capabilities had to be repeated at every layer to stay whole.
+// a wrapper that only passes host-side signals through, so a channel added here
+// reaches every embedder without editing them. Hand-written forwarding lost
+// capabilities at multiple wrappers even while their owning tests stayed green.
 type AuditForwarder struct{ Inner Sink }
 
 func (f AuditForwarder) RecordReadinessAudit(a evidence.ReadinessAudit) {
@@ -44,6 +43,10 @@ func (f AuditForwarder) RecordProtocolRecovery(a ProtocolRecoveryAudit) {
 
 func (f AuditForwarder) RecordDelegationAudit(a evidence.DelegationAudit) {
 	RecordDelegationAudit(f.Inner, a)
+}
+
+func (f AuditForwarder) RecordWorkspaceMutation(m WorkspaceMutation) {
+	RecordWorkspaceMutation(f.Inner, m)
 }
 
 // DelegationAuditSink receives one receipt per completed sub-agent run.

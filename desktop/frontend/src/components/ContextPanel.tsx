@@ -28,7 +28,6 @@ interface ContextPanelProps {
   usageSeq?: number;
 }
 
-
 function fmtDuration(ms: number, t: Translator): string {
   if (ms <= 0) return "-";
   const totalSeconds = Math.max(1, Math.round(ms / 1000));
@@ -37,7 +36,6 @@ function fmtDuration(ms: number, t: Translator): string {
   if (minutes <= 0) return t("context.durationSeconds", { seconds });
   return t("context.durationMinutesSeconds", { minutes, seconds });
 }
-
 
 interface MetricTokenDisplay {
   display: string;
@@ -276,16 +274,6 @@ function sourceLabel(source: string, t: Translator): string {
   }
 }
 
-function maintenanceActionLabel(action: string | undefined, t: Translator): string {
-  switch (action) {
-    case "snip": return t("context.maintenanceActionSnip");
-    case "prune": return t("context.maintenanceActionPrune");
-    case "summary": return t("summary.detail");
-    case "native_tool_clear": return t("context.maintenanceActionNative");
-    default: return t("common.none");
-  }
-}
-
 function sourceCost(stats: UsageSourceStats): number {
   return stats.sessionCost && stats.sessionCost > 0 ? stats.sessionCost : stats.sessionCostUsd ?? 0;
 }
@@ -432,10 +420,20 @@ export function ContextPanel({
   const changedFiles = asArray(info?.changedFiles);
 
   const usagePct = windowTokens > 0 ? Math.min(100, Math.round((usedTokens / windowTokens) * 100)) : 0;
-  const compactRatio = context?.compactRatio && context.compactRatio > 0 ? context.compactRatio : 0.8;
+  const compactRatio = context?.compactRatio && context.compactRatio > 0 ? context.compactRatio : 0.85;
   const compactPct = Math.round(compactRatio * 100);
-  const compactTokens = windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0;
+  const maintenance = context?.maintenance;
+  const triggerTokens = maintenance?.triggerTokens && maintenance.triggerTokens > 0
+    ? maintenance.triggerTokens
+    : windowTokens > 0
+      ? Math.round(windowTokens * compactRatio)
+      : 0;
+  const compactTokens = triggerTokens > 0 ? triggerTokens : (windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0);
   const tokensUntilCompact = compactTokens > usedTokens ? compactTokens - usedTokens : 0;
+  const canonicalTokens = maintenance?.canonicalTokens ?? 0;
+  const projectedTokens = maintenance?.projectedTokens ?? usedTokens;
+  const checkpointState = maintenance?.checkpointState || (maintenance?.projectionVersion ? "restored" : "none");
+  const lastReceipt = maintenance?.lastReceipt;
   const breakdown = contextBreakdown(usedTokens, windowTokens, promptTokens, completionTokens, reasoningTokens);
   const eventTimes = [
     ...readFiles.map((file) => file.time),
@@ -461,13 +459,6 @@ export function ContextPanel({
   const compactLabelPct = Math.max(6, Math.min(94, compactMarkerPct));
   const usageSummary = t("context.windowUsageSummary", { used: usedLabel, window: windowLabel, pct: usagePct });
   const compactSummary = t("context.windowCompactRemaining", { used: usedLabel, window: windowLabel, tokens: compactRemainingLabel, pct: compactPct });
-  const maintenance = context?.maintenance;
-  const lastMaintenance = maintenance?.lastReceipt;
-  const maintenanceStatus = maintenance?.blocked
-    ? t("projectTree.status.paused")
-    : lastMaintenance?.status === "applied"
-      ? t("settings.typography.applied")
-      : t("remote.server.state.ready");
   const activeAnalysisView: UsageAnalysisView = showSourceUsageRows ? analysisView : "type";
   const tokenTypeRows = [
     { key: "prompt", label: t("context.prompt"), value: breakdown.promptTokens },
@@ -565,26 +556,54 @@ export function ContextPanel({
                 </span>
               </div>
             </div>
-          </section>
-          {maintenance && (
-            <section className="context-panel__section context-panel__session-section">
-              <SectionHeading title={t("context.maintenanceTitle")} meta={maintenanceStatus} />
-              <div className="context-panel__session-metrics">
-                <div className="context-panel__summary-rows">
-                  <MiniStat label={t("context.maintenanceProjected")} value={formatOptionalTokens(maintenance.projectedTokens)} tone="accent" />
-                  <MiniStat label={t("history.title")} value={formatOptionalTokens(maintenance.canonicalTokens)} />
-                  <MiniStat label={t("summary.detail")} value={formatOptionalTokens(maintenance.summaryTokens)} />
-                  <MiniStat label={t("context.maintenanceLastSaved")} value={formatOptionalTokens(maintenance.lastSavedTokens)} tone={maintenance.lastSavedTokens ? "good" : undefined} />
-                  <MiniStat label={t("context.maintenanceHeadroom")} value={formatOptionalTokens(maintenance.headroom)} wide />
-                  <MiniStat label={t("context.maintenanceLastAction")} value={maintenanceActionLabel(lastMaintenance?.action, t)} />
-                  <MiniStat label={t("context.maintenanceSnipAt")} value={formatOptionalTokens(maintenance.snipTrigger)} />
-                  <MiniStat label={t("context.maintenanceFoldAt")} value={formatOptionalTokens(maintenance.foldTrigger)} />
-                  <MiniStat label={t("context.maintenanceForceAt")} value={formatOptionalTokens(maintenance.forceTrigger)} />
-                  <MiniStat label={t("context.maintenanceHardAt")} value={formatOptionalTokens(maintenance.hardInputCeiling)} />
+            {(canonicalTokens > 0 || projectedTokens > 0 || (maintenance?.projectionVersion ?? 0) > 0) && (
+              <div className="context-panel__maintenance" aria-label={t("context.maintenanceTitle")}>
+                <SectionHeading title={t("context.maintenanceTitle")} />
+                <div className="context-panel__maintenance-rows">
+                  <MiniStat
+                    label={t("context.maintenanceCanonical")}
+                    value={formatTokens(canonicalTokens)}
+                  />
+                  <MiniStat
+                    label={t("context.maintenanceVisible")}
+                    value={formatTokens(projectedTokens)}
+                  />
+                  <MiniStat
+                    label={t("context.maintenanceTrigger")}
+                    value={triggerTokens > 0 ? formatTokens(triggerTokens) : "-"}
+                    title={t("context.maintenanceTriggerHint", { percent: compactPct })}
+                  />
+                  <MiniStat
+                    label={t("context.maintenanceRatio")}
+                    value={`${compactPct}%`}
+                  />
+                  <MiniStat
+                    label={t("context.maintenanceCheckpoint")}
+                    value={
+                      checkpointState === "applied"
+                        ? t("context.maintenanceCheckpointApplied")
+                        : checkpointState === "restored"
+                          ? t("context.maintenanceCheckpointRestored")
+                          : t("context.maintenanceCheckpointNone")
+                    }
+                    wide
+                  />
+                  {(maintenance?.projectionVersion ?? 0) > 0 && (
+                    <MiniStat
+                      label={t("context.maintenanceVersion")}
+                      value={String(maintenance?.projectionVersion)}
+                    />
+                  )}
+                  {typeof lastReceipt?.savedTokens === "number" && lastReceipt.savedTokens > 0 && (
+                    <MiniStat
+                      label={t("context.maintenanceSaved")}
+                      value={formatTokens(lastReceipt.savedTokens)}
+                    />
+                  )}
                 </div>
               </div>
-            </section>
-          )}
+            )}
+          </section>
           <section className="context-panel__section context-panel__session-section">
             <SectionHeading title={t("context.sessionMetrics")} />
             <div className="context-panel__session-metrics">

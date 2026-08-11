@@ -256,6 +256,7 @@ type SessionAPI interface {
 	SessionPersistence
 	Input
 	Settings
+	Inbox
 }
 
 // Compile-time proof that the concrete controller satisfies each sub-port and
@@ -273,5 +274,6 @@ var (
 	_ SessionPersistence = (*Controller)(nil)
 	_ Input              = (*Controller)(nil)
 	_ Settings           = (*Controller)(nil)
+	_ Inbox              = (*Controller)(nil)
 	_ SessionAPI         = (*Controller)(nil)
 )

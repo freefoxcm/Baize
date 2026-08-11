@@ -201,3 +201,10 @@ func (c *coalescer) RecordDelegationAdmission(a DelegationAdmissionAudit) {
 	c.drainAndUnlock()
 	RecordDelegationAdmission(c.inner, a)
 }
+
+func (c *coalescer) RecordWorkspaceMutation(m WorkspaceMutation) {
+	c.mu.Lock()
+	c.enqueueFlushLocked()
+	c.drainAndUnlock()
+	RecordWorkspaceMutation(c.inner, m)
+}
