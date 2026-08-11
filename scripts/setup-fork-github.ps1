@@ -34,6 +34,7 @@ if ($LASTEXITCODE -ne 0 -or $admin -ne 'true') { throw "GitHub admin permission 
 
 $activePaths = @(Get-Content scripts/baize-workflows-active.txt | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') })
 $disabledPaths = @(Get-Content scripts/baize-workflows-disabled.txt | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') })
+$githubManagedPaths = @('dynamic/dependabot/update-graph')
 
 if ($Apply) {
     $currentWorkflowStates = @{}
@@ -82,7 +83,7 @@ if ($actionsEnabled -ne 'true') { $problems += "GitHub Actions is disabled for t
 
 $workflows = @(& $Gh workflow list --repo $repository --all --json path,state | ConvertFrom-Json)
 foreach ($workflow in $workflows) {
-    if ($workflow.state -eq 'active' -and $workflow.path -notin $activePaths) {
+    if ($workflow.state -eq 'active' -and $workflow.path -notin $activePaths -and $workflow.path -notin $githubManagedPaths) {
         $problems += "unexpected active workflow: $($workflow.path)"
     }
 }

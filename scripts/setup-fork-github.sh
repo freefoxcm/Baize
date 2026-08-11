@@ -75,7 +75,8 @@ fi
 
 active=$(run_gh workflow list --repo "$repository" --all --json path,state --jq '.[] | select(.state == "active") | .path')
 printf '%s\n' "$active" | while IFS= read -r path; do
-  [ -z "$path" ] || grep -Fqx "$path" scripts/baize-workflows-active.txt || {
+  [ -z "$path" ] || [ "$path" = dynamic/dependabot/update-graph ] || \
+    grep -Fqx "$path" scripts/baize-workflows-active.txt || {
     echo "error: unexpected active workflow: $path" >&2
     exit 17
   }

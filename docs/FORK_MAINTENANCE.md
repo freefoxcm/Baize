@@ -43,7 +43,10 @@ Only these workflows are active in this personal fork:
 Upstream workflow files remain tracked to reduce merge conflicts, but their
 repository workflow state is disabled. Official releases, signing, npm,
 Cloudflare, Pages, E2E bots, labels, scheduled maintenance, and community
-automation are inactive.
+automation are inactive. GitHub may also display the platform-managed
+`dynamic/dependabot/update-graph`; it is not a repository-owned workflow and is
+excluded from the Baize allowlist check because disabling it would also disable
+the repository's dependency graph and vulnerability alerts.
 
 ## Fetch and integrate upstream
 
