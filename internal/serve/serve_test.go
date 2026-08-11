@@ -732,7 +732,7 @@ func TestServeEditRejectsEmptyAndShell(t *testing.T) {
 }
 
 func TestServeIndexDefinesQueryHelpers(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"const $ = s => document.querySelector(s);",
 		"const $$ = s => document.querySelectorAll(s);",
@@ -744,7 +744,7 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 }
 
 func TestServeIndexKeepsToolCardHeaderOnOneRow(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		".card-main{display:flex;align-items:center;gap:8px;min-width:0}",
 		".card-title{display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 auto}",
@@ -766,7 +766,7 @@ func TestServeIndexKeepsToolCardHeaderOnOneRow(t *testing.T) {
 }
 
 func TestServeBrandingAndAssets(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"<title>Baize</title>",
 		"href=\"/assets/logo-symbol.svg\"",
@@ -834,7 +834,7 @@ func TestServeBrandAssetRoutes(t *testing.T) {
 }
 
 func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		`'usage_calendar': 'Token activity'`,
 		`'cal_range_year': 'This year'`,
@@ -874,7 +874,7 @@ func TestServeIndexTokenActivityAndWorkspaceLabel(t *testing.T) {
 	}
 }
 func TestServeIndexReportsSessionDeleteFailures(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"'cannot_delete_active': 'Cannot delete the active session'",
 		"'cannot_delete_active': '无法删除当前会话'",
@@ -891,7 +891,7 @@ func TestServeIndexReportsSessionDeleteFailures(t *testing.T) {
 }
 
 func TestServeIndexHandlesRetryingEvents(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"case 'retrying': setRetrying(e.retryAttempt,e.retryMax); break;",
 		"if(e.kind!=='retrying')clearRetrying();",
@@ -905,7 +905,7 @@ func TestServeIndexHandlesRetryingEvents(t *testing.T) {
 }
 
 func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"e.outcome==='recovery_paused'",
 		"showNotice('⏸ '+__('recovery_paused'))",
@@ -919,7 +919,7 @@ func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
 }
 
 func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"e.outcome==='final_readiness'",
 		"showDeliveryReadiness(e)",
@@ -936,7 +936,7 @@ func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
 }
 
 func TestServeIndexHidesInternalTodoToolsAndMarksSignableTodo(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"return n==='todo_write'||n==='exit_plan_mode';",
 		"if(hiddenTranscriptTool(tool&&tool.name))return;",
@@ -952,7 +952,7 @@ func TestServeIndexHidesInternalTodoToolsAndMarksSignableTodo(t *testing.T) {
 }
 
 func TestServeIndexRendersAndReloadsExtensions(t *testing.T) {
-	html := string(indexHTML)
+	html := baizeWebSource()
 	for _, want := range []string{
 		"case 'extension_surface': if(e.extension)renderExtensionSurface(e.extension); break;",
 		"case 'extension_status': if(e.extension)renderExtensionSurface(e.extension); break;",
@@ -990,10 +990,10 @@ func TestServeIndexPagePassesLanguagePreferenceToClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := string(body)
-	if !strings.Contains(html, "const __LANG_PREF = 'auto';") {
+	if !strings.Contains(html, `data-language="auto"`) {
 		t.Fatalf("default language preference was not passed as auto:\n%s", html)
 	}
-	if !strings.Contains(html, "applyStaticI18n();") {
+	if !strings.Contains(string(baizeJS), "applyStaticI18n();") {
 		t.Fatal("index should translate static __('key') placeholders on the client")
 	}
 
@@ -1017,9 +1017,13 @@ func TestServeIndexPagePassesLanguagePreferenceToClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "const __LANG_PREF = 'en';") {
+	if !strings.Contains(string(body), `data-language="en"`) {
 		t.Fatalf("pinned desktop language was not passed through:\n%s", string(body))
 	}
+}
+
+func baizeWebSource() string {
+	return string(indexHTML) + string(baizeCSS) + string(baizeJS)
 }
 
 func TestServeModelsMarksActiveByModelRef(t *testing.T) {

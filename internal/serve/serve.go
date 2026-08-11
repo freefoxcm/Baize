@@ -8,7 +8,6 @@ package serve
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -33,18 +32,6 @@ import (
 	"reasonix/internal/stats"
 	"reasonix/internal/store"
 )
-
-//go:embed index.html
-var indexHTML []byte
-
-//go:embed logo-wordmark.svg
-var logoWordmarkSVG []byte
-
-//go:embed logo-symbol.svg
-var logoSymbolSVG []byte
-
-//go:embed assets/vendor.min.js
-var vendorJS []byte
 
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
@@ -698,11 +685,7 @@ func (s *Server) HandlerWithCORS(origin string) http.Handler {
 }
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", s.index)
-	mux.HandleFunc("GET /sessions/{id}", s.index)
-	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
-	mux.HandleFunc("GET /assets/logo-symbol.svg", s.logoSymbol)
-	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
+	s.registerWebAssetRoutes(mux)
 	mux.HandleFunc("GET /provider-setup", s.providerSetupStatus)
 	mux.HandleFunc("POST /provider-setup", s.providerSetupSave)
 	mux.HandleFunc("GET /events", s.events)
@@ -829,46 +812,6 @@ func (s *Server) RunGracefulListener(ctx context.Context, ln net.Listener) error
 		}
 		return err
 	}
-}
-
-func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
-	if setup, ok := s.providerSetupSnapshot(); ok && setup.Required {
-		s.providerSetupIndex(w)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = config.MigrateLegacyIfNeeded()
-	lang := "auto"
-	if cfg, err := config.Load(); err == nil {
-		if dl := cfg.DesktopLanguage(); dl != "" {
-			lang = dl
-		}
-	}
-	html := string(indexHTML)
-	html = strings.ReplaceAll(html, "__LANG__", lang)
-	_, _ = w.Write([]byte(html))
-}
-
-func (s *Server) logoSymbol(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	_, _ = w.Write(logoSymbolSVG)
-}
-
-func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	_, _ = w.Write(logoWordmarkSVG)
-}
-
-// vendorJS serves the embedded rendering libraries (marked + DOMPurify +
-// highlight.js, bundled by scripts/build-serve-vendor.mjs). Long cache: the
-// bundle is versioned by the build, so a stale copy only persists for one
-// browser session at most.
-func (s *Server) vendorJSHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	_, _ = w.Write(vendorJS)
 }
 
 // sseKeepaliveInterval is how often the /events handler emits a `: ping`
