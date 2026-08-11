@@ -34,9 +34,13 @@ run_gh auth status >/dev/null
 }
 
 if [ "$mode" = apply ]; then
+  workflow_states=$(run_gh workflow list --repo "$repository" --all --json path,state \
+    --jq '.[] | [.path, .state] | @tsv')
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    run_gh workflow disable "$path" --repo "$repository"
+    if printf '%s\n' "$workflow_states" | grep -Fqx "$(printf '%s\tactive' "$path")"; then
+      run_gh workflow disable "$path" --repo "$repository"
+    fi
   done < scripts/baize-workflows-disabled.txt
 
   run_gh api --method PATCH "repos/$repository" -f default_branch=custom/baize >/dev/null

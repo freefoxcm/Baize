@@ -36,8 +36,14 @@ $activePaths = @(Get-Content scripts/baize-workflows-active.txt | ForEach-Object
 $disabledPaths = @(Get-Content scripts/baize-workflows-disabled.txt | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') })
 
 if ($Apply) {
+    $currentWorkflowStates = @{}
+    foreach ($workflow in @(& $Gh workflow list --repo $repository --all --json path,state | ConvertFrom-Json)) {
+        $currentWorkflowStates[$workflow.path] = $workflow.state
+    }
     foreach ($path in $disabledPaths) {
-        Invoke-Gh workflow disable $path --repo $repository
+        if ($currentWorkflowStates[$path] -eq 'active') {
+            Invoke-Gh workflow disable $path --repo $repository
+        }
     }
     Invoke-Gh api --method PATCH "repos/$repository" -f default_branch=custom/baize | Out-Null
 
