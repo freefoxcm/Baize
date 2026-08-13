@@ -1999,51 +1999,6 @@ func addCalendarMonthsClamped(day time.Time, delta int) time.Time {
 	return time.Date(target.Year(), target.Month(), d, 0, 0, 0, 0, day.Location())
 }
 
-// usageCalendar serves the welcome-page Token activity heatmap. Presets end
-// today and aggregate only rows labelled with this frontend's StatsSource
-// ("serve"). Per-day requests, turns and model detail ride in the response.
-func (s *Server) usageCalendar(w http.ResponseWriter, r *http.Request) {
-	key, from, to, err := usageCalendarRange(s.now(), r.URL.Query().Get("range"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	rs, err := stats.NewWriter(s.statsDir()).Query(stats.SourceFilter{
-		Source: "serve",
-		From:   from,
-		To:     to,
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	type dayEntry struct {
-		Day      string           `json:"day"`
-		Tokens   int64            `json:"tokens"`
-		Requests int              `json:"requests"`
-		Turns    int              `json:"turns"`
-		ByModel  map[string]int64 `json:"byModel,omitempty"`
-	}
-	daysOut := make([]dayEntry, 0, len(rs.Daily))
-	var max int64
-	for _, d := range rs.Daily {
-		if int64(d.Total) > max {
-			max = int64(d.Total)
-		}
-		daysOut = append(daysOut, dayEntry{Day: d.Day, Tokens: int64(d.Total), Requests: d.Requests, Turns: d.Turns, ByModel: d.ByModel})
-	}
-	writeJSON(w, map[string]any{
-		"range":      key,
-		"from":       from.Format(usageCalendarDateLayout),
-		"to":         to.Format(usageCalendarDateLayout),
-		"days":       daysOut,
-		"max":        max,
-		"total":      rs.Tokens,
-		"turns":      rs.Turns,
-		"activeDays": rs.ActiveDays,
-	})
-}
-
 // deleteSession removes a saved session by the session name returned from /sessions.
 func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {

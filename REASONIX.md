@@ -86,6 +86,37 @@ go test ./internal/tool/builtin/ ./internal/boot/  # catches tool/boot test brea
 shows up in `go vet`, and the CI round trip that catches it instead costs ten
 minutes.
 
+## Baize Windows release build
+
+- The runnable Windows deliverable is always `bin/reasonix.exe`. Never build or
+  leave `reasonix.exe` in the repository root.
+- Release builds use `CGO_ENABLED=0`, `-trimpath`, and linker flags `-s -w`, and
+  embed `main.version`, `main.gitCommit`, and `main.buildTimeUTC` using the same
+  values as the Makefile. A plain `go build` is only a temporary debug build and
+  must not replace the file under `bin/`.
+- In a POSIX-compatible build environment, `make build` is authoritative. It
+  also builds the optional `bin/reasonix-plugin-example.exe`; that example is
+  not a runtime dependency of `reasonix.exe`.
+- In Windows PowerShell without `make`, build the primary executable from the
+  repository root with:
+
+```powershell
+$buildVersion = git describe --tags --always
+$buildCommit = git rev-parse --short=12 HEAD
+$buildTimeUTC = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+$env:CGO_ENABLED = '0'
+$linkerFlags = "-s -w -X main.version=$buildVersion -X main.gitCommit=$buildCommit -X main.buildTimeUTC=$buildTimeUTC"
+go build -trimpath -ldflags $linkerFlags -o bin/reasonix.exe ./cmd/reasonix
+```
+
+- Before handoff, run `bin/reasonix.exe version`, record the file size and
+  SHA-256 hash, and confirm the executable starts. Embedded Web assets such as
+  Baize CSS, JavaScript, and PDF.js require a rebuild and Serve restart before
+  changes take effect.
+- Files named `reasonix.exe.pre-*` are local rollback copies, not build outputs
+  or runtime dependencies. Do not create them as part of a normal build, and do
+  not delete an existing user rollback copy unless deletion was requested.
+
 ## Import cycle rule
 
 Before importing a new internal package from a non-test file, verify the target package's **test files** aren't already importing back to you:
