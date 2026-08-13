@@ -283,6 +283,21 @@ sidecars and the runtime generation without restarting Serve. Use `--model`,
 `--max-steps`, or `--resume` for one-off launches; otherwise `serve` uses the
 user-global `default_model`.
 
+The left navigation can collapse to an icon rail. Its Files action opens a
+read-only workspace browser on the right with lazy directory loading, search,
+and previews for Markdown, code, text, images, SVG, PDF, and static HTML
+reports. Workspace-relative links in chat open the same preview. HTML is
+stripped of scripts and external resources and rendered in an unprivileged
+sandbox. When every external script is a fixed semantic version of the
+jsDelivr ECharts runtime, the preview restores those charts in a script-enabled
+sandbox without same-origin access; CSP still blocks connections, forms,
+frames, external images, and all other scripts. Other interactive reports
+should be exported as self-contained static HTML/SVG. Text previews are limited to 2 MiB and media to
+10 MiB. The server rejects paths outside the workspace, symlink escapes,
+`.env*` files except `.env.example`, `.mcp.json`, private keys, and common
+credential files. Always enable token or password authentication before sharing
+the file view remotely.
+
 If the selected Provider has no saved API key, a loopback-bound Serve still
 starts and shows a Provider setup page instead of failing before the browser can
 connect. After authentication, enter the key there; Reasonix writes it to this

@@ -23,15 +23,24 @@
   <aside class="sidebar">
     <div class="sidebar__brand">
       <img src="/assets/logo-wordmark.svg" alt="Baize" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
+      <img src="/assets/logo-symbol.svg" alt="" class="brand-symbol brand-symbol--sidebar" draggable="false" aria-hidden="true">
       <button type="button" class="sidebar__theme-btn" id="btn-theme" title="__('theme_switch_light')" aria-label="__('theme_switch_light')">
         <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg>
         <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
+      <button type="button" class="sidebar__collapse-btn" id="btn-sidebar-collapse" title="__('sidebar_collapse')" aria-label="__('sidebar_collapse')" aria-expanded="true">
+        <svg class="sidebar-collapse-icon sidebar-collapse-icon--close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
+        <svg class="sidebar-collapse-icon sidebar-collapse-icon--open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m12 9 3 3-3 3"/></svg>
+      </button>
     </div>
 <nav class="sidebar__nav" style="border-top:none;padding-top:6px">
-      <div class="sidebar__item sidebar__item--accent" id="btn-new">
+      <div class="sidebar__item sidebar__item--accent" id="btn-new" title="__('new_session')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span>__('new_session')</span>
+      </div>
+      <div class="sidebar__item" id="btn-workspace" title="__('workspace_files')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span>__('workspace_files')</span>
       </div>
     </nav>
     <div class="sidebar__label-row"><span class="sidebar__label" style="padding:0">__('sessions')</span><span id="session-count" class="session-item__meta"></span></div>
@@ -104,6 +113,46 @@
       </div>
     </div>
   </section>
+
+  <aside class="workspace-panel" id="workspace-panel" aria-hidden="true">
+    <div class="workspace-resizer" id="workspace-resizer" role="separator" aria-orientation="vertical" aria-label="__('workspace_resize')"></div>
+    <header class="workspace-panel__head">
+      <div class="workspace-panel__title-wrap">
+        <strong class="workspace-panel__title">__('workspace_files')</strong>
+        <span class="workspace-panel__root" id="workspace-root-name">-</span>
+      </div>
+      <button type="button" class="workspace-icon-btn" id="workspace-refresh" title="__('workspace_refresh')" aria-label="__('workspace_refresh')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+      </button>
+      <button type="button" class="workspace-icon-btn" id="workspace-close" title="__('workspace_close')" aria-label="__('workspace_close')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <div class="workspace-panel__body">
+      <section class="workspace-browser" aria-label="__('workspace_files')">
+        <label class="workspace-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <input type="search" id="workspace-search" placeholder="__('workspace_search')" aria-label="__('workspace_search')">
+        </label>
+        <div class="workspace-tree" id="workspace-tree" role="tree"></div>
+      </section>
+      <section class="workspace-preview" id="workspace-preview">
+        <div class="workspace-preview__head" id="workspace-preview-head" style="display:none">
+          <div class="workspace-preview__identity">
+            <strong id="workspace-preview-name"></strong>
+            <span id="workspace-preview-meta"></span>
+          </div>
+          <button type="button" class="workspace-text-btn" id="workspace-html-toggle" style="display:none">__('workspace_source')</button>
+          <button type="button" class="workspace-icon-btn" id="workspace-copy-path" title="__('workspace_copy_path')" aria-label="__('workspace_copy_path')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>
+          </button>
+        </div>
+        <div class="workspace-preview__content" id="workspace-preview-content">
+          <div class="workspace-empty">__('workspace_select_file')</div>
+        </div>
+      </section>
+    </div>
+  </aside>
 
   <footer class="footer">
     <div id="goal-active-bar" style="margin-bottom:6px;display:none">

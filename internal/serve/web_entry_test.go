@@ -106,3 +106,15 @@ func TestServeBaizeAssetRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionListKeepsScrollableFixedRows(t *testing.T) {
+	css := string(baizeCSS)
+	for _, want := range []string{
+		`.session-list{flex:1;min-height:0;overflow-y:auto;`,
+		`.session-item{flex:0 0 auto;display:flex;`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("Baize stylesheet missing session list layout contract %q", want)
+		}
+	}
+}

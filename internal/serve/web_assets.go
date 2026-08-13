@@ -34,6 +34,11 @@ func (s *Server) registerWebAssetRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
 	mux.HandleFunc("GET /assets/baize.css", s.baizeCSSHandler)
 	mux.HandleFunc("GET /assets/baize.js", s.baizeJSHandler)
+	mux.HandleFunc("GET /workspace/entries", s.workspaceEntries)
+	mux.HandleFunc("GET /workspace/search", s.workspaceSearch)
+	mux.HandleFunc("GET /workspace/preview", s.workspacePreview)
+	mux.HandleFunc("GET /workspace/content", s.workspaceContent)
+	mux.HandleFunc("HEAD /workspace/content", s.workspaceContent)
 }
 
 func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
