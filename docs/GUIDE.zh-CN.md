@@ -252,6 +252,15 @@ Goal、由 `todo_write` 工具驱动的实时 Todo 面板、扩展发布的 stat
 `--model`、`--max-steps` 或 `--resume`；不传 `--model` 时，`serve` 使用用户全局
 `default_model`。
 
+左侧导航可以收缩为图标窄栏；“文件”入口会在右侧打开只读工作区浏览器。文件面板支持目录
+延迟加载、搜索、Markdown/代码/文本、图片、SVG、PDF 和静态 HTML 报告预览，也会接管对话中
+指向工作区文件的相对链接。HTML 会在删除脚本和外部资源后放入无权限沙箱。仅当报告的全部
+外部脚本都是带固定语义版本的 jsDelivr ECharts 运行时时，预览会在没有同源权限的脚本沙箱中
+恢复这些图表；CSP 仍禁止连接、表单、框架、外部图片和其他脚本。其他交互报告应改为自包含
+静态 HTML/SVG。文本预览限制为 2 MiB，媒体限制为
+10 MiB。工作区外路径、软链接逃逸以及 `.env*`（`.env.example` 除外）、`.mcp.json`、私钥和
+常见凭据文件会由服务端拒绝。远程共享文件视图前务必启用 Token 或 Password 认证。
+
 如果当前 Provider 尚未保存 API Key，绑定在回环地址的 Serve 仍会启动，并先显示 Provider
 配置页，而不是在浏览器连接前直接失败。通过 Serve 认证后可在该页输入 Key；Reasonix 会以受限
 权限写入**当前主机**的全局凭据文件，在同一进程内重建 Controller，然后进入正常 Web UI。
