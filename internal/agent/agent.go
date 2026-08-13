@@ -1010,6 +1010,9 @@ type Options struct {
 	// depth 0; child subagents are depth 1. MaxSubagentDepth caps delegation.
 	SubagentDepth    int
 	MaxSubagentDepth int
+	// InheritCallAsker lets an explicitly interactive child reuse the current
+	// call's user-question surface. The zero value keeps subagents headless.
+	InheritCallAsker bool
 
 	// Extensions is the frozen extension dispatcher for this agent's controller
 	// generation (Extension Protocol v2). Nil means no runtime packages are

@@ -1281,6 +1281,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			sysPrompt = agent.DefaultReadOnlyTaskSystemPrompt
 		}
 		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		runOptions.InheritCallAsker = skillInheritsCallAsker(sk)
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef
 		// Delivery risk gates consume typed reports; outside Delivery a casual
@@ -1406,6 +1407,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			}
 		}
 		runOptions := subagentSkillOptions(sctx, steps, price, ctxWin, childDepth)
+		runOptions.InheritCallAsker = skillInheritsCallAsker(sk)
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef
 		// Delivery risk gates consume typed reports; outside Delivery a casual
