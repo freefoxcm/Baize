@@ -170,6 +170,7 @@ const __T = {
     'tool_no_output': 'No output',
     'tool_args': 'Args',
     'tool_output': 'Output',
+    'tool_audit': 'Execution audit',
     'tool_lines': 'lines',
     'tool_subcalls': 'sub-agent calls',
     'tool_blocked': 'Blocked',
@@ -456,6 +457,7 @@ const __T = {
     'tool_no_output': '无输出',
     'tool_args': '参数',
     'tool_output': '输出',
+    'tool_audit': '运行审计',
     'tool_lines': '行',
     'tool_subcalls': '个子代理调用',
     'tool_blocked': '已阻止',
@@ -1030,7 +1032,7 @@ function setConnState(state) {
 // it dispatched; a 'tool' item only appears when /history has a result whose
 // dispatch is missing.
 //   {id, kind:'user', text}
-//   {id, kind:'assistant', text, reasoning, tools:[{id,name,args,output,err,status,diff,added,removed,readOnly}], done, dom:{...}}
+//   {id, kind:'assistant', text, reasoning, tools:[{id,name,args,output,err,status,diff,added,removed,readOnly,audit}], done, dom:{...}}
 //   {id, kind:'tool', name, args, output, err, status}
 //   {id, kind:'phase'|'notice'|'compaction'|'error', text, level?, detail?}
 let items = [];
@@ -1911,6 +1913,24 @@ function toolResultMeta(t, durMs) {
   if (isCmd) return dur;
   return (dur?dur+' · ':'') + lineCount(String(t.output||'')) + ' ' + __('tool_lines');
 }
+function renderToolAudit(card, tool) {
+  let audit=card.querySelector('.card-audit');
+  const entries=Array.isArray(tool.audit)?tool.audit:[];
+  if(!entries.length){if(audit)audit.remove();return;}
+  if(!audit){audit=el('div','card-audit');card.appendChild(audit);}
+  audit.innerHTML='';
+  audit.appendChild(el('div','card-audit__label',__('tool_audit')));
+  entries.forEach(entry=>audit.appendChild(el('div','card-audit__line',entry.text||'')));
+}
+function addToolAudit(tool, entry) {
+  if(!tool||!entry||!entry.text)return;
+  if(!Array.isArray(tool.audit))tool.audit=[];
+  if(!tool.audit.some(existing=>existing.text===entry.text&&existing.code===entry.code&&existing.detail===entry.detail))tool.audit.push(entry);
+}
+function capabilityAuditEntry(tool) {
+  if(!tool.resolvedName||tool.resolvedName===tool.name)return null;
+  return {text:'capability proxy: '+tool.name+' → '+tool.resolvedName,code:'capability_proxy',detail:String(tool.capabilityId||'')};
+}
 // buildToolCard renders a tool call item. A fresh card shows running state;
 // finished tools get their status + output from the item fields.
 function buildToolCard(tool) {
@@ -1936,8 +1956,9 @@ function buildToolCard(tool) {
   }
   head.onclick=e=>{if(e.target.closest('button'))return;const open=card.dataset.open==='true';card.dataset.open=open?'false':'true';body.style.display=open?'none':'';};
   const copy=head.querySelector('.card-copy');
-  if(copy)copy.onclick=async e=>{e.stopPropagation();const ok=await copyText(body.textContent||card.dataset.toolArgs||'');copy.title=ok?__('tool_copied'):__('tool_copy');setTimeout(()=>{copy.title=__('tool_copy');},1200);};
+  if(copy)copy.onclick=async e=>{e.stopPropagation();const audit=card.querySelector('.card-audit');const detail=[body.textContent,audit?.textContent].filter(Boolean).join('\n');const ok=await copyText(detail||card.dataset.toolArgs||'');copy.title=ok?__('tool_copied'):__('tool_copy');setTimeout(()=>{copy.title=__('tool_copy');},1200);};
   card.appendChild(head);card.appendChild(body);
+  renderToolAudit(card,tool);
   if(!tool.diff&&(tool.output||tool.err)){body.textContent=(tool.output||'')+(tool.err?('\n'+tool.err):'');}
   // History rebuilds create cards for tools that already finished; render the
   // result meta here the same way renderToolResult would for a live stream.
@@ -1964,6 +1985,43 @@ function findToolItem(toolId) {
   const it = items.find(x => x.kind === 'tool' && x.id === toolId);
   return it ? { item: it, tool: it } : null;
 }
+function toolsInCurrentTurnNewestFirst() {
+  const out=[];
+  for(let i=items.length-1;i>=0;i--){
+    const item=items[i];
+    if((item.turn||0)!==currentTurn)continue;
+    if(item.kind==='tool')out.push(item);
+    else if(item.kind==='assistant'&&Array.isArray(item.tools)){
+      for(let j=item.tools.length-1;j>=0;j--)out.push(item.tools[j]);
+    }
+  }
+  return out;
+}
+function auditToolForNotice(e) {
+  const tools=toolsInCurrentTurnNewestFirst();
+  if(e.code==='capability_proxy'||String(e.text||'').startsWith('capability proxy:')){
+    const capabilityId=String(e.detail||'');
+    return tools.find(tool=>{
+      if(String(tool.name||'')!=='use_capability'||tool.status!=='running')return false;
+      if(String(tool.capabilityId||'')===capabilityId)return true;
+      try{return String(JSON.parse(String(tool.args||'{}')).capability_id||'')===capabilityId;}catch(_){return false;}
+    })||null;
+  }
+  const receipt=e.decisionReceipt;
+  if(e.code!=='decision_receipt'||!receipt)return null;
+  if(receipt.kind==='ask')return tools.find(tool=>String(tool.name||'')==='ask'&&tool.status==='running')||null;
+  if(receipt.kind==='tool'&&receipt.tool)return tools.find(tool=>String(tool.name||'')===String(receipt.tool)&&tool.status==='running')||null;
+  return null;
+}
+function attachAuditNotice(e) {
+  const tool=auditToolForNotice(e);
+  if(!tool)return false;
+  const entry={text:String(e.text||''),code:String(e.code||''),detail:String(e.detail||'')};
+  addToolAudit(tool,entry);
+  const found=findToolItem(tool.id);
+  if(found){const card=cardForTool(found.item,found.tool);if(card)renderToolAudit(card,found.tool);}
+  return true;
+}
 function renderToolDispatch(tool) {
   if(hiddenTranscriptTool(tool&&tool.name))return;
   if(!tool.id)return;
@@ -1986,6 +2044,9 @@ function renderToolDispatch(tool) {
   }
   if (tool.name) t.name = tool.name;
   if (tool.args) t.args = String(tool.args);
+  if (tool.resolvedName) t.resolvedName = tool.resolvedName;
+  if (tool.capabilityId) t.capabilityId = tool.capabilityId;
+  addToolAudit(t,capabilityAuditEntry(t));
   if (tool.diff) t.diff = tool.diff;
   if (tool.added) t.added = tool.added;
   if (tool.removed) t.removed = tool.removed;
@@ -2004,6 +2065,7 @@ function renderToolDispatch(tool) {
         card.dataset.hasDiff = 'true';
       }
     }
+    renderToolAudit(card,t);
   }
   updateTurnSummaryForItem(it);
   scrollDown();
@@ -2792,7 +2854,7 @@ es.onmessage=ev=>{setConnState('connected');
         cumulativeCacheMiss+=e.usage.cacheMissTokens||0;
         updateRunStrip();
       } break;
-    case 'notice': { const d = el('div','notice'+(e.level==='warn'?' notice--warn':''),(e.level==='warn'?'! ':'')+(e.text||'')); const it = { id: genItemId(), kind: 'notice', text: e.text || '', level: e.level, turn: currentTurn }; items.push(it); appendItem(it, d); scrollDown(); break; }
+    case 'notice': { if(attachAuditNotice(e)){scrollDown();break;} const d = el('div','notice'+(e.level==='warn'?' notice--warn':''),(e.level==='warn'?'! ':'')+(e.text||'')); const it = { id: genItemId(), kind: 'notice', text: e.text || '', level: e.level, turn: currentTurn }; items.push(it); appendItem(it, d); scrollDown(); break; }
     case 'phase': { finalizeMsg(); const d = el('div','phase',e.text||''); const it = { id: genItemId(), kind: 'phase', text: e.text || '', turn: currentTurn }; items.push(it); appendItem(it, d); scrollDown(); break; }
     case 'approval_request': if(e.approval)showApproval(e.approval); break;
     case 'ask_request': if(e.ask)showAsk(e.ask); break;
@@ -2896,7 +2958,9 @@ function renderHistoryMessages(ms){
       visibleCalls.forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
-        it.tools.push({id,name:tc.name||'tool',args:String(tc.arguments||''),output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0)});
+        const histTool={id,name:tc.name||'tool',args:String(tc.arguments||''),resolvedName:tc.resolvedName||'',capabilityId:tc.capabilityId||'',output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0)};
+        addToolAudit(histTool,capabilityAuditEntry(histTool));
+        it.tools.push(histTool);
         if(tc.id)consumed.add(tc.id);
       });
       items.push(it);

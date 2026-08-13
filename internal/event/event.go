@@ -508,8 +508,7 @@ type CacheDiagnostics struct {
 }
 
 // FinalReadiness carries machine-readable recovery requirements on TurnDone.
-// Missing values are stable category ids; user-facing detail stays localized in
-// the frontend instead of scraping the diagnostic error string.
+// Missing values are stable category IDs; user-facing detail stays localized in the frontend.
 type FinalReadiness struct {
 	Attempts int
 	Missing  []string
@@ -552,6 +551,7 @@ const (
 	NoticeCodeSessionRecoveryAdoptedCovered                     = "session_recovery_adopted_covered"
 	NoticeCodeSessionRecoveryDepthCap                           = "session_recovery_depth_cap"
 	NoticeCodeSessionShutdownRecoveryForked                     = "session_shutdown_recovery_forked"
+	NoticeCodeCapabilityProxy                                   = "capability_proxy"
 	NoticeCodeDecisionReceipt, NoticeCodeContextEditingFallback = "decision_receipt", "context_editing_fallback"
 )
 
