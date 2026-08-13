@@ -1661,8 +1661,7 @@ var (
 	_ tool.CallResolver = (*UseCapabilityTool)(nil)
 )
 
-// EmitProxyAudit is a helper for frontends: returns a notice describing the
-// proxy name and real target for user audit trails.
+// EmitProxyAudit returns a notice describing the proxy and real target for frontend audit trails.
 func EmitProxyAudit(sink event.Sink, resolved tool.ResolvedCall) {
 	if sink == nil || resolved.TargetName == "" {
 		return
@@ -1670,6 +1669,7 @@ func EmitProxyAudit(sink event.Sink, resolved tool.ResolvedCall) {
 	sink.Emit(event.Event{
 		Kind:   event.Notice,
 		Level:  event.LevelInfo,
+		Code:   event.NoticeCodeCapabilityProxy,
 		Text:   fmt.Sprintf("capability proxy: %s → %s", resolved.DisplayName, resolved.TargetName),
 		Detail: resolved.CapabilityID,
 	})
