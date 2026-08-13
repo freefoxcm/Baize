@@ -232,7 +232,7 @@ func TestForkInheritsSourceApprovalMode(t *testing.T) {
 		}
 	}
 turned:
-	for ctrl.Running() {
+	for ctrl.RuntimeStatus().Running {
 		select {
 		case <-time.After(10 * time.Millisecond):
 		case <-deadline:
