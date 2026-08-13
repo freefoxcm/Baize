@@ -13,6 +13,7 @@ import {
   projectTreeReadActivityKey,
   projectTreeTopicHasUnreadActivity,
   topicIsActive,
+  topicStatusLabel,
   projectTreeTopicArchiveBlocked,
   projectTreeShouldRenderTopicActions,
   projectTreeTopicMetaLine,
@@ -248,13 +249,24 @@ for (const status of ["thinking", "streaming", "waiting_confirmation", "backgrou
   );
 }
 
-for (const status of ["paused", "error"] as const) {
+for (const status of ["paused", "error", "awaiting_delivery"] as const) {
   eq(
     projectTreeTopicArchiveBlocked({ ...completedTopic, status, running: true }),
     false,
     `${status} topic remains archivable despite the legacy running flag`,
   );
 }
+
+eq(
+  topicStatusLabel({ ...completedTopic, status: "awaiting_delivery" }, testT),
+  "projectTree.status.awaitingDelivery",
+  "delivery-check pause uses its own sidebar label, not paused",
+);
+eq(
+  topicStatusLabel({ ...completedTopic, status: "paused" }, testT),
+  "projectTree.status.paused",
+  "recovery pause keeps the paused sidebar label",
+);
 
 eq(
   projectTreeTopicArchiveBlocked({ ...completedTopic, running: true }),

@@ -35,6 +35,16 @@ Every controlled upstream integration must add one entry before its merge commit
 - Workflow state / Workflow 状态：no workflow file changed or was added
 - Verification / 验证：`git diff --check`; `go run ./tools/repolint`; Session Catalog and focused desktop tests; `go vet ./...`; `go test ./...`; Baize Linux, Windows, cache-impact and docs-impact CI
 
+## 2026-08-13 — `9aaf8d381` → `c7bc2f3e1`
+
+- Baize revision / Baize 版本：pre-merge `custom/baize@d6e246c47`
+- Upstream WebUI changes / 上游 WebUI 变化：desktop-only project-tree status label and styling; no Baize Serve WebUI path changed
+- Ported / 已移植：the complete one-commit follow-up distinguishing delivery-check pauses from recovery pauses in desktop session runtime status
+- Intentionally skipped / 明确忽略：none; no duplicate Serve presentation was needed
+- Backend conflicts / 后端冲突：none; the incremental merge completed cleanly
+- Workflow state / Workflow 状态：no workflow file changed or was added
+- Verification / 验证：`git diff --check`; `go run ./tools/repolint`; focused desktop runtime-status tests; `go vet ./...`; Baize Linux, Windows, cache-impact and docs-impact CI
+
 ## 2026-08-11 — `8a39ac1c4` → `ee2a6a766`
 
 - Baize revision / Baize 版本：initial `custom/baize` migration series through `835465ec2`

@@ -1301,6 +1301,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.status.waitingConfirmation": "待确认",
   "projectTree.status.backgroundJob": "后台任务",
   "projectTree.status.paused": "已暂停",
+  "projectTree.status.awaitingDelivery": "待交付检查",
   "projectTree.status.error": "异常",
   "projectTree.status.divergedRecovery": "多个恢复分支",
   "projectTree.removeProject": "移出侧边栏",

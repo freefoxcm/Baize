@@ -1321,7 +1321,7 @@ export function ProjectTree({
                     <span>{imSourceLabel}</span>
                   </span>
                 )}
-                {!compactTopics && statusLabel && (!classicTopics || status === "paused" || status === "error") && (
+                {!compactTopics && statusLabel && (!classicTopics || status === "paused" || status === "awaiting_delivery" || status === "error") && (
                   <span className={`project-tree__topic-status project-tree__topic-status--${status}`}>{statusLabel}</span>
                 )}
               </span>

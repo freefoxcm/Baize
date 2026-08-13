@@ -2567,6 +2567,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.status.waitingConfirmation": "待確認",
   "projectTree.status.backgroundJob": "背景任務",
   "projectTree.status.paused": "已暫停",
+  "projectTree.status.awaitingDelivery": "待交付檢查",
   "projectTree.status.error": "異常",
   "projectTree.status.divergedRecovery": "多個復原分支",
   "projectTree.collapseAllTooltip": "收起所有專案",

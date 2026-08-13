@@ -1300,6 +1300,7 @@ export const en = {
   "projectTree.status.waitingConfirmation": "awaiting",
   "projectTree.status.backgroundJob": "background job",
   "projectTree.status.paused": "paused",
+  "projectTree.status.awaitingDelivery": "need checks",
   "projectTree.status.error": "error",
   "projectTree.status.divergedRecovery": "multiple recovery branches",
   "projectTree.removeProject": "Remove from sidebar",
