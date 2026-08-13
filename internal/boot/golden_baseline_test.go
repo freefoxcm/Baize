@@ -99,6 +99,7 @@ api_key_env = "REASONIX_TEST_KEY_UNSET"
 	if len(entries) == 0 {
 		t.Fatal("Build registered no tools")
 	}
+	normalizeGoldenShellDescription(entries)
 	toolJSON, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal tool contract: %v", err)
@@ -141,6 +142,21 @@ api_key_env = "REASONIX_TEST_KEY_UNSET"
 		ToolSchemas:  append(toolJSON, '\n'),
 		ProviderReq:  append(reqJSON, '\n'),
 		PrefixShape:  agent.CaptureShape(prompt, schemas, 0),
+	}
+}
+
+// normalizeGoldenShellDescription removes the host-shell diagnostic from the
+// cache baseline. The runtime intentionally tells native Windows users when it
+// falls back to PowerShell, while this cross-platform golden records the
+// provider contract shared with the canonical Bash-capable environment.
+func normalizeGoldenShellDescription(entries []tool.ContractEntry) {
+	const canonical = "Execute a command in the shell and return combined stdout/stderr." +
+		" Use for builds, tests, git, package managers, etc. To search/read/list/edit/move files, prefer the dedicated tools (grep, read_file, ls, glob, edit_file, move_file) over shell grep/cat/ls/find/sed/mv/Move-Item — they behave identically on every OS. For symbol search or architecture questions, prefer LSP/read tools and targeted grep before shell commands."
+	for i := range entries {
+		if entries[i].Name == "bash" {
+			entries[i].Description = canonical
+			return
+		}
 	}
 }
 

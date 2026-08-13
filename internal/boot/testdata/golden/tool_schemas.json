@@ -64,7 +64,7 @@
   },
   {
     "Name": "bash",
-    "Description": "Execute a command in the shell and return combined stdout/stderr. NOTE: bash is not available on this host — commands run under PowerShell 7 (pwsh), so write PowerShell, not bash:\n  - chaining: '\u0026\u0026' and '||' are parsed for conditional chaining; ';' runs both regardless.\n  - redirect/vars: $null not /dev/null; $env:VAR not $VAR; '2\u003e$null' drops stderr.\n  - file ops: Get-ChildItem (ls), Get-Content (cat), Remove-Item -Recurse -Force (rm -rf), Copy-Item (cp), Select-String (grep).\n  - no head/tail/which/touch: use Select-Object -First/-Last N, (Get-Command x).Source, New-Item.\n  - multi-line text to a native exe (e.g. git commit -m): use a single-quoted here-string @'...'@ (closing '@ at column 0). Use for builds, tests, git, package managers, etc. To search/read/list/edit/move files, prefer the dedicated tools (grep, read_file, ls, glob, edit_file, move_file) over shell grep/cat/ls/find/sed/mv/Move-Item — they behave identically on every OS. For symbol search or architecture questions, prefer LSP/read tools and targeted grep before shell commands.",
+    "Description": "Execute a command in the shell and return combined stdout/stderr. Use for builds, tests, git, package managers, etc. To search/read/list/edit/move files, prefer the dedicated tools (grep, read_file, ls, glob, edit_file, move_file) over shell grep/cat/ls/find/sed/mv/Move-Item — they behave identically on every OS. For symbol search or architecture questions, prefer LSP/read tools and targeted grep before shell commands.",
     "ReadOnly": false,
     "Schema": {
       "properties": {
