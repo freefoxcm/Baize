@@ -53,6 +53,22 @@ func TestPreparePluginSkillDoesNotTrustAuthoredBindingHeading(t *testing.T) {
 	}
 }
 
+func TestPrepareProjectSkillBindsExplicitMCPTools(t *testing.T) {
+	store := New(Options{HomeDir: t.TempDir(), DisableBuiltins: true})
+	store.ConfigureToolBindings(func(Skill) []tool.MCPBinding {
+		return []tool.MCPBinding{{Server: "ipap", RawName: "aggregate_cases", VisibleName: "aggregate_cases", CallableName: "mcp__ipap__aggregate_cases", CapabilityID: "mcp-tool:ipap/aggregate_cases"}}
+	})
+	sk := Skill{Scope: ScopeProject, Body: "Aggregate cases.", AllowedTools: []string{"ask", "mcp__ipap__aggregate_cases"}}
+
+	got := store.Prepare(sk)
+	if !strings.Contains(got.Body, "`mcp-tool:ipap/aggregate_cases`") || !strings.Contains(got.Body, "Do not call or inspect `mcp-server:<server>`") {
+		t.Fatalf("project runtime binding missing or ambiguous:\n%s", got.Body)
+	}
+	if got, want := strings.Join(got.AllowedTools, ","), "ask,mcp__ipap__aggregate_cases,mcp-tool:ipap/aggregate_cases"; got != want {
+		t.Fatalf("AllowedTools = %q, want %q", got, want)
+	}
+}
+
 func TestPreparePluginSkillPreservesWildcardAllowedTools(t *testing.T) {
 	store := New(Options{HomeDir: t.TempDir(), DisableBuiltins: true})
 	store.ConfigureToolBindings(func(Skill) []tool.MCPBinding {

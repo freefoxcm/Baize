@@ -154,7 +154,7 @@ input,textarea{font:inherit;color:inherit}
 .reasoning[data-running="true"] .reasoning__label{color:var(--fg-2);background:linear-gradient(90deg,var(--fg-2) 40%,var(--accent) 50%,var(--fg-2) 60%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:reasoning-shimmer 1.6s linear infinite}
 @keyframes reasoning-shimmer{to{background-position:-200% 0}}
 .reasoning__body{margin:2px 0 6px 8px;padding-left:12px;border-left:2px solid var(--border);color:var(--fg-2);font-size:13px;line-height:1.72;white-space:pre-wrap;word-break:break-word;opacity:.85}
-.reasoning__summary{margin:0 0 4px 8px;padding:1px 0 1px 12px;border:none;background:none;font:inherit;text-align:left;border-left:2px solid var(--border);color:var(--muted-2);font-size:13px;line-height:1.6;white-space:nowrap;overflow-x:auto;cursor:pointer;scrollbar-width:none;max-width:100%}
+.reasoning__summary{display:block;width:calc(100% - 8px);box-sizing:border-box;margin:0 0 4px 8px;padding:1px 0 1px 12px;border:none;background:none;font:inherit;text-align:left;border-left:2px solid var(--border);color:var(--muted-2);font-size:13px;line-height:1.6;white-space:nowrap;overflow-x:auto;cursor:pointer;scrollbar-width:none;max-width:100%}
 .reasoning__summary::-webkit-scrollbar{display:none}
 .cursor{display:inline-block;width:2px;height:1.1em;background:var(--accent);vertical-align:text-bottom;margin-left:2px;animation:blink 1s steps(2,start) infinite}
 @keyframes blink{to{visibility:hidden}}
@@ -603,10 +603,12 @@ input,textarea{font:inherit;color:inherit}
 .welcome__calendar-tip--below{transform:translate(-50%,0)}
 .welcome__calendar-tip b{color:var(--fg);font-weight:600}
 .welcome__calendar-tip .cal-models{display:flex;flex-direction:column;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.welcome__calendar-tip .cal-method{margin-top:5px;color:var(--muted);font-size:9.5px}
 .welcome__calendar-tip .cal-model{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:286px}
 .welcome__calendar-tip .cal-model span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .welcome__calendar-error{margin-top:3px;color:var(--danger);font-size:11.5px;text-align:center}
 .welcome__calendar-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:3px;font-size:10.5px;color:var(--muted)}
+.cal-method-note{margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-legend{display:inline-flex;align-items:center;gap:4px}
 .cal-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .welcome__meta{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:680px;margin-top:14px;position:relative}
@@ -687,6 +689,27 @@ input,textarea{font:inherit;color:inherit}
 .workspace-preview__media{width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px}
 .workspace-preview__media img{display:block;max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
 .workspace-preview__frame{display:block;width:100%;height:100%;min-height:360px;border:0;background:#fff}
+.workspace-preview__content--pdf{overflow:hidden}
+.workspace-pdf{width:100%;height:100%;min-height:360px;display:flex;flex-direction:column;background:color-mix(in srgb,var(--panel) 72%,var(--bg))}
+.workspace-pdf__toolbar{min-height:39px;display:flex;align-items:center;gap:5px;padding:5px 7px;border-bottom:1px solid var(--border);background:var(--bg);flex:0 0 auto}
+.workspace-pdf__button{height:27px;display:inline-flex;align-items:center;justify-content:center;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--fg-2);font-size:11px;text-decoration:none;white-space:nowrap}
+.workspace-pdf__button:hover:not(:disabled){border-color:color-mix(in srgb,var(--accent) 55%,var(--border));color:var(--fg)}
+.workspace-pdf__button:disabled{opacity:.4;cursor:not-allowed}
+.workspace-pdf__button--active{border-color:var(--accent);color:var(--accent)}
+.workspace-pdf__previous,.workspace-pdf__next,.workspace-pdf__zoom-out,.workspace-pdf__zoom-in{width:28px;padding:0;font-size:14px}
+.workspace-pdf__page{height:27px;display:flex;align-items:center;gap:4px;color:var(--muted);font-size:10px;white-space:nowrap}
+.workspace-pdf__page input{width:42px;height:25px;padding:0 4px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--fg);font:11px/1 var(--mono);text-align:center;outline:0}
+.workspace-pdf__page input:focus{border-color:var(--accent)}
+.workspace-pdf__page input::-webkit-inner-spin-button,.workspace-pdf__page input::-webkit-outer-spin-button{appearance:none;margin:0}
+.workspace-pdf__spacer{flex:1;min-width:4px}
+.workspace-pdf__viewport{min-width:0;min-height:0;position:relative;flex:1;overflow:auto;padding:16px}
+.workspace-pdf__pages{width:max-content;min-width:100%;min-height:100%;display:flex;flex-direction:column;align-items:center;gap:16px}
+.workspace-pdf__page-view{position:relative;flex:0 0 auto;overflow:hidden;background:#fff;box-shadow:0 3px 16px rgb(0 0 0/.18)}
+.workspace-pdf__canvas{display:block;background:#fff;box-shadow:0 3px 16px rgb(0 0 0/.18)}
+.workspace-pdf__page-message{position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);color:#667085;font-size:11px;white-space:nowrap}
+.workspace-pdf__page-number{position:absolute;right:7px;bottom:5px;padding:2px 5px;border-radius:4px;background:rgb(255 255 255/.86);color:#667085;font:10px/1 var(--mono)}
+.workspace-pdf__status{position:absolute;inset:50% auto auto 50%;max-width:min(360px,calc(100% - 32px));transform:translate(-50%,-50%);padding:9px 12px;border:1px solid var(--border);border-radius:7px;background:var(--bg);box-shadow:var(--shadow);color:var(--muted);font-size:11px;text-align:center}
+.workspace-pdf__status--error{border-color:color-mix(in srgb,var(--warning) 45%,var(--border));color:var(--warning)}
 .workspace-preview__binary{height:100%;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;color:var(--muted)}
 .workspace-resizing,.workspace-resizing *{cursor:col-resize!important;user-select:none!important}
 .workspace-resize-guide{position:fixed;z-index:200;inset:0 auto 0 0;width:2px;background:var(--accent);box-shadow:0 0 8px color-mix(in oklab,var(--accent) 55%,transparent);pointer-events:none;will-change:transform}

@@ -1,8 +1,10 @@
 package serve
 
 import (
-	_ "embed"
+	"embed"
+	"mime"
 	"net/http"
+	"path"
 	"strings"
 
 	"reasonix/internal/config"
@@ -26,6 +28,9 @@ var baizeCSS []byte
 //go:embed assets/baize.js
 var baizeJS []byte
 
+//go:embed assets/pdfjs
+var pdfJSAssets embed.FS
+
 func (s *Server) registerWebAssetRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", s.index)
 	mux.HandleFunc("GET /sessions/{id}", s.index)
@@ -34,6 +39,7 @@ func (s *Server) registerWebAssetRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
 	mux.HandleFunc("GET /assets/baize.css", s.baizeCSSHandler)
 	mux.HandleFunc("GET /assets/baize.js", s.baizeJSHandler)
+	mux.HandleFunc("GET /assets/pdfjs/", s.pdfJSAssetHandler)
 	mux.HandleFunc("GET /workspace/entries", s.workspaceEntries)
 	mux.HandleFunc("GET /workspace/search", s.workspaceSearch)
 	mux.HandleFunc("GET /workspace/preview", s.workspacePreview)
@@ -76,6 +82,29 @@ func (s *Server) baizeCSSHandler(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) baizeJSHandler(w http.ResponseWriter, _ *http.Request) {
 	writeWebAsset(w, "application/javascript; charset=utf-8", "no-cache", baizeJS)
+}
+
+func (s *Server) pdfJSAssetHandler(w http.ResponseWriter, r *http.Request) {
+	name := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+	if !strings.HasPrefix(name, "assets/pdfjs/") {
+		http.NotFound(w, r)
+		return
+	}
+	body, err := pdfJSAssets.ReadFile(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	ext := path.Ext(name)
+	contentType := mime.TypeByExtension(ext)
+	if ext == ".mjs" {
+		// Windows commonly registers .mjs as text/plain. PDF.js modules must
+		// always be served as JavaScript regardless of the host MIME registry.
+		contentType = "text/javascript; charset=utf-8"
+	} else if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	writeWebAsset(w, contentType, "public, max-age=86400", body)
 }
 
 func writeWebAsset(w http.ResponseWriter, contentType, cacheControl string, body []byte) {

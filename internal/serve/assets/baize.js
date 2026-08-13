@@ -97,6 +97,19 @@ const __T = {
     'workspace_truncated': 'Preview limited to the first 2 MiB.',
     'workspace_source': 'Source',
     'workspace_report': 'Report',
+    'workspace_pdf_previous': 'Previous page',
+    'workspace_pdf_next': 'Next page',
+    'workspace_pdf_zoom_out': 'Zoom out',
+    'workspace_pdf_zoom_in': 'Zoom in',
+    'workspace_pdf_fit_width': 'Fit width',
+    'workspace_pdf_open': 'Open',
+    'workspace_pdf_download': 'Download',
+    'workspace_pdf_loading': 'Loading PDF…',
+    'workspace_pdf_rendering': 'Rendering page…',
+    'workspace_pdf_error': 'This PDF could not be previewed. You can still open or download it.',
+    'workspace_pdf_protected': 'This PDF is password protected. Download it and open it in a trusted PDF reader.',
+    'workspace_pdf_page': 'Page',
+    'workspace_pdf_of': 'of',
     'sidebar_collapse': 'Collapse sidebar',
     'sidebar_expand': 'Expand sidebar',
     'total_tokens': 'Total Tokens',
@@ -239,8 +252,10 @@ const __T = {
     'cal_total': '{t} tokens · {n} active days',
     'cal_loading': 'Loading token activity…',
     'cal_error': 'Token activity is temporarily unavailable.',
-    'cal_turn': 'turn',
-    'cal_turns': 'turns',
+    'cal_turn': 'WebUI completed execution',
+    'cal_turns': 'WebUI completed executions',
+    'cal_scope_note': 'WebUI completed executions only; CLI and session interaction counts are separate.',
+    'cal_scale_note': 'Color scale: active-day token P95 in this range',
     'cal_req': 'request',
     'cal_reqs': 'requests',
     'hint_commands': '/ commands',
@@ -368,6 +383,19 @@ const __T = {
     'workspace_truncated': '预览仅显示前 2 MiB。',
     'workspace_source': '源码',
     'workspace_report': '报告',
+    'workspace_pdf_previous': '上一页',
+    'workspace_pdf_next': '下一页',
+    'workspace_pdf_zoom_out': '缩小',
+    'workspace_pdf_zoom_in': '放大',
+    'workspace_pdf_fit_width': '适应宽度',
+    'workspace_pdf_open': '打开',
+    'workspace_pdf_download': '下载',
+    'workspace_pdf_loading': '正在加载 PDF…',
+    'workspace_pdf_rendering': '正在渲染页面…',
+    'workspace_pdf_error': '无法预览此 PDF，仍可打开或下载文件。',
+    'workspace_pdf_protected': '此 PDF 受密码保护，请下载后使用可信的 PDF 阅读器打开。',
+    'workspace_pdf_page': '第',
+    'workspace_pdf_of': '页，共',
     'sidebar_collapse': '收起侧栏',
     'sidebar_expand': '展开侧栏',
     'total_tokens': '总 Token',
@@ -510,8 +538,10 @@ const __T = {
     'cal_total': '{t} tokens · {n} 个活跃日',
     'cal_loading': '正在加载 Token活动…',
     'cal_error': 'Token活动暂时无法加载。',
-    'cal_turn': '轮',
-    'cal_turns': '轮',
+    'cal_turn': '次 WebUI 完成执行',
+    'cal_turns': '次 WebUI 完成执行',
+    'cal_scope_note': '仅统计 WebUI 完成执行；不含 CLI，也不同于会话交互次数。',
+    'cal_scale_note': '色阶：当前范围活跃日 Token P95',
     'cal_req': '请求',
     'cal_reqs': '请求',
     'hint_commands': '/ 命令',
@@ -718,7 +748,7 @@ function renderUsageCalendar(d){
   const todayKey=fmtDayKey(new Date());
   days.forEach((entry,i)=>{
     const dayKey=entry.day,toks=entry.tokens||0,turns=entry.turns||0;
-    const row=(offset+i)%7+1,col=Math.floor((offset+i)/7)+1,lvl=calLevel(toks,d.max||0);
+    const row=(offset+i)%7+1,col=Math.floor((offset+i)/7)+1,lvl=Number.isInteger(entry.level)?Math.max(0,Math.min(5,entry.level)):calLevel(toks,d.max||0);
     const cell=el('button','cal-cell'+(lvl?' cal-cell--'+lvl:'')+(dayKey===todayKey?' cal-cell--today':''));
     cell.type='button';cell.dataset.day=dayKey;cell.style.gridRow=String(row);cell.style.gridColumn=String(col);
     cell.setAttribute('role','gridcell');cell.setAttribute('aria-expanded','false');
@@ -728,6 +758,7 @@ function renderUsageCalendar(d){
     cell.onclick=e=>{e.stopPropagation();toggleCalDay(cell,dayKey,entry);};grid.appendChild(cell);
   });
   const sum=$('#cal-sum');if(sum)sum.textContent=__('cal_total').replace('{t}',fmtTok(d.total||0)).replace('{n}',String(d.activeDays||0));
+  const scale=$('#cal-scale-note');if(scale){scale.textContent=__('cal_scale_note');scale.title=__('cal_scope_note');}
   sizeUsageCalendarGrid();
 }
 function loadUsageCalendar(){
@@ -746,6 +777,7 @@ function loadUsageCalendar(){
 function calTipHTML(dayKey,entry){
   const e=entry||{},tokens=e.tokens||0,requests=e.requests||0,turns=e.turns||0;
   let html='<div><b>'+escHtml(dayKey)+'</b> · '+fmtTok(tokens)+' tokens · '+requests+' '+(requests===1?__('cal_req'):__('cal_reqs'))+' · '+turns+' '+(turns===1?__('cal_turn'):__('cal_turns'))+'</div>';
+  html+='<div class="cal-method">'+escHtml(__('cal_scope_note'))+'</div>';
   const models=Object.entries(e.byModel||{}).sort((a,b)=>b[1]-a[1]);
   if(models.length)html+='<div class="cal-models">'+models.map(([m,t])=>'<div class="cal-model"><span>'+escHtml(m)+'</span><b>'+fmtTok(t)+'</b></div>').join('')+'</div>';
   return html;
@@ -3699,18 +3731,113 @@ function renderWorkspaceHTML(preview){
   workspaceHTMLToggle.textContent=__('workspace_source');if(preview.truncated){workspacePreviewNote(__('workspace_truncated'));workspaceCodeView(preview.body,preview.path);return;}
   const rendered=safeWorkspaceHTML(preview.body),frame=el('iframe','workspace-preview__frame');frame.setAttribute('sandbox',rendered.interactive?'allow-scripts':'');frame.setAttribute('referrerpolicy','no-referrer');frame.title=preview.name;frame.srcdoc=rendered.html;workspacePreviewContent.appendChild(frame);
 }
+let workspacePDFModulePromise=null,workspacePDFState=null;
+function disposeWorkspacePDF(){
+  const state=workspacePDFState;workspacePDFState=null;if(!state)return;
+  state.disposed=true;(state.pageViews||[]).forEach(view=>{view.generation++;if(view.renderTask)try{view.renderTask.cancel();}catch{}if(view.pdfPage)try{view.pdfPage.cleanup();}catch{}});
+  if(state.resizeObserver)state.resizeObserver.disconnect();
+  if(state.resizeFrame)cancelAnimationFrame(state.resizeFrame);
+  if(state.scrollFrame)cancelAnimationFrame(state.scrollFrame);
+  if(state.loadingTask)state.loadingTask.destroy().catch(()=>{});
+}
+function workspacePDFModule(){
+  if(!workspacePDFModulePromise)workspacePDFModulePromise=import('/assets/pdfjs/pdf.mjs').then(pdfjs=>{pdfjs.GlobalWorkerOptions.workerSrc='/assets/pdfjs/pdf.worker.mjs';return pdfjs;});
+  return workspacePDFModulePromise;
+}
+function workspacePDFAction(label,className){const node=el('button','workspace-pdf__button '+className,label);node.type='button';return node;}
+function workspacePDFLink(label,className,preview,download){
+  const node=el('a','workspace-pdf__button '+className,label);node.href=preview.contentUrl;
+  if(download)node.download=preview.name;else{node.target='_blank';node.rel='noopener noreferrer';}
+  return node;
+}
+function workspacePDFMessage(state,text,isError){
+  state.status.textContent=text;state.status.classList.toggle('workspace-pdf__status--error',!!isError);state.status.hidden=false;
+}
+function updateWorkspacePDFControls(state){
+  const ready=!!state.document;state.previous.disabled=!ready||state.page<=1;state.next.disabled=!ready||state.page>=state.pages;
+  state.zoomOut.disabled=!ready;state.zoomIn.disabled=!ready;state.fit.disabled=!ready;
+  state.pageInput.disabled=!ready;state.pageInput.max=String(Math.max(1,state.pages));state.pageInput.value=String(state.page);state.pageTotal.textContent=String(state.pages||'—');
+  state.fit.classList.toggle('workspace-pdf__button--active',state.fitWidth);
+}
+function workspacePDFViewScale(state,view){
+  if(!state.fitWidth)return state.scale;
+  const width=view.naturalWidth||state.referenceWidth||612,available=Math.max(120,state.viewport.clientWidth-32);
+  return Math.max(.25,Math.min(4,available/width));
+}
+function layoutWorkspacePDFView(state,view){
+  const width=view.naturalWidth||state.referenceWidth||612,height=view.naturalHeight||state.referenceHeight||792,scale=workspacePDFViewScale(state,view);
+  view.node.style.width=(width*scale)+'px';view.node.style.height=(height*scale)+'px';
+}
+function releaseWorkspacePDFView(view){
+  view.generation++;if(view.renderTask)try{view.renderTask.cancel();}catch{}view.renderTask=null;view.renderKey='';view.canvas.hidden=true;view.canvas.width=1;view.canvas.height=1;
+  if(view.pdfPage)try{view.pdfPage.cleanup();}catch{}view.pdfPage=null;
+}
+async function renderWorkspacePDFView(state,view){
+  if(workspacePDFState!==state||state.disposed||!state.document)return;
+  const scale=workspacePDFViewScale(state,view),renderKey=scale.toFixed(4)+'@'+Math.max(1,window.devicePixelRatio||1);if(view.renderKey===renderKey&&!view.canvas.hidden)return;
+  const generation=++view.generation;if(view.renderTask)try{view.renderTask.cancel();}catch{}
+  try{
+    const page=await state.document.getPage(view.page);if(workspacePDFState!==state||state.disposed||generation!==view.generation)return;
+    view.pdfPage=page;const natural=page.getViewport({scale:1});view.naturalWidth=natural.width;view.naturalHeight=natural.height;layoutWorkspacePDFView(state,view);
+    const actualScale=workspacePDFViewScale(state,view),viewport=page.getViewport({scale:actualScale}),pixelRatio=Math.max(1,window.devicePixelRatio||1),canvas=view.canvas;
+    canvas.width=Math.max(1,Math.floor(viewport.width*pixelRatio));canvas.height=Math.max(1,Math.floor(viewport.height*pixelRatio));canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';
+    canvas.hidden=false;view.message.hidden=true;const context=canvas.getContext('2d',{alpha:false});view.renderTask=page.render({canvasContext:context,viewport,transform:pixelRatio===1?null:[pixelRatio,0,0,pixelRatio,0,0]});
+    await view.renderTask.promise;if(workspacePDFState!==state||state.disposed||generation!==view.generation)return;
+    view.renderKey=actualScale.toFixed(4)+'@'+pixelRatio;if(view.page===state.page)state.status.hidden=true;
+  }catch(error){
+    if(error?.name==='RenderingCancelledException'||workspacePDFState!==state||state.disposed||generation!==view.generation)return;
+    view.canvas.hidden=true;view.message.textContent=__('workspace_pdf_error');view.message.hidden=false;if(view.page===state.page)workspacePDFMessage(state,__('workspace_pdf_error'),true);
+  }finally{if(workspacePDFState===state&&generation===view.generation)view.renderTask=null;}
+}
+function syncWorkspacePDFViews(state){
+  if(!state.document)return;state.pageViews.forEach(view=>{layoutWorkspacePDFView(state,view);if(Math.abs(view.page-state.page)<=1)renderWorkspacePDFView(state,view);else releaseWorkspacePDFView(view);});updateWorkspacePDFControls(state);
+}
+function scrollWorkspacePDFToPage(state,page,behavior){
+  page=Math.max(1,Math.min(state.pages,page));state.page=page;syncWorkspacePDFViews(state);const view=state.pageViews[page-1];if(view)state.viewport.scrollTo({top:Math.max(0,view.node.offsetTop-16),behavior:behavior||'auto'});
+}
+function updateWorkspacePDFPageFromScroll(state){
+  state.scrollFrame=0;if(!state.document||state.scrollingToPage)return;const focus=state.viewport.scrollTop+Math.max(1,state.viewport.clientHeight*.3);let current=state.pageViews[0];
+  for(const view of state.pageViews){if(view.node.offsetTop<=focus)current=view;else break;}
+  if(current&&current.page!==state.page){state.page=current.page;syncWorkspacePDFViews(state);}
+}
+async function renderWorkspacePDF(preview){
+  const root=el('div','workspace-pdf'),toolbar=el('div','workspace-pdf__toolbar'),viewport=el('div','workspace-pdf__viewport');
+  const pagesNode=el('div','workspace-pdf__pages'),status=el('div','workspace-pdf__status',__('workspace_pdf_loading'));viewport.append(pagesNode,status);root.append(toolbar,viewport);workspacePreviewContent.appendChild(root);
+  const previous=workspacePDFAction('←','workspace-pdf__previous'),next=workspacePDFAction('→','workspace-pdf__next');previous.setAttribute('aria-label',__('workspace_pdf_previous'));previous.title=__('workspace_pdf_previous');next.setAttribute('aria-label',__('workspace_pdf_next'));next.title=__('workspace_pdf_next');
+  const pageLabel=el('label','workspace-pdf__page'),pageText=el('span','',__('workspace_pdf_page')),pageInput=document.createElement('input'),pageSeparator=el('span','workspace-pdf__page-separator','/'),pageTotal=el('span','workspace-pdf__page-total','—');
+  pageInput.type='number';pageInput.min='1';pageInput.inputMode='numeric';pageInput.setAttribute('aria-label',__('workspace_pdf_page'));pageLabel.append(pageText,pageInput,pageSeparator,pageTotal);
+  const zoomOut=workspacePDFAction('−','workspace-pdf__zoom-out'),zoomIn=workspacePDFAction('+','workspace-pdf__zoom-in'),fit=workspacePDFAction(__('workspace_pdf_fit_width'),'workspace-pdf__fit');zoomOut.setAttribute('aria-label',__('workspace_pdf_zoom_out'));zoomOut.title=__('workspace_pdf_zoom_out');zoomIn.setAttribute('aria-label',__('workspace_pdf_zoom_in'));zoomIn.title=__('workspace_pdf_zoom_in');fit.title=__('workspace_pdf_fit_width');
+  const spacer=el('span','workspace-pdf__spacer'),open=workspacePDFLink(__('workspace_pdf_open'),'workspace-pdf__open',preview,false),download=workspacePDFLink(__('workspace_pdf_download'),'workspace-pdf__download',preview,true);toolbar.append(previous,next,pageLabel,zoomOut,zoomIn,fit,spacer,open,download);
+  const state={preview,root,viewport,pagesNode,status,previous,next,pageInput,pageTotal,zoomOut,zoomIn,fit,page:1,pages:0,scale:1,fitWidth:true,document:null,loadingTask:null,pageViews:[],referenceWidth:612,referenceHeight:792,resizeObserver:null,resizeFrame:0,scrollFrame:0,passwordProtected:false,disposed:false};workspacePDFState=state;updateWorkspacePDFControls(state);
+  previous.onclick=()=>{if(state.page>1)scrollWorkspacePDFToPage(state,state.page-1,'smooth');};next.onclick=()=>{if(state.page<state.pages)scrollWorkspacePDFToPage(state,state.page+1,'smooth');};
+  pageInput.onchange=()=>{const page=Math.max(1,Math.min(state.pages,Number.parseInt(pageInput.value,10)||state.page));scrollWorkspacePDFToPage(state,page,'smooth');};
+  zoomOut.onclick=()=>{const current=state.pageViews[state.page-1];if(state.fitWidth)state.scale=workspacePDFViewScale(state,current||{});state.fitWidth=false;state.scale=Math.max(.25,state.scale-.2);scrollWorkspacePDFToPage(state,state.page);};zoomIn.onclick=()=>{const current=state.pageViews[state.page-1];if(state.fitWidth)state.scale=workspacePDFViewScale(state,current||{});state.fitWidth=false;state.scale=Math.min(4,state.scale+.2);scrollWorkspacePDFToPage(state,state.page);};fit.onclick=()=>{state.fitWidth=true;scrollWorkspacePDFToPage(state,state.page);};
+  viewport.addEventListener('scroll',()=>{if(!state.scrollFrame)state.scrollFrame=requestAnimationFrame(()=>updateWorkspacePDFPageFromScroll(state));},{passive:true});
+  state.resizeObserver=new ResizeObserver(()=>{if(!state.fitWidth||!state.document)return;if(state.resizeFrame)cancelAnimationFrame(state.resizeFrame);state.resizeFrame=requestAnimationFrame(()=>{state.resizeFrame=0;scrollWorkspacePDFToPage(state,state.page);});});state.resizeObserver.observe(viewport);
+  try{
+    const pdfjs=await workspacePDFModule();if(workspacePDFState!==state)return;
+    state.loadingTask=pdfjs.getDocument({url:preview.contentUrl,cMapUrl:'/assets/pdfjs/cmaps/',cMapPacked:true,standardFontDataUrl:'/assets/pdfjs/standard_fonts/',wasmUrl:'/assets/pdfjs/wasm/',iccUrl:'/assets/pdfjs/iccs/',isEvalSupported:false,enableXfa:false});
+    state.loadingTask.onPassword=()=>{state.passwordProtected=true;workspacePDFMessage(state,__('workspace_pdf_protected'),true);state.loadingTask.destroy().catch(()=>{});};
+    state.document=await state.loadingTask.promise;if(workspacePDFState!==state)return;state.pages=state.document.numPages;
+    const firstPage=await state.document.getPage(1);if(workspacePDFState!==state)return;const natural=firstPage.getViewport({scale:1});state.referenceWidth=natural.width;state.referenceHeight=natural.height;try{firstPage.cleanup();}catch{}
+    for(let page=1;page<=state.pages;page++){const node=el('section','workspace-pdf__page-view'),canvas=document.createElement('canvas'),message=el('span','workspace-pdf__page-message',__('workspace_pdf_rendering')),number=el('span','workspace-pdf__page-number',String(page));canvas.className='workspace-pdf__canvas';canvas.hidden=true;canvas.setAttribute('aria-label',preview.name+' '+page);node.append(canvas,message,number);pagesNode.appendChild(node);state.pageViews.push({page,node,canvas,message,pdfPage:null,renderTask:null,renderKey:'',generation:0,naturalWidth:0,naturalHeight:0});}
+    updateWorkspacePDFControls(state);syncWorkspacePDFViews(state);
+  }catch(error){
+    if(workspacePDFState!==state)return;workspacePDFMessage(state,state.passwordProtected||error?.name==='PasswordException'?__('workspace_pdf_protected'):__('workspace_pdf_error'),true);updateWorkspacePDFControls(state);
+  }
+}
 function renderWorkspacePreview(preview){
-  workspacePreviewContent.innerHTML='';workspacePreviewHead.style.display='flex';$('#workspace-preview-name').textContent=preview.name;$('#workspace-preview-name').title=preview.path;$('#workspace-preview-meta').textContent=preview.path+' · '+workspaceFormatBytes(preview.size);workspaceHTMLToggle.style.display=preview.kind==='html'?'':'none';
+  disposeWorkspacePDF();workspacePreviewContent.innerHTML='';workspacePreviewContent.classList.toggle('workspace-preview__content--pdf',preview.kind==='pdf');workspacePreviewHead.style.display='flex';$('#workspace-preview-name').textContent=preview.name;$('#workspace-preview-name').title=preview.path;$('#workspace-preview-meta').textContent=preview.path+' · '+workspaceFormatBytes(preview.size);workspaceHTMLToggle.style.display=preview.kind==='html'?'':'none';
   if(preview.truncated&&preview.kind!=='html')workspacePreviewNote(__('workspace_truncated'));
   if(preview.kind==='markdown'){const body=el('div','md-sections workspace-preview__markdown');body.innerHTML=renderMarkdown(preview.body);fixImageSrcs(body,preview.path);highlightBlocks(body);workspacePreviewContent.appendChild(body);return;}
   if(preview.kind==='code'||preview.kind==='text'){workspaceCodeView(preview.body,preview.path);return;}
   if(preview.kind==='html'){renderWorkspaceHTML(preview);return;}
   if(preview.kind==='image'){const wrap=el('div','workspace-preview__media'),image=el('img');image.src=preview.contentUrl;image.alt=preview.name;image.onclick=()=>openImageViewer(preview.contentUrl);wrap.appendChild(image);workspacePreviewContent.appendChild(wrap);return;}
-  if(preview.kind==='pdf'){const frame=el('iframe','workspace-preview__frame');frame.src=preview.contentUrl;frame.title=preview.name;frame.setAttribute('referrerpolicy','no-referrer');workspacePreviewContent.appendChild(frame);return;}
+  if(preview.kind==='pdf'){renderWorkspacePDF(preview);return;}
   workspacePreviewContent.appendChild(el('div','workspace-preview__binary',__('workspace_binary')));
 }
 async function loadWorkspacePreview(path){
-  openWorkspacePanel();const generation=++workspacePreviewGeneration;workspacePreviewContent.innerHTML='';workspacePreviewContent.appendChild(el('div','workspace-empty',__('loading')));
+  openWorkspacePanel();const generation=++workspacePreviewGeneration;disposeWorkspacePDF();workspacePreviewContent.classList.remove('workspace-preview__content--pdf');workspacePreviewContent.innerHTML='';workspacePreviewContent.appendChild(el('div','workspace-empty',__('loading')));
   try{const preview=await workspaceJSON('/workspace/preview?path='+encodeURIComponent(path));if(generation!==workspacePreviewGeneration)return;workspaceCurrentPreview=preview;workspaceHTMLSource=false;renderWorkspacePreview(preview);workspaceTree.querySelectorAll('.workspace-tree__row').forEach(row=>row.classList.toggle('workspace-tree__row--active',row.title===preview.path));}catch{if(generation!==workspacePreviewGeneration)return;workspacePreviewHead.style.display='none';workspacePreviewContent.innerHTML='';workspacePreviewContent.appendChild(el('div','workspace-empty',__('workspace_preview_error')));}
 }
 function openWorkspaceFile(path){workspaceSearchInput.value='';loadWorkspacePreview(path);}

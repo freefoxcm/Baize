@@ -107,6 +107,77 @@ func TestServeBaizeAssetRoutes(t *testing.T) {
 	}
 }
 
+func TestServePDFJSAssetRoutes(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	t.Cleanup(ctrl.Close)
+	handler := New(ctrl, bc, config.ServeConfig{}).Handler()
+
+	for _, tc := range []struct {
+		path        string
+		contentType string
+		body        string
+	}{
+		{path: "/assets/pdfjs/pdf.mjs", contentType: "text/javascript; charset=utf-8", body: "Mozilla Foundation"},
+		{path: "/assets/pdfjs/pdf.worker.mjs", contentType: "text/javascript; charset=utf-8", body: "WorkerMessageHandler"},
+		{path: "/assets/pdfjs/wasm/openjpeg.wasm", contentType: "application/wasm", body: ""},
+		{path: "/assets/pdfjs/cmaps/Adobe-GB1-UCS2.bcmap", contentType: "application/octet-stream", body: ""},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("GET %s status = %d, want 200", tc.path, recorder.Code)
+			}
+			if got := recorder.Header().Get("Content-Type"); got != tc.contentType {
+				t.Fatalf("GET %s Content-Type = %q, want %q", tc.path, got, tc.contentType)
+			}
+			if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=86400" {
+				t.Fatalf("GET %s Cache-Control = %q", tc.path, got)
+			}
+			if tc.body != "" && !strings.Contains(recorder.Body.String(), tc.body) {
+				t.Fatalf("GET %s missing source marker %q", tc.path, tc.body)
+			}
+		})
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/assets/pdfjs/missing.mjs", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("missing PDF.js asset status = %d, want 404", recorder.Code)
+	}
+}
+
+func TestWorkspacePDFPreviewUsesPDFJS(t *testing.T) {
+	js := string(baizeJS)
+	for _, want := range []string{
+		"import('/assets/pdfjs/pdf.mjs')",
+		"pdf.worker.mjs",
+		"renderWorkspacePDF(preview)",
+		"workspace-pdf__pages",
+		"updateWorkspacePDFPageFromScroll",
+		"Math.abs(view.page-state.page)<=1",
+		"releaseWorkspacePDFView(view)",
+		"isEvalSupported:false",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("Baize PDF preview missing %q", want)
+		}
+	}
+	if strings.Contains(js, "if(preview.kind==='pdf'){const frame=el('iframe'") {
+		t.Fatal("PDF preview still delegates to the browser's iframe PDF viewer")
+	}
+	css := string(baizeCSS)
+	for _, want := range []string{
+		`.workspace-pdf__viewport{min-width:0;min-height:0;position:relative;flex:1;overflow:auto;`,
+		`.workspace-pdf__pages{width:max-content;min-width:100%;min-height:100%;display:flex;flex-direction:column;`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("Baize PDF preview stylesheet missing %q", want)
+		}
+	}
+}
+
 func TestSessionListKeepsScrollableFixedRows(t *testing.T) {
 	css := string(baizeCSS)
 	for _, want := range []string{
@@ -116,5 +187,13 @@ func TestSessionListKeepsScrollableFixedRows(t *testing.T) {
 		if !strings.Contains(css, want) {
 			t.Errorf("Baize stylesheet missing session list layout contract %q", want)
 		}
+	}
+}
+
+func TestReasoningSummaryAlwaysStartsBelowHeader(t *testing.T) {
+	css := string(baizeCSS)
+	const want = `.reasoning__summary{display:block;width:calc(100% - 8px);box-sizing:border-box;`
+	if !strings.Contains(css, want) {
+		t.Fatalf("Baize stylesheet missing fixed reasoning summary row %q", want)
 	}
 }

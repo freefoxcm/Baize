@@ -239,7 +239,10 @@ func signableTodoHint(todos []evidence.TodoItem) string {
 		} else if todo.Level == 1 {
 			kind = "sub-step"
 		}
-		return fmt.Sprintf(" Current signable todo: %d %q (%s).", i+1, todo.Content, kind)
+		if todo.StepID != "" {
+			return fmt.Sprintf(" Current signable todo: %d %q (%s, step_id %q). Retry complete_step with step_id %q; do not cite a pending parent or guess an index.", i+1, todo.Content, kind, todo.StepID, todo.StepID)
+		}
+		return fmt.Sprintf(" Current signable todo: %d %q (%s). Retry complete_step with this exact title; do not cite a pending parent or guess an index.", i+1, todo.Content, kind)
 	}
 	return " No todo is currently in_progress."
 }
@@ -256,6 +259,9 @@ func nextTodoStatus(todos []evidence.TodoItem, match evidence.TodoStepMatch) str
 		suffix := ""
 		if _, phase := evidence.FirstUnfinishedSubStep(next, i); phase {
 			suffix = " (phase sign-off)"
+		}
+		if todo.StepID != "" {
+			return fmt.Sprintf(" The host advanced the task list. Next signable todo: %d %q%s (step_id %q). Copy this step_id; do not guess a later index.", i+1, todo.Content, suffix, todo.StepID)
 		}
 		return fmt.Sprintf(" The host advanced the task list. Next signable todo: %d %q%s. Copy this exact title; do not guess a later index.", i+1, todo.Content, suffix)
 	}
