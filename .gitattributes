@@ -36,3 +36,6 @@ internal/serve/logo-symbol.svg merge=baize
 internal/serve/logo-wordmark.svg merge=baize
 internal/serve/assets/baize.css merge=baize
 internal/serve/assets/baize.js merge=baize
+internal/serve/assets/login.css merge=baize
+internal/serve/assets/login-bg-desktop.webp merge=baize
+internal/serve/assets/login-bg-mobile.webp merge=baize

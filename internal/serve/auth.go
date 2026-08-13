@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -25,9 +24,6 @@ import (
 
 	"reasonix/internal/config"
 )
-
-//go:embed login.html
-var loginHTML []byte
 
 // authMode represents the authentication mode for the serve frontend.
 type authMode int
@@ -205,10 +201,10 @@ func sessionKeyForPasswordHash(passwordHash string) []byte {
 // guard (the login form uses application/x-www-form-urlencoded, not JSON).
 func (ag *authGate) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Brand assets are intentionally public so the password login page and
-		// browser tab can render them before an authenticated session exists.
+		// Login assets are intentionally public so the password page and browser
+		// tab can render before an authenticated session exists.
 		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
-			(r.URL.Path == "/assets/logo-wordmark.svg" || r.URL.Path == "/assets/logo-symbol.svg") {
+			publicLoginAssetPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -243,6 +239,19 @@ func (ag *authGate) middleware(next http.Handler) http.Handler {
 		// password mode
 		ag.checkSession(w, r, next)
 	})
+}
+
+func publicLoginAssetPath(assetPath string) bool {
+	switch assetPath {
+	case "/assets/logo-wordmark.svg",
+		"/assets/logo-symbol.svg",
+		"/assets/login.css",
+		"/assets/login-bg-desktop.webp",
+		"/assets/login-bg-mobile.webp":
+		return true
+	default:
+		return false
+	}
 }
 
 func tokenBootstrapPublicPath(r *http.Request) bool {
@@ -398,21 +407,13 @@ func (ag *authGate) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// loginPage serves the embedded login HTML.
-func (ag *authGate) loginPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(loginHTML)
-}
-
 // loginSubmit verifies the password and issues a session cookie.
 func (ag *authGate) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Rate limit.
 	ip := ag.clientIP(r)
 	if !ag.rateLimit.allow(ip) {
 		slog.Warn("serve/auth: rate-limited login attempt", "ip", ip)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusTooManyRequests)
-		_, _ = w.Write([]byte("Too many attempts. Please wait a minute.\n"))
+		ag.loginPageWithError(w, r, http.StatusTooManyRequests, loginErrorRate)
 		return
 	}
 
@@ -423,20 +424,20 @@ func (ag *authGate) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	password := r.FormValue("password")
 	if password == "" {
-		ag.loginPageWithError(w, "Password is required.")
+		ag.loginPageWithError(w, r, http.StatusUnauthorized, loginErrorRequired)
 		return
 	}
 
 	// Verify against the stored bcrypt hash.
 	if ag.passwordHash == "" {
 		slog.Error("serve/auth: cannot verify password — no password_hash configured")
-		ag.loginPageWithError(w, "Server not configured for password authentication.")
+		ag.loginPageWithError(w, r, http.StatusUnauthorized, loginErrorConfig)
 		return
 	}
 
 	// Verify against bcrypt hash.
 	if err := bcrypt.CompareHashAndPassword([]byte(ag.passwordHash), []byte(password)); err != nil {
-		ag.loginPageWithError(w, "Invalid password.")
+		ag.loginPageWithError(w, r, http.StatusUnauthorized, loginErrorInvalid)
 		return
 	}
 
@@ -577,25 +578,6 @@ func (ag *authGate) verifySession(token string) bool {
 		return false
 	}
 	return time.Now().Unix() < expiry
-}
-
-// loginPageWithError renders the login page with an error message.
-func (ag *authGate) loginPageWithError(w http.ResponseWriter, msg string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusUnauthorized)
-	html := strings.Replace(string(loginHTML), "<!--ERROR-->",
-		`<div class="error">`+htmlEscape(msg)+`</div>`, 1)
-	_, _ = w.Write([]byte(html))
-}
-
-// htmlEscape does minimal escaping for display in an HTML context.
-func htmlEscape(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&#34;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
 }
 
 // generateToken returns a cryptographically random URL-safe token.

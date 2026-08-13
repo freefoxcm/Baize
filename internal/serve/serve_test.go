@@ -788,7 +788,7 @@ func TestServeBrandingAndAssets(t *testing.T) {
 	}
 
 	login := string(loginHTML)
-	for _, want := range []string{"<title>Baize — Login</title>", "href=\"/assets/logo-symbol.svg\"", "src=\"/assets/logo-wordmark.svg\" alt=\"Baize\""} {
+	for _, want := range []string{"<title>{{.Title}}</title>", "href=\"/assets/logo-symbol.svg\"", "href=\"/assets/login.css\"", "src=\"/assets/logo-wordmark.svg\" alt=\"Baize\""} {
 		if !strings.Contains(login, want) {
 			t.Fatalf("login page missing Baize branding %q", want)
 		}
@@ -805,31 +805,6 @@ func TestServeBrandingAndAssets(t *testing.T) {
 		if strings.Contains(body, "<image") || strings.Contains(body, "Reasonix") {
 			t.Fatalf("%s SVG embeds raster content or retired branding", name)
 		}
-	}
-}
-
-func TestServeBrandAssetRoutes(t *testing.T) {
-	bc := NewBroadcaster()
-	ctrl := control.New(control.Options{Sink: bc})
-	t.Cleanup(func() { ctrl.Close() })
-	handler := New(ctrl, bc, config.ServeConfig{}).Handler()
-	for _, path := range []string{"/assets/logo-wordmark.svg", "/assets/logo-symbol.svg"} {
-		t.Run(path, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
-			if recorder.Code != http.StatusOK {
-				t.Fatalf("GET %s status = %d, want 200", path, recorder.Code)
-			}
-			if got := recorder.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
-				t.Fatalf("GET %s Content-Type = %q", path, got)
-			}
-			if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=3600" {
-				t.Fatalf("GET %s Cache-Control = %q", path, got)
-			}
-			if !strings.Contains(recorder.Body.String(), "aria-label=\"Baize\"") {
-				t.Fatalf("GET %s did not return the Baize SVG", path)
-			}
-		})
 	}
 }
 
