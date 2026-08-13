@@ -1662,7 +1662,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			catOpts.Plugins, catOpts.CachedTools, catOpts.CacheKeyOK, catOpts.Disabled, catOpts.ProxyTools = capRuntime.CapabilityCatalogState()
 		}
 		catalog := capability.BuildCatalog(catOpts)
-		_, missing := catalog.RequiresReady(requires)
+		_, missing := catalog.RequiresInvocable(requires)
 		return missing
 	})
 

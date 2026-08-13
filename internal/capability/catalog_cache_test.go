@@ -333,3 +333,55 @@ func TestCatalogDoesNotRouteProxyToolsAfterFailure(t *testing.T) {
 		t.Fatalf("failed server proxy tool = (%+v, %v), want failed catalog entry", entry, ok)
 	}
 }
+
+func TestRequiresInvocableAcceptsConfiguredAutoStartServerWithReadyTool(t *testing.T) {
+	cat := BuildCatalog(CatalogOptions{
+		Tools: []tool.ContractEntry{{
+			Name: plugin.ModelToolName("ipap", "aggregate_cases"), ReadOnly: true,
+		}},
+		Plugins: []config.PluginEntry{{Name: "ipap", AutoStart: boolPtr(true)}},
+	})
+
+	ready, missing := cat.RequiresInvocable([]string{"mcp-server:ipap", "mcp-tool:ipap/aggregate_cases"})
+	if !ready || len(missing) != 0 {
+		t.Fatalf("RequiresInvocable() = (%v, %v), want ready", ready, missing)
+	}
+	if ready, missing = cat.RequiresReady([]string{"mcp-server:ipap"}); ready || len(missing) != 1 {
+		t.Fatalf("RequiresReady() = (%v, %v), want strict ready semantics unchanged", ready, missing)
+	}
+}
+
+func TestRequiresInvocableRejectsUnusableConfiguredServer(t *testing.T) {
+	tests := []struct {
+		name        string
+		autoStart   bool
+		server      Status
+		tool        Status
+		includeTool bool
+	}{
+		{name: "auto start disabled", server: StatusConfigured, tool: StatusReady, includeTool: true},
+		{name: "no concrete tool", autoStart: true, server: StatusConfigured},
+		{name: "tool not ready", autoStart: true, server: StatusConfigured, tool: StatusConfigured, includeTool: true},
+		{name: "server stale", autoStart: true, server: StatusStale, tool: StatusReady, includeTool: true},
+		{name: "server failed", autoStart: true, server: StatusFailed, tool: StatusReady, includeTool: true},
+		{name: "server disabled", autoStart: true, server: StatusDisabled, tool: StatusReady, includeTool: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries := []Entry{{
+				ID: "mcp-server:ipap", Kind: KindMCPServer, Name: "ipap",
+				Status: tt.server, AutoStart: tt.autoStart,
+			}}
+			if tt.includeTool {
+				entries = append(entries, Entry{
+					ID: "mcp-tool:ipap/aggregate_cases", Kind: KindMCPTool,
+					Name: "ipap/aggregate_cases", Source: "ipap", Status: tt.tool,
+				})
+			}
+			ready, missing := (Catalog{Entries: entries}).RequiresInvocable([]string{"mcp-server:ipap"})
+			if ready || len(missing) != 1 || missing[0] != "mcp-server:ipap" {
+				t.Fatalf("RequiresInvocable() = (%v, %v), want unavailable server", ready, missing)
+			}
+		})
+	}
+}
