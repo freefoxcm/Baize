@@ -157,7 +157,9 @@ ok(
   stylesSource.includes(".settings-page--general .settings-section") &&
     stylesSource.includes("grid-template-columns: minmax(260px, 1fr) max-content") &&
     stylesSource.includes(".settings-field__copy--icon") &&
-    stylesSource.includes("@media (max-width: 900px)"),
+    stylesSource.includes("container: settings-general / inline-size") &&
+    stylesSource.includes("@container settings-general (max-width: 620px)") &&
+    stylesSource.includes("@media (max-width: 980px)"),
   "General controls use the selected flat responsive section layout",
 );
 ok(

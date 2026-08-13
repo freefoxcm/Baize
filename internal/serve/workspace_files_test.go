@@ -321,15 +321,22 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`/workspace/entries?path=`,
 		`/workspace/preview?path=`,
 		`WHOLE_DOCUMENT:true`,
-		`frame.setAttribute('sandbox','')`,
+		`preview.kind==='pdf'`,
 		`workspaceChartScriptURL`,
 		`rendered.interactive?'allow-scripts':''`,
 		`connect-src 'none'`,
 		`requestAnimationFrame(paint)`,
 		`fixWorkspaceLinks(root)`,
+		`usageSelectedCost`,
+		`s.sessionCostQuote`,
+		`__('multi_currency')`,
 	} {
 		if !strings.Contains(js, marker) {
 			t.Fatalf("workspace JavaScript missing %s", marker)
 		}
+	}
+	pdfBranch := strings.SplitN(js, `if(preview.kind==='pdf')`, 2)
+	if len(pdfBranch) != 2 || strings.Contains(strings.SplitN(pdfBranch[1], "return;", 2)[0], "sandbox") {
+		t.Fatal("PDF preview must not sandbox Chrome's built-in PDF viewer")
 	}
 }

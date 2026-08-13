@@ -117,24 +117,89 @@ export function contextCostDisplay({
   sessionCurrency,
   usage,
 }: {
-  info?: Pick<ContextPanelInfo, "sessionCost" | "sessionCurrency" | "sessionCostUsd"> | null;
+  info?: Pick<ContextPanelInfo, "sessionCost" | "sessionCurrency" | "sessionCostUsd" | "sessionCostComplete" | "sessionCostEstimated" | "sessionBillingMode" | "sessionCostQuote"> | null;
   sessionCost?: number;
   sessionCurrency?: string;
-  usage?: Pick<WireUsage, "cost" | "costUsd" | "currency">;
-}): { amount: number; currency?: string } {
-  // Session-scoped sources only: this value renders under the 会话费用 label,
-  // and falling back to a single request's usage.cost silently displayed one
-  // turn's spend as the whole session's. usage now contributes currency only.
+  usage?: Pick<WireUsage, "cost" | "costUsd" | "currency" | "currencyCode" | "costQuote">;
+}): {
+  amount: number;
+  currency?: string;
+  estimated?: boolean;
+  complete?: boolean;
+  billingMode?: string;
+  labelKind?: "estimated" | "payg_equivalent" | "fallback" | "bucketed" | "unavailable";
+} {
+  // Prefer structured session quote, then per-usage quote.
+  const quote = info?.sessionCostQuote || usage?.costQuote;
+  if (quote?.displayStatus === "bucketed" || quote?.aggregateMode === "currency_buckets") {
+    return {
+      amount: 0,
+      currency: undefined,
+      estimated: true,
+      complete: false,
+      labelKind: "bucketed",
+    };
+  }
+  const fallbackOriginal = quote?.displayStatus === "fallback_original";
+  if (!fallbackOriginal && (info?.sessionCostComplete === false || quote?.displayStatus === "unavailable" || quote?.costComplete === false)) {
+    return {
+      amount: 0,
+      currency: info?.sessionCurrency || sessionCurrency || usage?.currencyCode || usage?.currency,
+      estimated: true,
+      complete: false,
+      labelKind: "unavailable",
+    };
+  }
+  const selected = quote?.selected;
+  if (selected?.amount) {
+    const n = Number(selected.amount);
+    if (Number.isFinite(n) && n > 0) {
+      const mode = quote?.billingMode || info?.sessionBillingMode;
+      return {
+        amount: n,
+        currency: selected.currency || usage?.currencyCode || usage?.currency || info?.sessionCurrency,
+        estimated: quote?.estimated !== false,
+        complete: quote?.displayComplete !== false,
+        billingMode: mode,
+        labelKind: fallbackOriginal ? "fallback" : mode === "subscription_equivalent" ? "payg_equivalent" : "estimated",
+      };
+    }
+  }
+  // Session-scoped scalar fallbacks (legacy telemetry).
   if (info?.sessionCost && info.sessionCost > 0) {
-    return { amount: info.sessionCost, currency: info.sessionCurrency || sessionCurrency || usage?.currency };
+    return {
+      amount: info.sessionCost,
+      currency: info.sessionCurrency || sessionCurrency || usage?.currencyCode || usage?.currency,
+      estimated: true,
+      complete: true,
+      labelKind: "estimated",
+    };
   }
   if (sessionCost && sessionCost > 0) {
-    return { amount: sessionCost, currency: sessionCurrency || info?.sessionCurrency || usage?.currency };
+    return {
+      amount: sessionCost,
+      currency: sessionCurrency || info?.sessionCurrency || usage?.currencyCode || usage?.currency,
+      estimated: true,
+      complete: true,
+      labelKind: "estimated",
+    };
   }
   if (info?.sessionCostUsd && info.sessionCostUsd > 0) {
-    return { amount: info.sessionCostUsd, currency: info.sessionCurrency || sessionCurrency || usage?.currency };
+    return {
+      amount: info.sessionCostUsd,
+      currency: info.sessionCurrency || sessionCurrency || usage?.currencyCode || usage?.currency,
+      estimated: true,
+      complete: true,
+      labelKind: "estimated",
+    };
   }
-  return { amount: 0, currency: info?.sessionCurrency || sessionCurrency || usage?.currency };
+  return {
+    amount: 0,
+    currency: info?.sessionCurrency || sessionCurrency || usage?.currencyCode || usage?.currency,
+    estimated: true,
+    complete: false,
+    labelKind: "unavailable",
+  };
 }
 
 // contextSessionCache picks the session-cumulative cache hit/miss pair for the
@@ -450,7 +515,13 @@ export function ContextPanel({
   const sessionEstimated = info?.sessionEstimated === true || context?.estimated === true;
   const markEstimated = (value: string, estimated: boolean) => estimated && value !== "-" ? `≈${value}` : value;
   const turnCostLabel = markEstimated(formatMoneyLocalized(turnCost, sessionCurrency, { locale, empty: "dash" }), turnEstimated);
-  const sessionCostLabel = markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
+  const sessionCostLabel = cost.labelKind === "bucketed"
+    ? t("context.sessionCostBucketed")
+    : cost.labelKind === "unavailable"
+      ? t("context.sessionCostUnavailable")
+      : cost.labelKind === "fallback"
+        ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostFallback")})`
+        : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
   const totalTokensTitle = totalTokensMetric.exact === "-" ? "-" : t("context.tokensValue", { value: totalTokensMetric.exact });
   const usedLabel = formatTokens(usedTokens);
   const windowLabel = formatTokens(windowTokens);

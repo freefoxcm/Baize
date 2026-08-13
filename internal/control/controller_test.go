@@ -802,8 +802,10 @@ func TestResumeRestoresRunningAutoResearchGoalFromSidecar(t *testing.T) {
 	if strings.Contains(strings.ToLower(composed), "autoresearch") {
 		t.Fatalf("Compose after resume exposed removed AutoResearch protocol:\n%s", composed)
 	}
-	if got := c.GoalRuntime().TurnsLimit; got != 40 {
-		t.Fatalf("resumed legacy Goal budget = %d, want 40", got)
+	// The class-derived turn quota is retired: a migrated legacy Goal is
+	// bounded by what the user configures, not by a number derived from its text.
+	if got := c.GoalRuntime().TurnsLimit; got != 0 {
+		t.Fatalf("resumed legacy Goal turn budget = %d, want it retired", got)
 	}
 }
 
@@ -2759,8 +2761,8 @@ func TestTwoModelShortChoiceReplySkipsPlanner(t *testing.T) {
 	if strings.Contains(reqText, "Reasonix executor handoff") {
 		t.Fatalf("short choice reply should not be wrapped as a planner handoff:\n%s", reqText)
 	}
-	if got := lastUserMessage(execProv.requests[0].Messages); got != "1" {
-		t.Fatalf("executor last user = %q, want raw choice reply", got)
+	if got := agent.StripTransientUserBlocks(lastUserMessage(execProv.requests[0].Messages)); got != "1" {
+		t.Fatalf("executor last user = %q, want raw choice reply (execution-policy may append)", lastUserMessage(execProv.requests[0].Messages))
 	}
 }
 
@@ -5386,7 +5388,6 @@ func TestReloadCommandsDesktopManagementNotice(t *testing.T) {
 	}
 }
 
-// cmdNames is a test helper that extracts command names from a slice.
 func cmdNames(cmds []command.Command) []string {
 	names := make([]string, len(cmds))
 	for i, c := range cmds {
@@ -5395,8 +5396,7 @@ func cmdNames(cmds []command.Command) []string {
 	return names
 }
 
-// TestCacheColdAfterFailureFallsBackTo24h：配置加载失败/模型解析失败时
-// 保守回退 24h（评审 #7168 第 4 点）——不得用 10m 提前触发 prune。
+// TestCacheColdAfterFailureFallsBackTo24h 验证配置或模型解析失败时保守回退 24h。
 func TestCacheColdAfterFailureFallsBackTo24h(t *testing.T) {
 	c := New(Options{})
 	orig := c.workspaceRoot

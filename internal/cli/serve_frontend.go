@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"reasonix/internal/agent"
@@ -46,6 +47,62 @@ type serveFrontendResources struct {
 	displayAddr  string
 	artifacts    []string
 	registration *webInstanceRegistration
+}
+
+type serveConfigOverrides struct {
+	command      string
+	authExplicit bool
+	auth         string
+	token        string
+	tokenFile    string
+	password     string
+	behindProxy  bool
+}
+
+func resolveServeConfig(base config.ServeConfig, overrides serveConfigOverrides) (config.ServeConfig, error) {
+	cfg := serveConfigWithCommandDefaults(overrides.command, overrides.authExplicit, base)
+	if overrides.auth != "" {
+		cfg.AuthMode = overrides.auth
+	}
+	if overrides.token != "" {
+		cfg.Token = overrides.token
+	}
+	if overrides.tokenFile != "" {
+		token, err := readServeTokenFile(overrides.tokenFile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.Token = token
+	}
+	if overrides.behindProxy {
+		cfg.BehindProxy = true
+	}
+	mode, err := serve.NormalizeAuthMode(cfg.AuthMode)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.AuthMode = mode
+	if overrides.password != "" && mode == "password" {
+		hash, err := serve.HashPassword(overrides.password)
+		if err != nil {
+			return cfg, fmt.Errorf("failed to hash password: %w", err)
+		}
+		cfg.PasswordHash = hash
+	}
+	if mode == "password" && strings.TrimSpace(cfg.PasswordHash) == "" {
+		return cfg, fmt.Errorf("auth mode password requires --password or serve.password_hash")
+	}
+	return cfg, nil
+}
+
+func runConfiguredServeFrontend(ctrl *control.Controller, bc *serve.Broadcaster, leases *control.SessionLeaseKeeper, cfg config.ServeConfig, opts serveFrontendOptions) int {
+	srv := serve.New(ctrl, bc, cfg)
+	if err := srv.SetSessionLeases(leases); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
+		return 1
+	}
+	serve.ApplyDesktopDefaultApprovalMode(ctrl)
+	return runServeFrontend(ctrl, srv, cfg, opts)
 }
 
 func prepareServeFrontend(opts serveFrontendOptions) (_ *serveFrontendResources, err error) {

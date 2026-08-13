@@ -22,6 +22,15 @@ type approvalModeSidecar struct {
 	Mode string `json:"mode"`
 }
 
+// ApplyDesktopDefaultApprovalMode gives a fresh Serve controller the desktop
+// default without changing an existing runtime choice.
+func ApplyDesktopDefaultApprovalMode(ctrl control.SessionAPI) {
+	cfg, err := config.Load()
+	if err == nil && cfg.Desktop.DefaultToolApprovalMode != "" {
+		ctrl.SetToolApprovalMode(cfg.DesktopDefaultToolApprovalMode())
+	}
+}
+
 // readSessionApprovalMode returns the persisted mode for a session path, or ""
 // when the sidecar is missing or unreadable.
 func readSessionApprovalMode(sessionPath string) string {

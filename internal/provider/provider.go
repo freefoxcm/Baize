@@ -73,23 +73,21 @@ type Message struct {
 	// Round-tripped alongside ReasoningContent.
 	ReasoningSignature string     `json:"reasoning_signature,omitempty"`
 	ToolCalls          []ToolCall `json:"tool_calls,omitempty"` // set by assistant
-	// ResponsesItems preserves provider-issued Responses API output items that
-	// must be replayed on a stateless follow-up. Today only DeepSeek
-	// web_search_call items use this path; other providers ignore the field.
-	// Keeping the opaque JSON on the assistant turn makes resume/restart safe,
-	// while omitempty keeps old session files byte-compatible when unused.
-	ResponsesItems  []json.RawMessage `json:"responses_items,omitempty"`
-	ToolCallID      string            `json:"tool_call_id,omitempty"`    // links a tool result to its call
-	Name            string            `json:"name,omitempty"`            // tool message: tool name
-	MemoryCitations []MemoryCitation  `json:"memoryCitations,omitempty"` // local UI metadata; provider requests ignore it
-	WorkDurationMs  int64             `json:"workDurationMs,omitempty"`  // local UI metadata; provider requests ignore it
 	// ToolDurationMs is the wall-clock execution time of a tool result, in
 	// milliseconds. Local UI metadata (the web/desktop card meta shows it
 	// after a history rebuild); provider requests ignore it.
-	ToolDurationMs int64  `json:"toolDurationMs,omitempty"`
-	CreatedAt      int64  `json:"createdAt,omitempty"` // local UI metadata; unix milliseconds; stripped before provider requests
-	Edited         bool   `json:"edited,omitempty"`    // local UI metadata; provider requests ignore it
-	Original       string `json:"original,omitempty"`  // user prompt before inline edit
+	// ResponsesItems preserves provider-issued Responses API output items for
+	// stateless replay. omitempty keeps old session files byte-compatible.
+	ResponsesItems  []json.RawMessage  `json:"responses_items,omitempty"`
+	ServerSearch    []ServerSearchCall `json:"server_search,omitempty"`   // cards + Anthropic replay; omitempty
+	ToolCallID      string             `json:"tool_call_id,omitempty"`    // links a tool result to its call
+	Name            string             `json:"name,omitempty"`            // tool message: tool name
+	MemoryCitations []MemoryCitation   `json:"memoryCitations,omitempty"` // local UI metadata; provider requests ignore it
+	WorkDurationMs  int64              `json:"workDurationMs,omitempty"`  // local UI metadata; provider requests ignore it
+	ToolDurationMs  int64              `json:"toolDurationMs,omitempty"`
+	CreatedAt       int64              `json:"createdAt,omitempty"` // local UI metadata; unix milliseconds; stripped before provider requests
+	Edited          bool               `json:"edited,omitempty"`    // local UI metadata; provider requests ignore it
+	Original        string             `json:"original,omitempty"`  // user prompt before inline edit
 	// LocalOnly marks durable transcript content that must never be sent to a
 	// model provider. Interrupted streaming output uses it so every frontend can
 	// replay what the user saw without feeding partial reasoning or tool-call
@@ -285,39 +283,6 @@ const interruptedToolResult = "[no result: the previous turn was interrupted bef
 // touching the stored session. Kept as a distinct name so call sites read as
 // "defensive wire prep" rather than "session mutation".
 func SanitizeToolPairing(msgs []Message) []Message { return NormalizeMessages(msgs) }
-
-// ModelMessages removes durable display-only records before a request is
-// handed to any provider. Healthy sessions without such records keep their
-// original backing slice, preserving the allocation and prompt-cache fast path.
-func ModelMessages(msgs []Message) []Message {
-	needsCopy := false
-	for _, m := range msgs {
-		if m.LocalOnly || m.RawContent != "" || m.ProviderContent != "" || m.DecisionReceipt != nil || len(m.DecisionReceipts) > 0 || m.ToolExecution != nil {
-			needsCopy = true
-			break
-		}
-	}
-	if !needsCopy {
-		return msgs
-	}
-	out := make([]Message, 0, len(msgs))
-	for _, candidate := range msgs {
-		if candidate.LocalOnly {
-			continue
-		}
-		if candidate.ProviderContent != "" {
-			candidate.Content = candidate.ProviderContent
-			candidate.ProviderContent = ""
-		}
-		candidate.RawContent = ""
-		candidate.DecisionReceipt = nil
-		candidate.DecisionReceipts = nil
-		// Local shell metadata must never enter provider request bytes.
-		candidate.ToolExecution = nil
-		out = append(out, candidate)
-	}
-	return out
-}
 
 // NormalizeMessages repairs a conversation history so it satisfies the tool-call
 // contract the OpenAI-compatible and Anthropic APIs enforce: every assistant
@@ -720,6 +685,7 @@ const (
 	ChunkDone                               // completion finished normally
 	ChunkError                              // an error occurred
 	ChunkResponsesItem                      // a complete provider-issued Responses API output item for stateless replay
+	ChunkServerSearch                       // provider-executed web_search; not a client tool call
 )
 
 // Usage reports token accounting for a completion. Cache hit/miss come from
@@ -784,11 +750,14 @@ type Pricing struct {
 	Currency string  `toml:"currency"`
 }
 
-// Cost estimates the spend for a usage record.
+// Cost estimates the spend for a usage record. Compatibility adapter only —
+// new host code must consume billing.CostQuote instead of aggregating floats.
 func (p *Pricing) Cost(u *Usage) float64 {
 	if p == nil || u == nil {
 		return 0
 	}
+	// Keep the historical float path byte-stable for tests that assert exact
+	// float results without going through the fixed-point quote layer.
 	hit := u.CacheHitTokens
 	miss := u.CacheMissTokens
 	if hit+miss == 0 && u.PromptTokens > 0 {
@@ -882,13 +851,14 @@ type Chunk struct {
 	// from the SSE stream, so the Agent can persist them into the session
 	// and the next turn's input reasoning item round-trips them (review
 	// #7234 — OpenAI Responses schema marks Reasoning.id required).
-	ReasoningID     string          // ChunkReasoning: provider-issued reasoning item id
-	ReasoningStatus string          // ChunkReasoning: final reasoning item status ("completed")
-	ToolCall        *ToolCall       // ChunkToolCallStart (ID+Name only), ChunkToolCallArgsDelta (ID+Name), ChunkToolCall (complete)
-	ArgChars        int             // ChunkToolCallArgsDelta: cumulative argument characters received for this call
-	ResponsesItem   json.RawMessage // ChunkResponsesItem: opaque validated Responses API output item
-	Usage           *Usage          // ChunkUsage
-	Err             error           // ChunkError
+	ReasoningID     string            // ChunkReasoning: provider-issued reasoning item id
+	ReasoningStatus string            // ChunkReasoning: final reasoning item status ("completed")
+	ToolCall        *ToolCall         // ChunkToolCallStart (ID+Name only), ChunkToolCallArgsDelta (ID+Name), ChunkToolCall (complete)
+	ArgChars        int               // ChunkToolCallArgsDelta: cumulative argument characters received for this call
+	ResponsesItem   json.RawMessage   // ChunkResponsesItem: opaque validated Responses API output item
+	ServerSearch    *ServerSearchCall // ChunkServerSearch: display card + replay payload
+	Usage           *Usage            // ChunkUsage
+	Err             error             // ChunkError
 }
 
 // Fixed stream-interrupt reasons for observability. Values are a closed enum

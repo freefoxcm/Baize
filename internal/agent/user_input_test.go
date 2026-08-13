@@ -41,8 +41,8 @@ func TestRunPersistsRawUserInputSeparatelyFromProviderContext(t *testing.T) {
 	if len(stored) < 2 {
 		t.Fatalf("stored messages = %d, want system and user", len(stored))
 	}
-	if got := stored[1].Content; got != composed {
-		t.Fatalf("stored provider content = %q, want composed %q", got, composed)
+	if got := stored[1].Content; !strings.HasPrefix(got, composed) || !strings.Contains(got, "<execution-policy") {
+		t.Fatalf("stored provider content = %q, want composed %q plus execution-policy", got, composed)
 	}
 	if got := stored[1].RawContent; got != raw {
 		t.Fatalf("stored raw content = %q, want raw %q", got, raw)
@@ -50,7 +50,7 @@ func TestRunPersistsRawUserInputSeparatelyFromProviderContext(t *testing.T) {
 	if stored[1].ProviderContent != "" {
 		t.Fatalf("stored transitional provider content was not cleared: %+v", stored[1])
 	}
-	if len(prov.request.Messages) < 2 || prov.request.Messages[1].Content != composed {
+	if len(prov.request.Messages) < 2 || !strings.HasPrefix(prov.request.Messages[1].Content, composed) {
 		t.Fatalf("provider request did not receive composed context: %+v", prov.request.Messages)
 	}
 	if prov.request.Messages[1].RawContent != "" || prov.request.Messages[1].ProviderContent != "" {
@@ -67,8 +67,8 @@ func TestRunPersistsRawUserInputSeparatelyFromProviderContext(t *testing.T) {
 	if err := json.Unmarshal(encoded, &legacy); err != nil {
 		t.Fatalf("decode with previous-release shape: %v", err)
 	}
-	if legacy.Content != composed {
-		t.Fatalf("previous-release reader sees %q, want provider-visible %q", legacy.Content, composed)
+	if !strings.HasPrefix(legacy.Content, composed) || !strings.Contains(legacy.Content, "<execution-policy") {
+		t.Fatalf("previous-release reader sees %q, want provider-visible composed prefix plus execution-policy", legacy.Content)
 	}
 
 	receipt := a.CompletionReceipt()
@@ -110,7 +110,7 @@ Policy: prefer means use the skill for the required change
 		!strings.Contains(prov.request.Messages[1].Content, raw) {
 		t.Fatalf("provider lost the capability route: %+v", prov.request.Messages)
 	}
-	if got := a.turnInput; got != raw {
+	if got := a.turn.turnInput; got != raw {
 		t.Fatalf("contract input = %q, want authenticated raw input %q", got, raw)
 	}
 	c := a.LiveContract()

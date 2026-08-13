@@ -14,6 +14,17 @@ Every controlled upstream integration must add one entry before its merge commit
 - Backend conflicts / 后端冲突：list and resolution or `none`
 - Verification / 验证：commands and browser checks
 
+## 2026-08-13 — `bb58eec24` → `42a9de71d`
+
+- Baize revision / Baize 版本：pre-merge `custom/baize@790925f3e`
+- Upstream WebUI changes / 上游 WebUI 变化：desktop gained native transcript virtualization, recovery-lineage presentation, indexed history search, multi-currency billing, task/session catalogs, search citations, and refreshed execution settings; the Baize-owned Serve UI received the applicable billing contract manually instead of being replaced
+- Ported / 已移植：the complete upstream kernel through `42a9de71d`, including unified execution roles, goal budgets and verification termination, session write authority and recovery lineage, projection catalogs, command-effect classification, compaction state, plugin registration safety, provider URL/billing/search contracts, and the final inbox isolation, encrypted-search accounting, and Auto Guard commits; Baize Serve now consumes `costQuote`/`sessionCostQuote`, renders single- and multi-currency totals, and keeps the existing Baize identity, workspace selection, effort fallback, token/tool-duration accounting, plan-mode semantics, steering guards, and request-independent controller lifecycle
+- Baize WebUI fixes / Baize WebUI 修复：PDF workspace previews keep the authenticated same-origin content endpoint but no longer sandbox Chrome's built-in PDF viewer; HTML and SVG isolation remains unchanged; Windows Serve tests now fence shared history and usage projections before temporary profile cleanup
+- Intentionally skipped / 明确忽略：desktop-only React Virtuoso, native window diagnostics, and desktop theme presentation were not duplicated into the Baize Serve HTML/CSS/JS surface; those upstream desktop implementations remain present in their own runtime
+- Backend conflicts / 后端冲突：resolved `.github/workflows/ci.yml`, Boot golden data, `internal/cli/cli.go`, `internal/provider/provider.go`, `internal/serve/serve.go`, and the repolint baseline; retained Baize CI timeouts and third-party WebView tests, preserved provider server-search and response items with Baize tool durations, handled `SetSessionLeases` errors explicitly, and combined upstream session write authority with Baize's request-independent controller rebuild context
+- Workflow state / Workflow 状态：no unknown workflow was introduced; the known upstream `ci.yml` and `deploy-crash-worker.yml` changes were audited, and `scripts/setup-fork-github.ps1 --check` confirmed only the three `baize-*` workflows plus GitHub's dynamic Dependabot graph workflow remain active
+- Verification / 验证：`git diff --check`; `node --check internal/serve/assets/baize.js`; `go run ./tools/repolint`; focused Agent, CLI, Control, Boot, Provider, Skill, ShellSafe, Serve, Session/History/Usage/Task Catalog tests; PDF inline/range and no-sandbox regression tests; live in-app Chromium rendered the full PDF without console errors or a blocked-page interstitial; `go vet ./...`; `go test ./...` passed all code-related packages, with only environment-bound POSIX Bash and Windows symlink-privilege tests unavailable; `go build -o reasonix.exe ./cmd/reasonix`; live IPAP capability discovery and MCP/Skill smoke checks
+
 ## 2026-08-11 — `8a39ac1c4` → `ee2a6a766`
 
 - Baize revision / Baize 版本：initial `custom/baize` migration series through `835465ec2`
