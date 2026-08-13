@@ -333,7 +333,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 // controller under the target runtime profile's tool contract.
 func (s *Server) build(ctx context.Context, ref string) (*control.Controller, error) {
 	if s.buildController != nil {
-		return s.buildController(ctx, ref)
+		return s.buildController(controllerLifecycleContext(ctx), ref)
 	}
 	s.profileMu.RLock()
 	tokenMode := s.tokenMode
@@ -356,7 +356,7 @@ func (s *Server) build(ctx context.Context, ref string) (*control.Controller, er
 	if cur, ok := cur.(*control.Controller); ok && cur != nil {
 		opts.SessionTemp = cur.SessionTemp()
 	}
-	return boot.Build(ctx, opts)
+	return boot.Build(controllerLifecycleContext(ctx), opts)
 }
 
 // reloadExtensions fail-atomically rebuilds the active controller generation
@@ -421,9 +421,9 @@ func (s *Server) reloadExtensions(ctx context.Context) error {
 
 func (s *Server) rebuild(ctx context.Context, old *control.Controller, ref string) (*control.Controller, error) {
 	if s.rebuildController != nil {
-		return s.rebuildController(ctx, old, ref)
+		return s.rebuildController(controllerLifecycleContext(ctx), old, ref)
 	}
-	res, err := boot.Rebuild(ctx, old, boot.Options{
+	res, err := boot.Rebuild(controllerLifecycleContext(ctx), old, boot.Options{
 		Model:       ref,
 		Sink:        s.bc,
 		Stderr:      os.Stderr,
