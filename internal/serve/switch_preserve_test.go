@@ -53,6 +53,64 @@ func TestBuildPreservesSessionDirAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestReplacementBuildContextsOutliveHTTPRequest(t *testing.T) {
+	type contextKey struct{}
+	wantValue := "request-value"
+
+	for _, tc := range []struct {
+		name string
+		run  func(*Server, context.Context) error
+	}{
+		{
+			name: "model switch build",
+			run: func(s *Server, ctx context.Context) error {
+				_, err := s.build(ctx, "next-model")
+				return err
+			},
+		},
+		{
+			name: "extension reload rebuild",
+			run: func(s *Server, ctx context.Context) error {
+				_, err := s.rebuild(ctx, s.ctrl.(*control.Controller), "next-model")
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := control.New(control.Options{Sink: event.Discard, Label: "old"})
+			defer old.Close()
+			s := &Server{ctrl: old, bc: NewBroadcaster(), tokenMode: boot.TokenModeFull}
+
+			var lifecycleCtx context.Context
+			var replacement *control.Controller
+			buildReplacement := func(ctx context.Context) *control.Controller {
+				lifecycleCtx = ctx
+				replacement = control.New(control.Options{Sink: event.Discard, Label: "new"})
+				return replacement
+			}
+			s.buildController = func(ctx context.Context, _ string) (*control.Controller, error) {
+				return buildReplacement(ctx), nil
+			}
+			s.rebuildController = func(ctx context.Context, _ *control.Controller, _ string) (*control.Controller, error) {
+				return buildReplacement(ctx), nil
+			}
+
+			requestCtx, cancelRequest := context.WithCancel(context.WithValue(context.Background(), contextKey{}, wantValue))
+			if err := tc.run(s, requestCtx); err != nil {
+				t.Fatal(err)
+			}
+			defer replacement.Close()
+			cancelRequest()
+			if err := lifecycleCtx.Err(); err != nil {
+				t.Fatalf("replacement lifecycle context inherited request cancellation: %v", err)
+			}
+			if got := lifecycleCtx.Value(contextKey{}); got != wantValue {
+				t.Fatalf("replacement lifecycle context value = %v, want %q", got, wantValue)
+			}
+		})
+	}
+}
+
 // TestSwitchModelKeepsSessionList verifies the user-visible contract: after a
 // model switch the GET /sessions list still shows the workspace's sessions.
 func TestSwitchModelKeepsSessionList(t *testing.T) {
