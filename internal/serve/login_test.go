@@ -17,14 +17,17 @@ func TestPasswordModeLoginPageLocalization(t *testing.T) {
 		language string
 		wantLang string
 		want     []string
+		notWant  []string
 	}{
 		{
 			name: "english quality preference", language: "zh-CN;q=0.7,en-US;q=0.9", wantLang: "en",
-			want: []string{"Welcome back", "Enter your access password to continue", "Bring clarity to complex work."},
+			want:    []string{`aria-label="Baize login"`, `placeholder="Access password"`, ">Continue <"},
+			notWant: []string{"访问密码", ">继续 <"},
 		},
 		{
 			name: "chinese", language: "zh-CN,zh;q=0.9,en;q=0.7", wantLang: "zh-CN",
-			want: []string{"欢迎回来", "输入访问密码以继续", "让复杂任务，回归清晰秩序。"},
+			want:    []string{`aria-label="Baize 登录"`, `placeholder="访问密码"`, ">继续 <"},
+			notWant: []string{"Access password", ">Continue <"},
 		},
 	}
 	for _, test := range tests {
@@ -44,6 +47,11 @@ func TestPasswordModeLoginPageLocalization(t *testing.T) {
 					t.Errorf("localized login page missing %q", want)
 				}
 			}
+			for _, removed := range append(test.notWant, "Welcome back", "欢迎回来", "Bring clarity", "让复杂任务", "Enter Baize", "进入 Baize") {
+				if strings.Contains(recorder.Body.String(), removed) {
+					t.Errorf("minimal login page still contains %q", removed)
+				}
+			}
 		})
 	}
 }
@@ -53,9 +61,10 @@ func TestPasswordModeLoginErrorLocalization(t *testing.T) {
 		name     string
 		language string
 		want     string
+		notWant  string
 	}{
-		{name: "english", language: "en", want: "Invalid password."},
-		{name: "chinese", language: "zh-CN", want: "访问密码不正确。"},
+		{name: "english", language: "en", want: "Invalid password.", notWant: "访问密码不正确。"},
+		{name: "chinese", language: "zh-CN", want: "访问密码不正确。", notWant: "Invalid password."},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -71,6 +80,9 @@ func TestPasswordModeLoginErrorLocalization(t *testing.T) {
 			if !strings.Contains(recorder.Body.String(), test.want) {
 				t.Fatalf("localized error page missing %q", test.want)
 			}
+			if strings.Contains(recorder.Body.String(), test.notWant) {
+				t.Fatalf("localized error page contains %q", test.notWant)
+			}
 			if !strings.Contains(recorder.Body.String(), `role="alert"`) {
 				t.Fatal("error page is missing an accessible alert")
 			}
@@ -79,26 +91,38 @@ func TestPasswordModeLoginErrorLocalization(t *testing.T) {
 }
 
 func TestPasswordModeRateLimitKeepsStatusAndLocalizedPage(t *testing.T) {
-	ag := newAuthGate(config.ServeConfig{AuthMode: "password", PasswordHash: mustHash("correct")})
-	handler := ag.middleware(http.NotFoundHandler())
-	for attempt := 1; attempt <= rateLimitMax+1; attempt++ {
-		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("password="))
-		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		request.Header.Set("Accept-Language", "zh-CN")
-		request.RemoteAddr = "192.0.2.44:4321"
-		handler.ServeHTTP(recorder, request)
-		if attempt <= rateLimitMax && recorder.Code != http.StatusUnauthorized {
-			t.Fatalf("attempt %d status = %d, want 401", attempt, recorder.Code)
-		}
-		if attempt == rateLimitMax+1 {
-			if recorder.Code != http.StatusTooManyRequests {
-				t.Fatalf("rate-limited status = %d, want 429", recorder.Code)
+	tests := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{name: "english", language: "en", want: "Too many attempts. Please wait a minute."},
+		{name: "chinese", language: "zh-CN", want: "尝试次数过多，请一分钟后再试。"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ag := newAuthGate(config.ServeConfig{AuthMode: "password", PasswordHash: mustHash("correct")})
+			handler := ag.middleware(http.NotFoundHandler())
+			for attempt := 1; attempt <= rateLimitMax+1; attempt++ {
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("password="))
+				request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				request.Header.Set("Accept-Language", test.language)
+				request.RemoteAddr = "192.0.2.44:4321"
+				handler.ServeHTTP(recorder, request)
+				if attempt <= rateLimitMax && recorder.Code != http.StatusUnauthorized {
+					t.Fatalf("attempt %d status = %d, want 401", attempt, recorder.Code)
+				}
+				if attempt == rateLimitMax+1 {
+					if recorder.Code != http.StatusTooManyRequests {
+						t.Fatalf("rate-limited status = %d, want 429", recorder.Code)
+					}
+					if !strings.Contains(recorder.Body.String(), test.want) {
+						t.Fatalf("rate-limited page missing %q", test.want)
+					}
+				}
 			}
-			if !strings.Contains(recorder.Body.String(), "尝试次数过多，请一分钟后再试。") {
-				t.Fatal("rate-limited page is not localized")
-			}
-		}
+		})
 	}
 }
 

@@ -10,20 +10,8 @@
 </head>
 <body>
   <main class="login-shell">
-    <section class="brand-story" aria-labelledby="brand-tagline">
+    <section class="login-panel" aria-label="{{.LoginLabel}}">
       <img class="brand-wordmark" src="/assets/logo-wordmark.svg" alt="Baize" draggable="false">
-      <div class="brand-copy">
-        <p class="brand-eyebrow">BAIZE · 白泽</p>
-        <h1 id="brand-tagline">{{.Tagline}}</h1>
-        <p class="brand-secondary" lang="{{.TaglineSecondaryLang}}">{{.TaglineSecondary}}</p>
-      </div>
-    </section>
-
-    <section class="login-panel" aria-labelledby="login-heading">
-      <p class="panel-kicker">{{.PortalLabel}}</p>
-      <h2 id="login-heading">{{.Welcome}}</h2>
-      <p class="welcome-secondary" lang="{{.WelcomeSecondaryLang}}">{{.WelcomeSecondary}}</p>
-      <p class="login-instruction">{{.Instruction}}</p>
 
       {{if .Error}}<div class="login-error" role="alert">
         <span aria-hidden="true">!</span>
@@ -31,18 +19,13 @@
       </div>{{end}}
 
       <form method="post" action="/login">
-        <label for="password">{{.PasswordLabel}}</label>
+        <label class="sr-only" for="password">{{.PasswordLabel}}</label>
         <div class="password-field">
-          <input type="password" id="password" name="password" required autofocus autocomplete="current-password" placeholder="••••••••">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6V4.7a3.5 3.5 0 0 1 7 0V6h.6A1.9 1.9 0 0 1 14 7.9v5.2a1.9 1.9 0 0 1-1.9 1.9H3.9A1.9 1.9 0 0 1 2 13.1V7.9A1.9 1.9 0 0 1 3.9 6h.6Zm1.4 0h4.2V4.7a2.1 2.1 0 0 0-4.2 0V6Z"/></svg>
+          <input type="password" id="password" name="password" required autofocus autocomplete="current-password" placeholder="{{.PasswordLabel}}">
         </div>
         <button type="submit">{{.SubmitLabel}} <span aria-hidden="true">→</span></button>
       </form>
-
-      <p class="privacy-note">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6V4.7a3.5 3.5 0 0 1 7 0V6h.6A1.9 1.9 0 0 1 14 7.9v5.2a1.9 1.9 0 0 1-1.9 1.9H3.9A1.9 1.9 0 0 1 2 13.1V7.9A1.9 1.9 0 0 1 3.9 6h.6Zm1.4 0h4.2V4.7a2.1 2.1 0 0 0-4.2 0V6Z"/></svg>
-        {{.PrivacyNote}}
-      </p>
-      <div class="panel-signature" aria-hidden="true"><span></span>昼夜相生<span></span></div>
     </section>
   </main>
 </body>

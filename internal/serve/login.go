@@ -24,36 +24,20 @@ const (
 )
 
 type loginCopy struct {
-	Lang                 string
-	Title                string
-	Tagline              string
-	TaglineSecondary     string
-	TaglineSecondaryLang string
-	PortalLabel          string
-	Welcome              string
-	WelcomeSecondary     string
-	WelcomeSecondaryLang string
-	Instruction          string
-	PasswordLabel        string
-	SubmitLabel          string
-	PrivacyNote          string
-	Errors               map[loginErrorKey]string
+	Lang          string
+	Title         string
+	LoginLabel    string
+	PasswordLabel string
+	SubmitLabel   string
+	Errors        map[loginErrorKey]string
 }
 
 var englishLoginCopy = loginCopy{
-	Lang:                 "en",
-	Title:                "Baize — Login",
-	Tagline:              "Bring clarity to complex work.",
-	TaglineSecondary:     "让复杂任务，回归清晰秩序。",
-	TaglineSecondaryLang: "zh-CN",
-	PortalLabel:          "ACCESS PORTAL",
-	Welcome:              "Welcome back",
-	WelcomeSecondary:     "欢迎回来",
-	WelcomeSecondaryLang: "zh-CN",
-	Instruction:          "Enter your access password to continue",
-	PasswordLabel:        "Access password / 访问密码",
-	SubmitLabel:          "Enter Baize / 进入 Baize",
-	PrivacyNote:          "Your password is used only for authentication.",
+	Lang:          "en",
+	Title:         "Baize — Login",
+	LoginLabel:    "Baize login",
+	PasswordLabel: "Access password",
+	SubmitLabel:   "Continue",
 	Errors: map[loginErrorKey]string{
 		loginErrorRequired: "Password is required.",
 		loginErrorInvalid:  "Invalid password.",
@@ -63,19 +47,11 @@ var englishLoginCopy = loginCopy{
 }
 
 var chineseLoginCopy = loginCopy{
-	Lang:                 "zh-CN",
-	Title:                "Baize — 登录",
-	Tagline:              "让复杂任务，回归清晰秩序。",
-	TaglineSecondary:     "Bring clarity to complex work.",
-	TaglineSecondaryLang: "en",
-	PortalLabel:          "访问入口",
-	Welcome:              "欢迎回来",
-	WelcomeSecondary:     "Welcome back",
-	WelcomeSecondaryLang: "en",
-	Instruction:          "输入访问密码以继续",
-	PasswordLabel:        "访问密码 / Access password",
-	SubmitLabel:          "进入 Baize / Enter Baize",
-	PrivacyNote:          "密码仅用于本次身份验证",
+	Lang:          "zh-CN",
+	Title:         "Baize — 登录",
+	LoginLabel:    "Baize 登录",
+	PasswordLabel: "访问密码",
+	SubmitLabel:   "继续",
 	Errors: map[loginErrorKey]string{
 		loginErrorRequired: "请输入访问密码。",
 		loginErrorInvalid:  "访问密码不正确。",
