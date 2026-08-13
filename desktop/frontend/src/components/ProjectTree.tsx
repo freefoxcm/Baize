@@ -410,6 +410,7 @@ export function ProjectTree({
   const [catalogStatus, setCatalogStatus] = useState<SessionCatalogStatus>({
     state: "opening", revision: 0, indexed: 0, total: 0, repairPending: 0,
   });
+  const [indexingDone, setIndexingDone] = useState(false);
   const [topicPageState, setTopicPageState] = useState<Record<string, { nextCursor?: string; loading: boolean }>>({});
   const topicPageStateRef = useRef(topicPageState);
   const updateTopicPageState = useCallback((key: string, next: { nextCursor?: string; loading: boolean }) => {
@@ -546,6 +547,7 @@ export function ProjectTree({
       if (projectTreeRevisionIsFresh(latestRevisionRef.current, rev)) latestRevisionRef.current = Math.max(latestRevisionRef.current, rev);
       const projects = asArray(snapshot.projects);
       setCatalogStatus(snapshot.catalog);
+      setIndexingDone(Boolean(snapshot.indexingDone));
       setTree((current) => projects.map((project) => {
         const previous = current.find((node) => node.key === project.key);
         return { ...project, children: asArray(previous?.children) };
@@ -599,6 +601,17 @@ export function ProjectTree({
     }, 200);
     return () => clearTimeout(timer);
   }, [expanded, loadProjectTopics, query, timeFilter, tree]);
+
+  // First catalog scan can finish before the frontend subscribed to v2 events.
+  // Reload expanded folders once indexingDone flips so the metadata fallback
+  // is replaced by the scanned projection without requiring New Chat.
+  useEffect(() => {
+    if (!indexingDone) return;
+    for (const project of treeRef.current) {
+      const key = projectNodeKey(project, 0);
+      if (expanded.has(key)) void loadProjectTopics(project);
+    }
+  }, [indexingDone, expanded, loadProjectTopics]);
 
   // Following the active topic is a view concern over the tree already held.
   useEffect(() => {
