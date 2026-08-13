@@ -1740,7 +1740,7 @@ function appendAssistantReasoning(it, container) {
   // Desktop parity: thinking renders collapsed with a horizontal summary by
   // default (live turns included); clicking the head or summary expands the
   // vertical trace.
-  let display='auto';try{display=localStorage.getItem('baize-reasoning-display')||'auto';}catch{}
+  let display='closed';try{display=localStorage.getItem('baize-reasoning-display')||'closed';}catch{}
   setReasoningOpen(w,display==='open'||(display==='auto'&&!it.done));
   return w;
 }
@@ -1960,7 +1960,7 @@ function finalizeMsg() {
           label.textContent = __('thinking_done') + ' · ' + fmtElapsed(Date.now() - it.reasoningStartedAt);
         }
         // Auto-collapse only when the user hasn't manually toggled the block.
-        if (!it.reasoningUserOverride) {let display='auto';try{display=localStorage.getItem('baize-reasoning-display')||'auto';}catch{}setReasoningOpen(r,display==='open');}
+        if (!it.reasoningUserOverride) {let display='closed';try{display=localStorage.getItem('baize-reasoning-display')||'closed';}catch{}setReasoningOpen(r,display==='open');}
         const sm = r.querySelector('.reasoning__summary');
         if (sm) sm.textContent = reasoningSummaryText(it.reasoning, false); // head line once settled
       }
@@ -2165,7 +2165,7 @@ function cardForTool(it, tool) {
       let parentRoot=null;
       if(tool.parentId){
         const parent=findToolItem(tool.parentId);
-        if(parent){const parentCard=cardForTool(parent.item,parent.tool);if(parentCard){let nest=parentCard.querySelector(':scope > .card-nest');if(!nest){nest=el('div','card-nest');nest.appendChild(el('div','card-nest__label',__('subagent_tools')));parentCard.appendChild(nest);}parentRoot=nest;parentCard.dataset.open='true';}}
+        if(parent){const parentCard=cardForTool(parent.item,parent.tool);if(parentCard){let nest=parentCard.querySelector(':scope > .card-nest');if(!nest){nest=el('div','card-nest');nest.appendChild(el('div','card-nest__label',__('subagent_tools')));parentCard.appendChild(nest);}parentRoot=nest;}}
       }
       (parentRoot||it.dom.root).appendChild(card);
       if(tool.parentId&&!parentRoot)card.classList.add('card--subagent-orphan');
@@ -2392,7 +2392,7 @@ function renderToolProgress(tool) {
   const card = cardForTool(it, t);
   if (!card) return;
   const body = card.querySelector('.card-body'); if (!body) return;
-  body.style.display=''; card.dataset.open='true';
+  body.style.display=card.dataset.open==='true'?'':'none';
   body.textContent += tool.output || '';
   if(body.textContent.length>4000) body.textContent=body.textContent.slice(-3000);
   updateToolMeta(card,fmtElapsed(Date.now()-Number(card.dataset.startedAt||Date.now()))+' · '+lineCount(body.textContent)+' '+__('tool_lines'));
@@ -4276,7 +4276,7 @@ function populateSettings(view){
   Object.entries(value).forEach(([name,val])=>{const field=settingsForm.elements.namedItem(name);if(field&&field.tagName!=='SELECT'&&field.tagName!=='INPUT')return;if(field&&name!=='defaultModel'&&name!=='plannerModel'&&name!=='subagentModel')field.value=String(val);});
   $('#setting-theme').value=storageValue('baize-theme-preference',storageValue('baize-theme','dark'));
   $('#setting-density').value=storageValue('baize-density','comfortable');
-  $('#setting-reasoning-display').value=storageValue('baize-reasoning-display','auto');
+  $('#setting-reasoning-display').value=storageValue('baize-reasoning-display','closed');
   $('#setting-subagent-preview').value=storageValue('baize-subagent-preview','full');
   $('#setting-subagent-collapse').checked=storageValue('baize-subagent-auto-collapse','true')!=='false';
   const overridden=Array.isArray(view.overridden)?view.overridden:[];
