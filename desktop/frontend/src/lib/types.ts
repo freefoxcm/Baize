@@ -585,7 +585,7 @@ export interface DeliveryWorktreeOpenResult {
   tab: TabMeta;
 }
 
-export type ProjectTopicStatus = "thinking" | "streaming" | "waiting_confirmation" | "background_job" | "paused" | "error" | "diverged_recovery";
+export type ProjectTopicStatus = "thinking" | "streaming" | "waiting_confirmation" | "background_job" | "paused" | "awaiting_delivery" | "error" | "diverged_recovery";
 
 export interface TopicMeta {
   id: string;

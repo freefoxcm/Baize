@@ -1789,11 +1789,8 @@ func topicActivityStatusFromEvent(e event.Event) (string, bool) {
 	case event.ApprovalRequest, event.AskRequest:
 		return topicStatusWaitingConfirmation, true
 	case event.TurnDone:
-		if e.Outcome == event.TurnOutcomeFinalReadiness || e.Outcome == event.TurnOutcomeRecoveryPaused {
-			// The transcript presents this turn end as a recoverable delivery
-			// pause with a continue action, so the sidebar must not flag it
-			// as an error.
-			return topicStatusPaused, true
+		if status, ok := topicStatusFromTurnDone(e.Outcome); ok {
+			return status, true
 		}
 		if e.Err != nil {
 			return topicStatusError, true
@@ -6470,7 +6467,7 @@ type ProjectNode struct {
 
 func normalizeTopicStatus(status string) string {
 	switch status {
-	case topicStatusThinking, topicStatusStreaming, topicStatusWaitingConfirmation, topicStatusBackgroundJob, topicStatusPaused, topicStatusError, topicStatusDivergedRecovery:
+	case topicStatusThinking, topicStatusStreaming, topicStatusWaitingConfirmation, topicStatusBackgroundJob, topicStatusPaused, topicStatusAwaitingDelivery, topicStatusError, topicStatusDivergedRecovery:
 		return status
 	default:
 		return ""
