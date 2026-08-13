@@ -198,6 +198,49 @@ func TestReasoningSummaryAlwaysStartsBelowHeader(t *testing.T) {
 	}
 }
 
+func TestReasoningDefaultsToCollapsed(t *testing.T) {
+	js := string(baizeJS)
+	for _, want := range []string{
+		"let display='closed';try{display=localStorage.getItem('baize-reasoning-display')||'closed';}",
+		"storageValue('baize-reasoning-display','closed')",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("Baize application missing collapsed reasoning default %q", want)
+		}
+	}
+	const closedFirst = `<select id="setting-reasoning-display"><option value="closed">`
+	if !strings.Contains(string(indexHTML), closedFirst) {
+		t.Errorf("Baize settings UI missing collapsed-first reasoning option %q", closedFirst)
+	}
+}
+
+func TestToolProgressPreservesCollapsedState(t *testing.T) {
+	js := string(baizeJS)
+	const want = "body.style.display=card.dataset.open==='true'?'':'none';"
+	if !strings.Contains(js, want) {
+		t.Fatalf("Baize application missing collapsed tool-progress contract %q", want)
+	}
+	const unwanted = "body.style.display=''; card.dataset.open='true';"
+	if strings.Contains(js, unwanted) {
+		t.Fatalf("Baize application still forces tool progress open with %q", unwanted)
+	}
+}
+
+func TestNestedSubagentToolPreservesParentCollapse(t *testing.T) {
+	js := string(baizeJS)
+	if strings.Contains(js, "parentCard.dataset.open='true'") {
+		t.Fatal("nested tool still forces its parent subagent card open")
+	}
+	for _, want := range []string{
+		"card.dataset.open=isSubagentTool(tool)&&tool.status!=='done'?'true':'false';",
+		"parentRoot=nest;",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("Baize application missing subagent nesting contract %q", want)
+		}
+	}
+}
+
 func TestBaizeSessionSubagentAndSettingsUIContracts(t *testing.T) {
 	js := string(baizeJS)
 	for _, want := range []string{
