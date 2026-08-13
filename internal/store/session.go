@@ -62,6 +62,17 @@ func SessionApprovalMode(sessionPath string) string {
 	return sessionStem(sessionPath) + ".approval.json"
 }
 
+// SessionSubagentSummary is the local execution-summary projection for
+// sub-agent cards (<id>.subagents.json). It never contains reasoning or tool
+// arguments and is safe to rebuild or remove with the owning transcript.
+func SessionSubagentSummary(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".subagents.json"
+}
+
 // sessionStem strips the .jsonl suffix so a sidecar sits beside the session as
 // <id>.<kind> rather than <id>.jsonl.<kind>.
 func sessionStem(sessionPath string) string {
@@ -221,5 +232,6 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionRecoveryState(sessionPath),
 		SessionContext(sessionPath),
 		SessionApprovalMode(sessionPath),
+		SessionSubagentSummary(sessionPath),
 	}
 }

@@ -66,7 +66,7 @@
         <div class="sm-item"><span class="sm-val acc" id="sm-balance">—</span><span>__('balance')</span></div>
       </div>
       <div style="padding:4px 10px">
-        <div class="status" id="sidebar-status"><span class="status__dot" id="status-dot"></span><span id="status-model">-</span></div>
+        <div class="status status--settings" id="sidebar-status"><span class="status__dot" id="status-dot"></span><span id="status-model">-</span><button type="button" class="settings-trigger" id="btn-settings" title="__('settings')" aria-label="__('settings')" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.18.37.48.72 1 .92.35.14.71.2 1.1.18H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
       </div>
     </div>
   </aside>
@@ -293,6 +293,34 @@
     </div>
   </footer>
 </div>
+
+<div class="settings-backdrop" id="settings-backdrop" hidden></div>
+<aside class="settings-drawer" id="settings-drawer" aria-hidden="true" aria-labelledby="settings-title">
+  <div class="settings-drawer__head"><div><h2 id="settings-title">__('settings')</h2><p>__('settings_global_hint')</p></div><button type="button" class="settings-drawer__close" id="settings-close" aria-label="__('close')">&times;</button></div>
+  <div class="settings-drawer__state" id="settings-state" role="status"></div>
+  <form class="settings-form" id="settings-form">
+    <section class="settings-group"><h3>__('settings_models_agents')</h3>
+      <label class="settings-field"><span>__('settings_default_model')</span><select name="defaultModel" id="setting-default-model"></select><small>__('settings_default_model_hint')</small></label>
+      <label class="settings-field"><span>__('settings_planner_model')</span><select name="plannerModel" id="setting-planner-model"></select></label>
+      <label class="settings-field"><span>__('settings_subagent_model')</span><select name="subagentModel" id="setting-subagent-model"></select></label>
+      <label class="settings-field"><span>__('settings_subagent_effort')</span><select name="subagentEffort"><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">XHigh</option><option value="max">Max</option></select></label>
+    </section>
+    <section class="settings-group"><h3>__('settings_execution')</h3>
+      <label class="settings-field"><span>__('settings_default_approval')</span><select name="defaultApprovalMode"><option value="ask">Ask</option><option value="auto">Auto</option><option value="yolo">YOLO</option></select><small>__('settings_new_sessions_only')</small></label>
+      <div class="settings-field-grid"><label class="settings-field"><span>__('settings_subagent_depth')</span><input name="maxSubagentDepth" type="number" min="1" max="2"></label><label class="settings-field"><span>__('settings_subagent_concurrency')</span><input name="maxSubagentConcurrency" type="number" min="1" max="32"></label><label class="settings-field"><span>__('settings_parallel_writers')</span><input name="maxParallelWriters" type="number" min="1" max="32"></label></div>
+      <label class="settings-field"><span>__('settings_compact_ratio')</span><select name="compactRatio"><option value="0.7">70%</option><option value="0.8">80%</option><option value="0.85">85%</option></select></label>
+      <label class="settings-field"><span>__('settings_reasoning_language')</span><select name="reasoningLanguage"><option value="auto">__('settings_follow_conversation')</option><option value="zh">中文</option><option value="en">English</option></select></label>
+    </section>
+    <section class="settings-group"><h3>__('settings_appearance')</h3>
+      <label class="settings-field"><span>__('settings_theme')</span><select id="setting-theme"><option value="auto">__('settings_theme_auto')</option><option value="dark">__('settings_theme_dark')</option><option value="light">__('settings_theme_light')</option></select></label>
+      <label class="settings-field"><span>__('settings_density')</span><select id="setting-density"><option value="comfortable">__('settings_density_comfortable')</option><option value="compact">__('settings_density_compact')</option></select></label>
+      <label class="settings-field"><span>__('settings_reasoning_display')</span><select id="setting-reasoning-display"><option value="auto">__('settings_reasoning_auto')</option><option value="open">__('settings_reasoning_open')</option><option value="closed">__('settings_reasoning_closed')</option></select></label>
+      <label class="settings-field"><span>__('settings_subagent_preview')</span><select id="setting-subagent-preview"><option value="full">__('settings_preview_full')</option><option value="compact">__('settings_preview_compact')</option></select></label>
+      <label class="settings-check"><input id="setting-subagent-collapse" type="checkbox"><span>__('settings_subagent_collapse')</span></label>
+    </section>
+    <div class="settings-actions"><button type="button" class="dialog-btn" id="settings-retry" hidden>__('settings_retry')</button><button type="submit" class="dialog-btn settings-save">__('settings_save')</button></div>
+  </form>
+</aside>
 
 <!-- stats modal -->
 <div class="modal-overlay" id="stats-modal" style="display:none">

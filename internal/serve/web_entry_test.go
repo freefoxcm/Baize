@@ -197,3 +197,27 @@ func TestReasoningSummaryAlwaysStartsBelowHeader(t *testing.T) {
 		t.Fatalf("Baize stylesheet missing fixed reasoning summary row %q", want)
 	}
 }
+
+func TestBaizeSessionSubagentAndSettingsUIContracts(t *testing.T) {
+	js := string(baizeJS)
+	for _, want := range []string{
+		"sessionsLoadSequence",
+		"if(sequence!==sessionsLoadSequence)return",
+		"SUBAGENT_PROGRESS_LIMITS={reasoning:8<<10,text:8<<10,notice:2<<10}",
+		"reasonix.subagent.status",
+		"subagentAutoCollapse()",
+		"fetch('/settings'",
+		"method:'PATCH'",
+		"baize-theme-preference",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("Baize application missing %q", want)
+		}
+	}
+	html := string(indexHTML)
+	for _, want := range []string{`id="btn-settings"`, `id="settings-drawer"`, `name="defaultModel"`, `name="maxSubagentConcurrency"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("Baize settings UI missing %q", want)
+		}
+	}
+}
