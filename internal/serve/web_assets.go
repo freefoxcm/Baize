@@ -28,6 +28,15 @@ var baizeCSS []byte
 //go:embed assets/baize.js
 var baizeJS []byte
 
+//go:embed assets/login.css
+var loginCSS []byte
+
+//go:embed assets/login-bg-desktop.webp
+var loginBackgroundDesktop []byte
+
+//go:embed assets/login-bg-mobile.webp
+var loginBackgroundMobile []byte
+
 //go:embed assets/pdfjs
 var pdfJSAssets embed.FS
 
@@ -36,6 +45,9 @@ func (s *Server) registerWebAssetRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /sessions/{id}", s.index)
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
 	mux.HandleFunc("GET /assets/logo-symbol.svg", s.logoSymbol)
+	mux.HandleFunc("GET /assets/login.css", s.loginCSSHandler)
+	mux.HandleFunc("GET /assets/login-bg-desktop.webp", s.loginBackgroundDesktopHandler)
+	mux.HandleFunc("GET /assets/login-bg-mobile.webp", s.loginBackgroundMobileHandler)
 	mux.HandleFunc("GET /assets/vendor.min.js", s.vendorJSHandler)
 	mux.HandleFunc("GET /assets/baize.css", s.baizeCSSHandler)
 	mux.HandleFunc("GET /assets/baize.js", s.baizeJSHandler)
@@ -70,6 +82,18 @@ func (s *Server) logoSymbol(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 	writeWebAsset(w, "image/svg+xml; charset=utf-8", "public, max-age=3600", logoWordmarkSVG)
+}
+
+func (s *Server) loginCSSHandler(w http.ResponseWriter, _ *http.Request) {
+	writeWebAsset(w, "text/css; charset=utf-8", "no-cache", loginCSS)
+}
+
+func (s *Server) loginBackgroundDesktopHandler(w http.ResponseWriter, _ *http.Request) {
+	writeWebAsset(w, "image/webp", "public, max-age=86400", loginBackgroundDesktop)
+}
+
+func (s *Server) loginBackgroundMobileHandler(w http.ResponseWriter, _ *http.Request) {
+	writeWebAsset(w, "image/webp", "public, max-age=86400", loginBackgroundMobile)
 }
 
 func (s *Server) vendorJSHandler(w http.ResponseWriter, _ *http.Request) {

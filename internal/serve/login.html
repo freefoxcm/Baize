@@ -1,104 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baize — Login</title>
-<link rel="icon" type="image/svg+xml" href="/assets/logo-symbol.svg">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: #1a1a2e;
-    color: #e0e0e0;
-    display: flex; align-items: center; justify-content: center;
-    min-height: 100vh;
-  }
-  .login-box {
-    background: #16213e;
-    border: 1px solid #0f3460;
-    border-radius: 12px;
-    padding: 40px 36px;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-  }
-  .login-box h1 {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 8px;
-  }
-  .login-box h1 img {
-    display: block;
-    width: 220px;
-    max-width: 100%;
-    height: 64px;
-    object-fit: contain;
-    filter: brightness(0) invert(1) drop-shadow(0 0 12px rgba(233, 69, 96, 0.28));
-  }
-  .login-box .subtitle {
-    text-align: center;
-    font-size: 13px;
-    color: #888;
-    margin-bottom: 28px;
-  }
-  .login-box label {
-    display: block;
-    font-size: 13px;
-    color: #aaa;
-    margin-bottom: 6px;
-  }
-  .login-box input[type="password"] {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1px solid #0f3460;
-    border-radius: 8px;
-    background: #1a1a2e;
-    color: #e0e0e0;
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .login-box input[type="password"]:focus {
-    border-color: #e94560;
-  }
-  .login-box button {
-    width: 100%;
-    margin-top: 20px;
-    padding: 10px 0;
-    border: none;
-    border-radius: 8px;
-    background: #e94560;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .login-box button:hover { background: #d63851; }
-  .error {
-    background: rgba(233, 69, 96, 0.15);
-    border: 1px solid #e94560;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    color: #e94560;
-    margin-bottom: 18px;
-    text-align: center;
-  }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{.Title}}</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo-symbol.svg">
+  <link rel="stylesheet" href="/assets/login.css">
 </head>
 <body>
-<div class="login-box">
-  <h1><img src="/assets/logo-wordmark.svg" alt="Baize" draggable="false"></h1>
-  <p class="subtitle">Enter the password to continue</p>
-  <!--ERROR-->
-  <form method="post" action="/login">
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" autofocus autocomplete="current-password" placeholder="••••••••">
-    <button type="submit">Sign in</button>
-  </form>
-</div>
+  <main class="login-shell">
+    <section class="brand-story" aria-labelledby="brand-tagline">
+      <img class="brand-wordmark" src="/assets/logo-wordmark.svg" alt="Baize" draggable="false">
+      <div class="brand-copy">
+        <p class="brand-eyebrow">BAIZE · 白泽</p>
+        <h1 id="brand-tagline">{{.Tagline}}</h1>
+        <p class="brand-secondary" lang="{{.TaglineSecondaryLang}}">{{.TaglineSecondary}}</p>
+      </div>
+    </section>
+
+    <section class="login-panel" aria-labelledby="login-heading">
+      <p class="panel-kicker">{{.PortalLabel}}</p>
+      <h2 id="login-heading">{{.Welcome}}</h2>
+      <p class="welcome-secondary" lang="{{.WelcomeSecondaryLang}}">{{.WelcomeSecondary}}</p>
+      <p class="login-instruction">{{.Instruction}}</p>
+
+      {{if .Error}}<div class="login-error" role="alert">
+        <span aria-hidden="true">!</span>
+        <p>{{.Error}}</p>
+      </div>{{end}}
+
+      <form method="post" action="/login">
+        <label for="password">{{.PasswordLabel}}</label>
+        <div class="password-field">
+          <input type="password" id="password" name="password" required autofocus autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <button type="submit">{{.SubmitLabel}} <span aria-hidden="true">→</span></button>
+      </form>
+
+      <p class="privacy-note">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6V4.7a3.5 3.5 0 0 1 7 0V6h.6A1.9 1.9 0 0 1 14 7.9v5.2a1.9 1.9 0 0 1-1.9 1.9H3.9A1.9 1.9 0 0 1 2 13.1V7.9A1.9 1.9 0 0 1 3.9 6h.6Zm1.4 0h4.2V4.7a2.1 2.1 0 0 0-4.2 0V6Z"/></svg>
+        {{.PrivacyNote}}
+      </p>
+      <div class="panel-signature" aria-hidden="true"><span></span>昼夜相生<span></span></div>
+    </section>
+  </main>
 </body>
 </html>
