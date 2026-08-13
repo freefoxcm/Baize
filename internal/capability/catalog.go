@@ -287,3 +287,31 @@ func (c Catalog) RequiresReady(requires []string) (ready bool, missing []string)
 	}
 	return len(missing) == 0, missing
 }
+
+// RequiresInvocable accepts a configured auto-start MCP server when its
+// registry already exposes a ready concrete tool that can connect on demand.
+func (c Catalog) RequiresInvocable(requires []string) (ready bool, missing []string) {
+	for _, dep := range requires {
+		dep = strings.TrimSpace(dep)
+		if dep == "" {
+			continue
+		}
+		e, ok := c.Lookup(dep)
+		if !ok || (e.Status != StatusReady && !c.configuredMCPServerIsInvocable(e)) {
+			missing = append(missing, dep)
+		}
+	}
+	return len(missing) == 0, missing
+}
+
+func (c Catalog) configuredMCPServerIsInvocable(server Entry) bool {
+	if server.Kind != KindMCPServer || server.Status != StatusConfigured || !server.AutoStart {
+		return false
+	}
+	for _, entry := range c.Entries {
+		if entry.Kind == KindMCPTool && entry.Source == server.Name && entry.Status == StatusReady {
+			return true
+		}
+	}
+	return false
+}
