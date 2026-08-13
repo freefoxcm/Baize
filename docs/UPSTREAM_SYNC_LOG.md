@@ -25,6 +25,16 @@ Every controlled upstream integration must add one entry before its merge commit
 - Workflow state / Workflow 状态：no unknown workflow was introduced; the known upstream `ci.yml` and `deploy-crash-worker.yml` changes were audited, and `scripts/setup-fork-github.ps1 --check` confirmed only the three `baize-*` workflows plus GitHub's dynamic Dependabot graph workflow remain active
 - Verification / 验证：`git diff --check`; `node --check internal/serve/assets/baize.js`; `go run ./tools/repolint`; focused Agent, CLI, Control, Boot, Provider, Skill, ShellSafe, Serve, Session/History/Usage/Task Catalog tests; PDF inline/range and no-sandbox regression tests; live in-app Chromium rendered the full PDF without console errors or a blocked-page interstitial; `go vet ./...`; `go test ./...` passed all code-related packages, with only environment-bound POSIX Bash and Windows symlink-privilege tests unavailable; `go build -o reasonix.exe ./cmd/reasonix`; live IPAP capability discovery and MCP/Skill smoke checks
 
+## 2026-08-13 — `42a9de71d` → `9aaf8d381`
+
+- Baize revision / Baize 版本：pre-merge `custom/baize@bda89c4b4`
+- Upstream WebUI changes / 上游 WebUI 变化：desktop-only project-tree recovery presentation; no Baize Serve WebUI path changed
+- Ported / 已移植：the complete one-commit follow-up, adding canonical session retargeting and indexed session-directory scanning so upgraded conversations remain visible and reopen at the latest recovery leaf
+- Intentionally skipped / 明确忽略：no feature commit was skipped; desktop presentation stays in the desktop surface and was not duplicated into Baize Serve
+- Backend conflicts / 后端冲突：none; the incremental controlled merge completed cleanly
+- Workflow state / Workflow 状态：no workflow file changed or was added
+- Verification / 验证：`git diff --check`; `go run ./tools/repolint`; Session Catalog and focused desktop tests; `go vet ./...`; `go test ./...`; Baize Linux, Windows, cache-impact and docs-impact CI
+
 ## 2026-08-11 — `8a39ac1c4` → `ee2a6a766`
 
 - Baize revision / Baize 版本：initial `custom/baize` migration series through `835465ec2`
