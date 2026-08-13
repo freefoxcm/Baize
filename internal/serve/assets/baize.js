@@ -228,6 +228,66 @@ const __T = {
     'active': 'Active',
     'use_model': 'Use',
     'no_sessions': 'No sessions',
+    'new_session_draft': 'New session',
+    'session_draft': 'Draft',
+    'subagent_reasoning': 'Reasoning summary',
+    'subagent_response': 'Response preview',
+    'subagent_notice': 'Activity',
+    'subagent_result': 'Final result',
+    'subagent_tools': 'Nested tools',
+    'subagent_truncated': 'Preview truncated to the most recent content.',
+    'subagent_phase_queued': 'Queued',
+    'subagent_phase_running': 'Running',
+    'subagent_phase_reasoning': 'Reasoning',
+    'subagent_phase_responding': 'Responding',
+    'subagent_phase_tool': 'Using tools',
+    'subagent_phase_retrying': 'Retrying',
+    'subagent_phase_completed': 'Completed',
+    'subagent_phase_failed': 'Failed',
+    'subagent_phase_cancelled': 'Cancelled',
+    'settings': 'Settings',
+    'close': 'Close',
+    'settings_global_hint': 'Runtime settings are saved globally. Appearance stays in this browser.',
+    'settings_models_agents': 'Models & agents',
+    'settings_default_model': 'Default model',
+    'settings_default_model_hint': 'Used when a new session is created.',
+    'settings_planner_model': 'Planner model',
+    'settings_subagent_model': 'Subagent model',
+    'settings_subagent_effort': 'Subagent effort',
+    'settings_execution': 'Execution',
+    'settings_default_approval': 'Default approval mode',
+    'settings_new_sessions_only': 'Applies to new sessions only.',
+    'settings_subagent_depth': 'Subagent depth',
+    'settings_subagent_concurrency': 'Total concurrency',
+    'settings_parallel_writers': 'Parallel writers',
+    'settings_compact_ratio': 'Compaction threshold',
+    'settings_reasoning_language': 'Reasoning language',
+    'settings_follow_conversation': 'Follow conversation',
+    'settings_appearance': 'Appearance',
+    'settings_theme': 'Theme',
+    'settings_theme_auto': 'Follow system',
+    'settings_theme_dark': 'Dark',
+    'settings_theme_light': 'Light',
+    'settings_density': 'Density',
+    'settings_density_comfortable': 'Comfortable',
+    'settings_density_compact': 'Compact',
+    'settings_reasoning_display': 'Reasoning default',
+    'settings_reasoning_auto': 'Open while running',
+    'settings_reasoning_open': 'Always open',
+    'settings_reasoning_closed': 'Always collapsed',
+    'settings_subagent_preview': 'Subagent preview',
+    'settings_preview_full': 'Full',
+    'settings_preview_compact': 'Compact',
+    'settings_subagent_collapse': 'Collapse subagents when completed',
+    'settings_save': 'Save settings',
+    'settings_retry': 'Retry apply',
+    'settings_saved': 'Settings saved',
+    'settings_pending': 'Saved; waiting for the current task to finish.',
+    'settings_applying': 'Applying runtime settings…',
+    'settings_applied': 'Runtime settings applied.',
+    'settings_overridden': 'Some values are overridden by the current workspace: {fields}',
+    'settings_conflict': 'Settings changed elsewhere. The latest values were loaded.',
+    'settings_yolo_confirm': 'YOLO auto-approves tool permissions for new sessions. Save this default?',
     'error_loading': 'Error loading',
     'no_checkpoints': 'No checkpoints available.',
     'no_conversation': 'Start a conversation before using this action.',
@@ -515,6 +575,66 @@ const __T = {
     'active': '当前',
     'use_model': '使用',
     'no_sessions': '暂无会话',
+    'new_session_draft': '新会话',
+    'session_draft': '草稿',
+    'subagent_reasoning': '思考摘要',
+    'subagent_response': '回答预览',
+    'subagent_notice': '运行动态',
+    'subagent_result': '最终结果',
+    'subagent_tools': '子代理工具',
+    'subagent_truncated': '预览已截断，仅保留最近内容。',
+    'subagent_phase_queued': '排队中',
+    'subagent_phase_running': '运行中',
+    'subagent_phase_reasoning': '思考中',
+    'subagent_phase_responding': '回答中',
+    'subagent_phase_tool': '调用工具',
+    'subagent_phase_retrying': '重试中',
+    'subagent_phase_completed': '已完成',
+    'subagent_phase_failed': '已失败',
+    'subagent_phase_cancelled': '已取消',
+    'settings': '设置',
+    'close': '关闭',
+    'settings_global_hint': '运行设置保存为用户全局配置，外观仅保存在当前浏览器。',
+    'settings_models_agents': '模型与代理',
+    'settings_default_model': '新会话默认模型',
+    'settings_default_model_hint': '新建会话时使用。',
+    'settings_planner_model': '规划模型',
+    'settings_subagent_model': 'Subagent 模型',
+    'settings_subagent_effort': 'Subagent 思考强度',
+    'settings_execution': '执行',
+    'settings_default_approval': '默认审批模式',
+    'settings_new_sessions_only': '仅影响新会话。',
+    'settings_subagent_depth': '子代理深度',
+    'settings_subagent_concurrency': '总并发数',
+    'settings_parallel_writers': '并行写入数',
+    'settings_compact_ratio': '上下文压缩阈值',
+    'settings_reasoning_language': '思考语言',
+    'settings_follow_conversation': '跟随对话',
+    'settings_appearance': '外观',
+    'settings_theme': '主题',
+    'settings_theme_auto': '跟随系统',
+    'settings_theme_dark': '深色',
+    'settings_theme_light': '浅色',
+    'settings_density': '显示密度',
+    'settings_density_comfortable': '舒适',
+    'settings_density_compact': '紧凑',
+    'settings_reasoning_display': '思考默认显示',
+    'settings_reasoning_auto': '运行时展开',
+    'settings_reasoning_open': '始终展开',
+    'settings_reasoning_closed': '始终收起',
+    'settings_subagent_preview': 'Subagent 预览',
+    'settings_preview_full': '完整',
+    'settings_preview_compact': '精简',
+    'settings_subagent_collapse': '子代理完成后自动收起',
+    'settings_save': '保存设置',
+    'settings_retry': '重试应用',
+    'settings_saved': '设置已保存',
+    'settings_pending': '已保存，等待当前任务结束后应用。',
+    'settings_applying': '正在应用运行设置…',
+    'settings_applied': '运行设置已应用。',
+    'settings_overridden': '当前工作区覆盖了部分设置：{fields}',
+    'settings_conflict': '设置已被其他进程修改，已加载最新值。',
+    'settings_yolo_confirm': 'YOLO 将对新会话自动批准工具权限。确认保存为默认模式吗？',
     'error_loading': '加载失败',
     'no_checkpoints': '暂无可用检查点',
     'no_conversation': '先开始一段对话，再使用此操作。',
@@ -1620,7 +1740,8 @@ function appendAssistantReasoning(it, container) {
   // Desktop parity: thinking renders collapsed with a horizontal summary by
   // default (live turns included); clicking the head or summary expands the
   // vertical trace.
-  setReasoningOpen(w, false);
+  let display='auto';try{display=localStorage.getItem('baize-reasoning-display')||'auto';}catch{}
+  setReasoningOpen(w,display==='open'||(display==='auto'&&!it.done));
   return w;
 }
 function appendReasoning(t) {
@@ -1839,7 +1960,7 @@ function finalizeMsg() {
           label.textContent = __('thinking_done') + ' · ' + fmtElapsed(Date.now() - it.reasoningStartedAt);
         }
         // Auto-collapse only when the user hasn't manually toggled the block.
-        if (!it.reasoningUserOverride) setReasoningOpen(r, false);
+        if (!it.reasoningUserOverride) {let display='auto';try{display=localStorage.getItem('baize-reasoning-display')||'auto';}catch{}setReasoningOpen(r,display==='open');}
         const sm = r.querySelector('.reasoning__summary');
         if (sm) sm.textContent = reasoningSummaryText(it.reasoning, false); // head line once settled
       }
@@ -1913,6 +2034,72 @@ function toolResultMeta(t, durMs) {
   if (isCmd) return dur;
   return (dur?dur+' · ':'') + lineCount(String(t.output||'')) + ' ' + __('tool_lines');
 }
+const SUBAGENT_PROGRESS_PREFIX='reasonix.subagent.';
+const SUBAGENT_PROGRESS_LIMITS={reasoning:8<<10,text:8<<10,notice:2<<10};
+const SUBAGENT_PHASES=new Set(['queued','running','reasoning','responding','tool','retrying','completed','failed','cancelled']);
+function isSubagentTool(tool){
+  if(!tool)return false;
+  if(tool.subagent)return true;
+  if(tool.profile&&typeof tool.profile==='object')return true;
+  return ['task','read_only_task','parallel_tasks','fleet'].includes(String(tool.name||''));
+}
+function terminalSubagentPhase(phase){return phase==='completed'||phase==='failed'||phase==='cancelled';}
+function subagentPhaseLabel(phase){return __("subagent_phase_"+(phase||'running'));}
+function appendSubagentPreview(current,chunk,limit){
+  const value=String(current||'')+String(chunk||'');
+  if(typeof TextEncoder==='undefined')return {value:value.slice(-limit),truncated:value.length>limit};
+  const encoder=new TextEncoder();if(encoder.encode(value).length<=limit)return {value,truncated:false};
+  const chars=Array.from(value);let lo=0,hi=chars.length;
+  while(lo<hi){const mid=Math.floor((lo+hi)/2);if(encoder.encode(chars.slice(mid).join('')).length<=limit)hi=mid;else lo=mid+1;}
+  return {value:chars.slice(lo).join(''),truncated:true};
+}
+function ensureSubagentState(tool){
+  if(!tool.subagent)tool.subagent={phase:'running',reasoning:'',text:'',notice:'',truncated:false,startedAt:Date.now(),lastActivityAt:Date.now(),finalOutput:''};
+  return tool.subagent;
+}
+function subagentPreviewMode(){try{return localStorage.getItem('baize-subagent-preview')||'full';}catch{return 'full';}}
+function subagentAutoCollapse(){try{return localStorage.getItem('baize-subagent-auto-collapse')!=='false';}catch{return true;}}
+function appendSubagentSection(body,label,value,cls){
+  if(!value)return;
+  const section=el('section','subagent-preview__section '+cls);
+  section.appendChild(el('div','subagent-preview__label',label));
+  section.appendChild(el('pre','subagent-preview__text',value));
+  body.appendChild(section);
+}
+function renderSubagentCard(card,tool){
+  if(!card||!isSubagentTool(tool))return;
+  const state=ensureSubagentState(tool);
+  card.classList.add('card--subagent');
+  const terminal=terminalSubagentPhase(state.phase);
+  const tone=state.phase==='failed'?'danger':state.phase==='cancelled'?'danger':terminal?'success':'accent';
+  setToolStatus(card,tone,subagentPhaseLabel(state.phase));
+  const elapsed=state.durationMs||tool.durationMs||Math.max(0,Date.now()-state.startedAt);
+  const profile=tool.profile||tool.subagentSummary||{};
+  const profileText=[profile.model,profile.effort].filter(Boolean).join(' · ');
+  updateToolMeta(card,[profileText,fmtElapsed(elapsed)].filter(Boolean).join(' · '));
+  const body=card.querySelector('.card-body');
+  if(!body)return;
+  body.classList.add('subagent-preview');
+  body.innerHTML='';
+  if(subagentPreviewMode()==='compact'){
+    body.appendChild(el('div','subagent-preview__activity',subagentPhaseLabel(state.phase)));
+  }else{
+    appendSubagentSection(body,__('subagent_reasoning'),state.reasoning,'subagent-preview__section--reasoning');
+    appendSubagentSection(body,__('subagent_response'),state.text,'subagent-preview__section--text');
+    appendSubagentSection(body,__('subagent_notice'),state.notice,'subagent-preview__section--notice');
+    appendSubagentSection(body,__('subagent_result'),state.finalOutput,'subagent-preview__section--result');
+    if(!state.reasoning&&!state.text&&!state.notice&&!state.finalOutput)body.appendChild(el('div','subagent-preview__activity',subagentPhaseLabel(state.phase)));
+    if(state.truncated)body.appendChild(el('div','subagent-preview__truncated',__('subagent_truncated')));
+  }
+  if(card.dataset.open==='true')body.style.display='';
+}
+function updateSubagentElapsed(){
+  items.forEach(it=>{
+    const tools=it.kind==='assistant'?(it.tools||[]):(it.kind==='tool'?[it]:[]);
+    tools.forEach(tool=>{if(isSubagentTool(tool)&&tool.subagent&&!terminalSubagentPhase(tool.subagent.phase)){const found=findToolItem(tool.id);if(found){const card=cardForTool(found.item,found.tool);if(card)renderSubagentCard(card,tool);}}});
+  });
+}
+setInterval(updateSubagentElapsed,1000);
 function renderToolAudit(card, tool) {
   let audit=card.querySelector('.card-audit');
   const entries=Array.isArray(tool.audit)?tool.audit:[];
@@ -1936,11 +2123,11 @@ function capabilityAuditEntry(tool) {
 function buildToolCard(tool) {
   const card=el('div','card');
   card.id='tool-'+tool.id;
-  card.dataset.open='false';
+  card.dataset.open=isSubagentTool(tool)&&tool.status!=='done'?'true':'false';
   const tone = tool.err ? 'danger' : (tool.status === 'done' || tool.status === 'running' ? (tool.status === 'done' ? 'success' : 'accent') : 'accent');
   card.dataset.tone = tone;
   card.dataset.toolArgs=String(tool.args||'');
-  card.dataset.startedAt=String(Date.now());
+  card.dataset.startedAt=String(Number(tool.startedAt||Date.now()));
   const head=el('div','card-head');
   const summary=toolArgsSummary(tool.args);
   head.innerHTML='<span class="ico'+(tone==='accent'?' spin':'')+'">'+toolIcon(tone==='danger'?'danger':tone==='success'?'success':'accent')+'</span><div class="card-main"><div class="card-title"><span class="name">'+escHtml(tool.name||'tool')+'</span>'+(summary?'<span class="subject">'+escHtml(summary)+'</span>':'')+'</div><div class="card-meta"></div></div><span class="card-badge">'+escHtml(tool.err?__('tool_failed'):tool.status==='done'?__('tool_done'):__('tool_running'))+'</span><div class="card-actions"><button type="button" class="card-action card-copy" title="'+escAttr(__('tool_copy'))+'" aria-label="'+escAttr(__('tool_copy'))+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div>';
@@ -1954,7 +2141,7 @@ function buildToolCard(tool) {
     const meta = head.querySelector('.card-meta');
     if (meta) meta.textContent = dv.dataset.stats;
   }
-  head.onclick=e=>{if(e.target.closest('button'))return;const open=card.dataset.open==='true';card.dataset.open=open?'false':'true';body.style.display=open?'none':'';};
+  head.onclick=e=>{if(e.target.closest('button'))return;const open=card.dataset.open==='true';card.dataset.userOverride='true';card.dataset.open=open?'false':'true';body.style.display=open?'none':'';};
   const copy=head.querySelector('.card-copy');
   if(copy)copy.onclick=async e=>{e.stopPropagation();const audit=card.querySelector('.card-audit');const detail=[body.textContent,audit?.textContent].filter(Boolean).join('\n');const ok=await copyText(detail||card.dataset.toolArgs||'');copy.title=ok?__('tool_copied'):__('tool_copy');setTimeout(()=>{copy.title=__('tool_copy');},1200);};
   card.appendChild(head);card.appendChild(body);
@@ -1966,13 +2153,24 @@ function buildToolCard(tool) {
     const meta = head.querySelector('.card-meta');
     if (meta) meta.textContent = toolResultMeta(tool, tool.durationMs);
   }
+  if(isSubagentTool(tool))renderSubagentCard(card,tool);
   return card;
 }
 function cardForTool(it, tool) {
   if (it.kind === 'assistant') {
     if (!it.dom || !it.dom.root) return null;
     let card = it.dom.tools.get(tool.id);
-    if (!card) { card = buildToolCard(tool); it.dom.root.appendChild(card); it.dom.tools.set(tool.id, card); }
+    if (!card) {
+      card = buildToolCard(tool);
+      let parentRoot=null;
+      if(tool.parentId){
+        const parent=findToolItem(tool.parentId);
+        if(parent){const parentCard=cardForTool(parent.item,parent.tool);if(parentCard){let nest=parentCard.querySelector(':scope > .card-nest');if(!nest){nest=el('div','card-nest');nest.appendChild(el('div','card-nest__label',__('subagent_tools')));parentCard.appendChild(nest);}parentRoot=nest;parentCard.dataset.open='true';}}
+      }
+      (parentRoot||it.dom.root).appendChild(card);
+      if(tool.parentId&&!parentRoot)card.classList.add('card--subagent-orphan');
+      it.dom.tools.set(tool.id, card);
+    }
     return card;
   }
   // Standalone tool item: build lazily on first touch.
@@ -2032,17 +2230,21 @@ function renderToolDispatch(tool) {
   else if (liveAssistant) {
     // Attach to the streaming assistant; a refreshed dependent writer shares
     // the same id and is merged above instead of duplicating a card.
-    t = { id: tool.id, name: tool.name || 'tool', args: '', output: '', err: '', status: 'running', readOnly: !!tool.readOnly };
+    t = { id: tool.id, name: tool.name || 'tool', args: '', output: '', err: '', status: 'running', readOnly: !!tool.readOnly, parentId: tool.parentId || '', profile: tool.profile || null, startedAt: Number(tool.startedAt||Date.now()) };
     liveAssistant.tools.push(t);
     it = liveAssistant;
   } else {
     // No streaming assistant yet (tools can dispatch before text): a
     // standalone tool item that later turns group with its assistant.
-    it = { id: tool.id, kind: 'tool', name: tool.name || 'tool', args: '', output: '', err: '', status: 'running', turn: currentTurn };
+    it = { id: tool.id, kind: 'tool', name: tool.name || 'tool', args: '', output: '', err: '', status: 'running', turn: currentTurn, parentId: tool.parentId || '', profile: tool.profile || null, startedAt: Number(tool.startedAt||Date.now()) };
     items.push(it);
     t = it;
   }
   if (tool.name) t.name = tool.name;
+  if (tool.parentId) t.parentId = tool.parentId;
+  if (tool.profile) t.profile = tool.profile;
+  if (tool.startedAt) t.startedAt = Number(tool.startedAt);
+  if(isSubagentTool(t))ensureSubagentState(t);
   if (tool.args) t.args = String(tool.args);
   if (tool.resolvedName) t.resolvedName = tool.resolvedName;
   if (tool.capabilityId) t.capabilityId = tool.capabilityId;
@@ -2066,7 +2268,9 @@ function renderToolDispatch(tool) {
       }
     }
     renderToolAudit(card,t);
+    if(isSubagentTool(t))renderSubagentCard(card,t);
   }
+  if(t.parentId){const parent=findToolItem(t.parentId);if(parent&&isSubagentTool(parent.tool)){const state=ensureSubagentState(parent.tool);if(!terminalSubagentPhase(state.phase)){state.phase='tool';state.lastActivityAt=Date.now();const parentCard=cardForTool(parent.item,parent.tool);if(parentCard)renderSubagentCard(parentCard,parent.tool);}}}
   updateTurnSummaryForItem(it);
   scrollDown();
 }
@@ -2086,9 +2290,28 @@ function renderToolResult(tool) {
   t.output = tool.output || '';
   t.status = tool.err ? 'failed' : 'done';
   t.durationMs = tool.durationMs;
+  if(tool.startedAt)t.startedAt=Number(tool.startedAt);
+  if(tool.endedAt)t.endedAt=Number(tool.endedAt);
+  if(tool.profile)t.profile=tool.profile;
+  if(tool.subagentSummary)t.subagentSummary=tool.subagentSummary;
   const card = cardForTool(it, t);
   if (!card) return;
   const elapsed = Math.max(0, Date.now() - Number(card.dataset.startedAt || Date.now()));
+  if(isSubagentTool(t)){
+    const state=ensureSubagentState(t);
+    if(!terminalSubagentPhase(state.phase))state.phase=tool.err?'failed':'completed';
+    {const finalPreview=appendSubagentPreview('',tool.output,SUBAGENT_PROGRESS_LIMITS.text);state.finalOutput=finalPreview.value;state.truncated=state.truncated||finalPreview.truncated||!!tool.truncated;}
+    state.durationMs=Number(tool.durationMs||state.durationMs||elapsed);
+    state.lastActivityAt=Date.now();
+    renderSubagentCard(card,t);
+    if(subagentAutoCollapse()&&card.dataset.userOverride!=='true'){
+      card.dataset.open='false';
+      const body=card.querySelector('.card-body');if(body)body.style.display='none';
+    }
+    updateTurnSummaryForItem(it);
+    scrollDown();
+    return;
+  }
   const ex = tool.execution || null;
   if (ex && tool.name === 'bash') {
     const title = card.querySelector('.card-title .name');
@@ -2134,12 +2357,34 @@ function renderToolResult(tool) {
     updateToolMeta(card, toolResultMeta(t, elapsed));
   }
   updateTurnSummaryForItem(it);
+  if(t.parentId){const parent=findToolItem(t.parentId);if(parent&&isSubagentTool(parent.tool)){const state=ensureSubagentState(parent.tool);state.lastActivityAt=Date.now();const parentCard=cardForTool(parent.item,parent.tool);if(parentCard)renderSubagentCard(parentCard,parent.tool);}}
   scrollDown();
 }
 function renderToolProgress(tool) {
   // Reserved sub-agent progress channels (reasonix.subagent.*) are an internal
   // local-frontend contract; they must never land in ordinary tool output.
-  if (tool.name && tool.name.indexOf('reasonix.subagent.') === 0) return;
+  if (tool.name && tool.name.indexOf(SUBAGENT_PROGRESS_PREFIX) === 0) {
+    const found=findToolItem(tool.id);
+    if(!found)return;
+    const {item:it,tool:t}=found;
+    const state=ensureSubagentState(t);
+    state.lastActivityAt=Date.now();
+    switch(tool.name){
+      case 'reasonix.subagent.status': {
+        const phase=String(tool.output||'');
+        if(!SUBAGENT_PHASES.has(phase))return;
+        state.phase=phase;
+        if(terminalSubagentPhase(phase)&&tool.durationMs)state.durationMs=Number(tool.durationMs);
+        break;
+      }
+      case 'reasonix.subagent.reasoning': {const next=appendSubagentPreview(state.reasoning,tool.output,SUBAGENT_PROGRESS_LIMITS.reasoning);state.reasoning=next.value;state.truncated=state.truncated||next.truncated||!!tool.truncated;break;}
+      case 'reasonix.subagent.text': {const next=appendSubagentPreview(state.text,tool.output,SUBAGENT_PROGRESS_LIMITS.text);state.text=next.value;state.truncated=state.truncated||next.truncated||!!tool.truncated;break;}
+      case 'reasonix.subagent.notice': {const next=appendSubagentPreview(state.notice,tool.output,SUBAGENT_PROGRESS_LIMITS.notice);state.notice=next.value;state.truncated=state.truncated||next.truncated||!!tool.truncated;break;}
+      default:return;
+    }
+    const card=cardForTool(it,t);if(card){renderSubagentCard(card,t);if(terminalSubagentPhase(state.phase)&&subagentAutoCollapse()&&card.dataset.userOverride!=='true'){card.dataset.open='false';const body=card.querySelector('.card-body');if(body)body.style.display='none';}}
+    updateTurnSummaryForItem(it);scrollDown();return;
+  }
   const found = findTool(tool.id);
   if (!found) return;
   const { item: it, tool: t } = found;
@@ -2864,7 +3109,7 @@ es.onmessage=ev=>{setConnState('connected');
     case 'compaction_done': showCompaction(e.compaction||{}); fetchStatus(); break;
     case 'retrying': setRetrying(e.retryAttempt,e.retryMax); break;
     case 'stream_attempt': endModelActivity(); break; // desktop parity: a new attempt closes the previous window
-    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); endModelActivity(); autoSendGuidance(); refreshWorkspaceAfterTurn();
+    case 'turn_done': clearPendingPrompts(); finalizeMsg(); setRunning(false); endModelActivity(); autoSendGuidance(); refreshWorkspaceAfterTurn(); loadSessions();
       // Desktop behavior: a completed turn folds its tools+reasoning behind
       // the summary bar unless the user manually toggled it.
       { const tt = turnEls.get(currentTurn);
@@ -2958,7 +3203,8 @@ function renderHistoryMessages(ms){
       visibleCalls.forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
-        const histTool={id,name:tc.name||'tool',args:String(tc.arguments||''),resolvedName:tc.resolvedName||'',capabilityId:tc.capabilityId||'',output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0)};
+        const histTool={id,name:tc.name||'tool',args:String(tc.arguments||''),resolvedName:tc.resolvedName||'',capabilityId:tc.capabilityId||'',output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0),subagentSummary:tc.subagentSummary||null,profile:tc.subagentSummary?{model:tc.subagentSummary.model||'',effort:tc.subagentSummary.effort||''}:null};
+        if(tc.subagentSummary){const finalPreview=appendSubagentPreview('',histTool.output,SUBAGENT_PROGRESS_LIMITS.text);histTool.subagent={phase:tc.subagentSummary.status||'completed',reasoning:'',text:'',notice:'',truncated:finalPreview.truncated,startedAt:Number(tc.subagentSummary.startedAt||Date.now()),lastActivityAt:Number(tc.subagentSummary.endedAt||Date.now()),durationMs:Number(tc.subagentSummary.durationMs||0),finalOutput:finalPreview.value};}
         addToolAudit(histTool,capabilityAuditEntry(histTool));
         it.tools.push(histTool);
         if(tc.id)consumed.add(tc.id);
@@ -3010,6 +3256,7 @@ reloadHistory();
 // ── session list ──
 let sessionCount=0;
 function sessionTitle(s){
+  if(s.draft)return __('new_session_draft');
   const name=String(s.name||'').replace(/^.*\//,'').replace(/\.jsonl$/,'');
   return s.title||name.replace(/^\w+-/,'').replace(/T/,' ').replace(/[-_]/g,' ').slice(0,30);
 }
@@ -3029,17 +3276,21 @@ function renderSessions(){
   filtered.forEach(s=>{
     const item=el('div','session-item'+(s.current?' session-item--active':''));
     const title=sessionTitle(s);
-    const meta=s.turns?s.turns+' turns':'';
-    item.innerHTML='<svg class="session-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="session-item__body"><div class="session-item__title">'+escHtml(title)+'</div><div class="session-item__meta">'+escHtml(meta)+'</div></div><button type="button" class="session-del" data-name="'+escAttr(s.name)+'" title="'+escAttr(__('delete_session'))+'">&times;</button>';
+    const meta=s.draft?__('session_draft'):(s.turns?s.turns+' turns':'');
+    const del=(s.current||s.draft)?'':'<button type="button" class="session-del" data-name="'+escAttr(s.name)+'" title="'+escAttr(__('delete_session'))+'">&times;</button>';
+    item.innerHTML='<svg class="session-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="session-item__body"><div class="session-item__title">'+escHtml(title)+'</div><div class="session-item__meta">'+escHtml(meta)+'</div></div>'+del;
     item.onclick=ev=>{if(ev.target.closest('.session-del')||running||s.current)return;post('/resume',{path:s.path}).then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosDismissed=false;resetCumulativeStats();loadSessions();updateActionAvailability();reloadHistory();fetchStatus();});};
     list.appendChild(item);
   });
 }
+let sessionsLoadSequence=0;
 function loadSessions(){
+  const sequence=++sessionsLoadSequence;
   fetch('/sessions').then(r=>r.json()).then(ss=>{
+    if(sequence!==sessionsLoadSequence)return;
     sessionsCache=Array.isArray(ss)?ss:[];
     renderSessions();
-  }).catch(()=>{const list=$('#session-list');if(list)list.innerHTML='<div style="padding:10px;color:var(--muted-2);font-size:12px">'+__('error_loading')+'</div>';});
+  }).catch(()=>{if(sequence!==sessionsLoadSequence)return;const list=$('#session-list');if(list)list.innerHTML='<div style="padding:10px;color:var(--muted-2);font-size:12px">'+__('error_loading')+'</div>';});
 }
 loadSessions();
 
@@ -3374,7 +3625,7 @@ async function send(){
     updateGoalUI();
   }
   appendUserMsg(v);
-  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&r.status===204){fetchStatus();loadSessions();fetchEffort();}});
+  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&(r.status===202||r.status===204)){fetchStatus();loadSessions();fetchEffort();}});
   input.value='';input.style.height='';closeSlashMenu();
 }
 
@@ -3562,7 +3813,7 @@ $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
   b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
 $('#goal-chip').onclick=()=>toggleGoalMode();
-$('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(()=>{log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();loadSessions();updateActionAvailability();fetchStatus();});};
+$('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(async response=>{if(!response.ok){showNotice((await response.text()).trim()||__('error_loading'),'warn');return;}log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();sessionFilter='';const search=$('#session-search');if(search)search.value='';loadSessions();updateActionAvailability();fetchStatus();});};
 // model switcher popover (desktop ModelSwitcher)
 function providerLabel(p){
   switch(p){
@@ -3990,7 +4241,82 @@ function applyTheme(mode){
   themeBtn.setAttribute('aria-label',themeBtn.title);
 }
 applyTheme(document.documentElement.getAttribute('data-theme')==='light'?'light':'dark');
-themeBtn.onclick=()=>applyTheme(document.documentElement.getAttribute('data-theme')==='light'?'dark':'light');
+themeBtn.onclick=()=>{const next=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';setStorageValue('baize-theme-preference',next);applyTheme(next);};
+
+// ── settings drawer ──
+const settingsDrawer=$('#settings-drawer'),settingsBackdrop=$('#settings-backdrop'),settingsButton=$('#btn-settings'),settingsForm=$('#settings-form');
+let settingsRevision='',settingsSnapshot=null;
+function storageValue(key,fallback){try{return localStorage.getItem(key)||fallback;}catch{return fallback;}}
+function setStorageValue(key,value){try{localStorage.setItem(key,value);}catch{}}
+function effectiveThemePreference(){
+  const pref=storageValue('baize-theme-preference',storageValue('baize-theme','dark'));
+  if(pref==='auto')return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+  return pref==='light'?'light':'dark';
+}
+function applyAppearanceSettings(){
+  applyTheme(effectiveThemePreference());
+  document.documentElement.dataset.density=storageValue('baize-density','comfortable');
+}
+function openSettings(){
+  settingsDrawer.classList.add('settings-drawer--open');settingsDrawer.setAttribute('aria-hidden','false');settingsBackdrop.hidden=false;settingsButton.setAttribute('aria-expanded','true');
+  loadSettings();
+}
+function closeSettings(){settingsDrawer.classList.remove('settings-drawer--open');settingsDrawer.setAttribute('aria-hidden','true');settingsBackdrop.hidden=true;settingsButton.setAttribute('aria-expanded','false');settingsButton.focus();}
+function settingsState(text,tone){const state=$('#settings-state');state.textContent=text||'';state.dataset.tone=tone||'';}
+function option(select,value,label){const o=document.createElement('option');o.value=value;o.textContent=label;select.appendChild(o);}
+function fillModelSetting(select,models,value,allowEmpty){
+  select.innerHTML='';if(allowEmpty)option(select,'',__('auto'));
+  (models||[]).forEach(model=>option(select,model,model));
+  if(value&&!Array.from(select.options).some(o=>o.value===value))option(select,value,value);
+  select.value=value||'';
+}
+function populateSettings(view){
+  settingsSnapshot=view;settingsRevision=view.revision||'';const value=view.global||{};const models=value.models||[];
+  fillModelSetting($('#setting-default-model'),models,value.defaultModel,false);fillModelSetting($('#setting-planner-model'),models,value.plannerModel,true);fillModelSetting($('#setting-subagent-model'),models,value.subagentModel,true);
+  Object.entries(value).forEach(([name,val])=>{const field=settingsForm.elements.namedItem(name);if(field&&field.tagName!=='SELECT'&&field.tagName!=='INPUT')return;if(field&&name!=='defaultModel'&&name!=='plannerModel'&&name!=='subagentModel')field.value=String(val);});
+  $('#setting-theme').value=storageValue('baize-theme-preference',storageValue('baize-theme','dark'));
+  $('#setting-density').value=storageValue('baize-density','comfortable');
+  $('#setting-reasoning-display').value=storageValue('baize-reasoning-display','auto');
+  $('#setting-subagent-preview').value=storageValue('baize-subagent-preview','full');
+  $('#setting-subagent-collapse').checked=storageValue('baize-subagent-auto-collapse','true')!=='false';
+  const overridden=Array.isArray(view.overridden)?view.overridden:[];
+  let message='';let tone='';
+  if(view.applyError){message=view.applyError;tone='danger';}
+  else if(view.apply==='pending'){message=__('settings_pending');tone='warn';}
+  else if(view.apply==='applying'){message=__('settings_applying');}
+  else if(overridden.length){const effective=view.effective||{};message=__('settings_overridden').replace('{fields}',overridden.map(name=>name+' → '+String(effective[name]??'')).join(', '));tone='warn';}
+  settingsState(message,tone);$('#settings-retry').hidden=!view.applyError;
+}
+async function loadSettings(){
+  try{const response=await fetch('/settings');if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));populateSettings(await response.json());}
+  catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}
+}
+function runtimeSettingsPayload(){
+  const data=new FormData(settingsForm);const payload={revision:settingsRevision};
+  ['defaultModel','plannerModel','subagentModel','subagentEffort','defaultApprovalMode','reasoningLanguage'].forEach(name=>payload[name]=String(data.get(name)||''));
+  ['maxSubagentDepth','maxSubagentConcurrency','maxParallelWriters'].forEach(name=>payload[name]=Number(data.get(name)));
+  payload.compactRatio=Number(data.get('compactRatio'));return payload;
+}
+function saveAppearanceSettings(){
+  setStorageValue('baize-theme-preference',$('#setting-theme').value);setStorageValue('baize-density',$('#setting-density').value);setStorageValue('baize-reasoning-display',$('#setting-reasoning-display').value);setStorageValue('baize-subagent-preview',$('#setting-subagent-preview').value);setStorageValue('baize-subagent-auto-collapse',String($('#setting-subagent-collapse').checked));applyAppearanceSettings();
+}
+['setting-theme','setting-density','setting-reasoning-display','setting-subagent-preview','setting-subagent-collapse'].forEach(id=>{const field=$('#'+id);if(field)field.addEventListener('change',saveAppearanceSettings);});
+settingsForm.onsubmit=async event=>{
+  event.preventDefault();const payload=runtimeSettingsPayload();
+  if(payload.defaultApprovalMode==='yolo'&&settingsSnapshot?.global?.defaultApprovalMode!=='yolo'&&!window.confirm(__('settings_yolo_confirm')))return;
+  saveAppearanceSettings();settingsState(__('settings_applying'));
+  try{
+    const response=await fetch('/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    if(response.status===409){populateSettings(await response.json());settingsState(__('settings_conflict'),'warn');return;}
+    if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));
+    const view=await response.json();populateSettings(view);if(view.apply==='applied')settingsState(__('settings_applied'));else if(view.apply==='pending')settingsState(__('settings_pending'),'warn');
+  }catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}
+};
+$('#settings-retry').onclick=async()=>{try{const response=await post('/settings/apply',{});if(!response.ok&&response.status!==202)throw new Error((await response.text()).trim()||('HTTP '+response.status));await loadSettings();}catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}};
+settingsButton.onclick=openSettings;$('#settings-close').onclick=closeSettings;settingsBackdrop.onclick=closeSettings;
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&settingsDrawer.classList.contains('settings-drawer--open'))closeSettings();});
+if(window.matchMedia){window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(storageValue('baize-theme-preference','dark')==='auto')applyAppearanceSettings();});}
+applyAppearanceSettings();
 
 // initial fetch
 fetchStatus();

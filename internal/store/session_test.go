@@ -96,6 +96,7 @@ func TestSessionSidecarFiles(t *testing.T) {
 		"/home/u/.reasonix/sessions/abc.recovery.json",
 		"/home/u/.reasonix/sessions/abc.context.json",
 		"/home/u/.reasonix/sessions/abc.approval.json",
+		"/home/u/.reasonix/sessions/abc.subagents.json",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("SessionSidecarFiles = %v, want %v", got, want)

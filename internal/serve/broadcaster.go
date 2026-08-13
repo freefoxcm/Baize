@@ -20,6 +20,18 @@ type Broadcaster struct {
 	subs            map[chan []byte]struct{}
 	ledger          *billing.Ledger
 	displayCurrency string
+	observer        func(event.Event)
+}
+
+// SetObserver installs one host-local event observer. The callback runs after
+// subscriber delivery and must not block the controller event path.
+func (b *Broadcaster) SetObserver(observer func(event.Event)) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	b.observer = observer
+	b.mu.Unlock()
 }
 
 // NewBroadcaster returns an empty Broadcaster ready to accept subscribers.
@@ -71,7 +83,6 @@ func (b *Broadcaster) Emit(e event.Event) {
 		return
 	}
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if e.Kind == event.Usage && e.Usage != nil && e.CostQuote != nil {
 		if b.ledger == nil {
 			b.ledger = billing.NewLedger()
@@ -88,6 +99,11 @@ func (b *Broadcaster) Emit(e event.Event) {
 		case ch <- data:
 		default: // subscriber is behind; drop this frame for it
 		}
+	}
+	observer := b.observer
+	b.mu.Unlock()
+	if observer != nil {
+		observer(e)
 	}
 }
 

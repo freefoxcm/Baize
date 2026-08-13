@@ -34,7 +34,11 @@ func newApprovalTestServer(t *testing.T, dir, path string) (*httptest.Server, *c
 	makeApprovalTestSession(t, path)
 	exec := agent.New(nil, nil, agent.NewSession("sys"), agent.Options{}, event.Discard)
 	bc := NewBroadcaster()
-	ctrl := control.New(control.Options{Executor: exec, SessionDir: dir, SessionPath: path, Label: "test"})
+	label := "test"
+	if cfg, err := config.LoadUserConfigReadOnly(); err == nil && strings.TrimSpace(cfg.DefaultModel) != "" {
+		label = strings.TrimSpace(cfg.DefaultModel)
+	}
+	ctrl := control.New(control.Options{Executor: exec, SessionDir: dir, SessionPath: path, Label: label})
 	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
 	t.Cleanup(srv.Close)
 	return srv, ctrl
@@ -89,7 +93,7 @@ func TestToolApprovalModePersistsToSession(t *testing.T) {
 func TestNewSessionResetsApprovalModeToDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s1.jsonl")
-	srv, ctrl := newApprovalTestServer(t, dir, path)
+	srv, _ := newApprovalTestServer(t, dir, path)
 	if _, err := http.Post(srv.URL+"/tool-approval-mode", "application/json", strings.NewReader(`{"mode":"yolo"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +107,18 @@ func TestNewSessionResetsApprovalModeToDefault(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", resp.StatusCode)
 	}
-	if got := ctrl.ToolApprovalMode(); got != want {
+	statusResp, err := http.Get(srv.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	var status struct {
+		ToolApprovalMode string `json:"toolApprovalMode"`
+	}
+	if err := json.NewDecoder(statusResp.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+	if got := status.ToolApprovalMode; got != want {
 		t.Fatalf("controller mode after /new = %q, want default %q", got, want)
 	}
 }
@@ -217,6 +232,13 @@ func TestForkInheritsSourceApprovalMode(t *testing.T) {
 		}
 	}
 turned:
+	for ctrl.RuntimeStatus().Running {
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("controller stayed active after turn_done")
+		}
+	}
 	if _, err := http.Post(srv.URL+"/tool-approval-mode", "application/json", strings.NewReader(`{"mode":"yolo"}`)); err != nil {
 		t.Fatal(err)
 	}

@@ -77,7 +77,9 @@ type Server struct {
 	providerSetup     providerSetupState
 	// leases guards the active session file against other runtimes. The serve CLI
 	// wires the keeper holding the startup lease; nil disables lease gating.
-	leases *control.SessionLeaseKeeper
+	leases            *control.SessionLeaseKeeper
+	subagentSummaries *subagentSummaryRecorder
+	settings          *settingsRuntimeState
 }
 
 // New builds a Server. bc must be the controller's event sink.
@@ -87,13 +89,22 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		bc = NewBroadcaster()
 	}
 	s := &Server{
-		ctrl:     ctrl,
-		bc:       bc,
-		titles:   newTitleCache(ctrl.SessionDir()),
-		auth:     newAuthGate(serveCfg),
-		statsDir: config.StatsDir,
-		now:      time.Now,
+		ctrl:              ctrl,
+		bc:                bc,
+		titles:            newTitleCache(ctrl.SessionDir()),
+		auth:              newAuthGate(serveCfg),
+		statsDir:          config.StatsDir,
+		now:               time.Now,
+		subagentSummaries: newSubagentSummaryRecorder(),
+		settings:          &settingsRuntimeState{},
 	}
+	bc.SetObserver(func(e event.Event) {
+		if e.Kind == event.TurnDone {
+			s.onSettingsTurnDone()
+			return
+		}
+		s.subagentSummaries.observe(s.ctl().SessionPath(), e)
+	})
 	s.tokenMode = boot.TokenModeFull
 	if cfg, err := config.Load(); err == nil {
 		bc.SetDisplayCurrency(cfg.ExplicitDisplayCurrency())
@@ -697,6 +708,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /checkpoints", s.checkpoints)
 	mux.HandleFunc("GET /branches", s.branches)
 	mux.HandleFunc("GET /models", s.models)
+	mux.HandleFunc("GET /settings", s.settingsView)
+	mux.HandleFunc("PATCH /settings", s.patchSettings)
+	mux.HandleFunc("POST /settings/apply", s.applySettings)
 	mux.HandleFunc("POST /extensions/reload", s.reloadExtensionsHTTP)
 	mux.HandleFunc("GET /status", s.status)
 	mux.HandleFunc("GET /sessions", s.sessions)
@@ -723,7 +737,7 @@ func (s *Server) reloadExtensionsHTTP(w http.ResponseWriter, r *http.Request) {
 // sends JSON) is unaffected.
 func csrfGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut || r.Method == http.MethodDelete {
 			ct := r.Header.Get("Content-Type")
 			if i := strings.IndexByte(ct, ';'); i >= 0 {
 				ct = ct[:i]
@@ -906,8 +920,8 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	// "unknown command". /thinking is the same knob under its historical name.
 	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") || trimmed == "/thinking" || strings.HasPrefix(trimmed, "/thinking ") {
 		level := strings.TrimSpace(strings.TrimPrefix(trimmed, "/effort"))
-		if strings.HasPrefix(trimmed, "/thinking") {
-			level = strings.TrimSpace(strings.TrimPrefix(trimmed, "/thinking"))
+		if rest, ok := strings.CutPrefix(trimmed, "/thinking"); ok {
+			level = strings.TrimSpace(rest)
 		}
 		if level == "" {
 			// Bare command reports the current level and available levels.
@@ -1224,33 +1238,15 @@ func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) newSession(w http.ResponseWriter, _ *http.Request) {
-	// Session-path-changing entry point: serialize with /resume, /fork, and
-	// switchModel so the controller and the lease keeper move together.
-	s.bindMu.Lock()
-	defer s.bindMu.Unlock()
-	if err := s.ctl().NewSession(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	s.ctl().SetToolApprovalMode(defaultApprovalMode()) // fresh session = configured default
-	s.bc.ResetSession()
-	// Fresh path — the lease follows it; failure is theoretical but not silent.
-	if err := s.rebindSessionLease(s.ctl().SessionPath()); err != nil {
-		http.Error(w, sessionInUseError(err), http.StatusConflict)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 type historyToolCall struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Arguments    string `json:"arguments"`
-	ResolvedName string `json:"resolvedName,omitempty"`
-	CapabilityID string `json:"capabilityId,omitempty"`
-	Added        int    `json:"added,omitempty"`
-	Removed      int    `json:"removed,omitempty"`
+	ID              string                    `json:"id"`
+	Name            string                    `json:"name"`
+	Arguments       string                    `json:"arguments"`
+	ResolvedName    string                    `json:"resolvedName,omitempty"`
+	CapabilityID    string                    `json:"capabilityId,omitempty"`
+	Added           int                       `json:"added,omitempty"`
+	Removed         int                       `json:"removed,omitempty"`
+	SubagentSummary *subagentExecutionSummary `json:"subagentSummary,omitempty"`
 }
 
 type historyMessage struct {
@@ -1263,7 +1259,11 @@ type historyMessage struct {
 	DurationMs int64             `json:"durationMs,omitempty"` // tool result wall-clock time
 }
 
-func historyMessages(msgs []provider.Message) []historyMessage {
+func historyMessages(msgs []provider.Message, summaries ...map[string]*subagentExecutionSummary) []historyMessage {
+	var subagentSummaries map[string]*subagentExecutionSummary
+	if len(summaries) > 0 {
+		subagentSummaries = summaries[0]
+	}
 	out := make([]historyMessage, 0, len(msgs))
 	// CreatedAt of the most recent assistant message that issued tool calls;
 	// used to estimate the duration of tool results from sessions that
@@ -1294,7 +1294,7 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 			if len(m.ToolCalls) > 0 {
 				hm.ToolCalls = make([]historyToolCall, len(m.ToolCalls))
 				for i, tc := range m.ToolCalls {
-					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments, ResolvedName: tc.ResolvedName, CapabilityID: tc.CapabilityID, Added: tc.Added, Removed: tc.Removed}
+					hm.ToolCalls[i] = historyToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments, ResolvedName: tc.ResolvedName, CapabilityID: tc.CapabilityID, Added: tc.Added, Removed: tc.Removed, SubagentSummary: subagentSummaries[tc.ID]}
 				}
 				lastToolCallAt = m.CreatedAt
 			}
@@ -1322,7 +1322,7 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 // if the client sends If-None-Match with the current ETag, the server returns
 // 304 Not Modified with no body, saving bandwidth on reconnects.
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
-	writeJSONCached(w, r, historyMessages(s.ctl().History()))
+	writeJSONCached(w, r, historyMessages(s.ctl().History(), s.subagentSummaries.summaries(s.ctl().SessionPath())))
 }
 
 // context returns the prompt-vs-window gauge numbers. Supports ETag caching
@@ -1370,7 +1370,7 @@ func corsMiddleware(next http.Handler, origin string) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -1920,6 +1920,11 @@ func (s *Server) generateTitle(ctx context.Context, firstMsg string) string {
 // LLM-generated titles and turn counts.
 func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	dir := s.ctl().SessionDir()
+	currentPath := strings.TrimSpace(s.ctl().SessionPath())
+	current := ""
+	if currentPath != "" {
+		current = filepath.Clean(currentPath)
+	}
 	if dir == "" {
 		writeJSON(w, []any{})
 		return
@@ -1930,13 +1935,14 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		Title   string `json:"title,omitempty"`
 		Turns   int    `json:"turns,omitempty"`
 		Current bool   `json:"current,omitempty"`
+		Draft   bool   `json:"draft,omitempty"`
 	}
 	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		writeJSON(w, []any{})
 		return
 	}
-	current := filepath.Clean(s.ctl().SessionPath())
+	currentListed := false
 	var out []sessionEntry
 	for _, e := range entries {
 		if e.IsDir() || !store.IsSessionTranscriptName(e.Name()) {
@@ -1947,7 +1953,8 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".jsonl")
-		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current}
+		entry := sessionEntry{Name: name, Path: path, Current: current != "" && filepath.Clean(path) == current}
+		currentListed = currentListed || entry.Current
 		// Event-log aware: reading the .jsonl checkpoint directly would freeze
 		// turn counts and titles at the last checkpoint write.
 		if first, turns := agent.SessionPreview(path); turns > 0 {
@@ -1959,6 +1966,10 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	// reverse so newest first
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
+	}
+	if current != "" && !currentListed && filepath.Clean(filepath.Dir(current)) == filepath.Clean(dir) {
+		name := strings.TrimSuffix(filepath.Base(current), ".jsonl")
+		out = append([]sessionEntry{{Name: name, Path: currentPath, Title: "新会话", Current: true, Draft: true}}, out...)
 	}
 	if out == nil {
 		out = []sessionEntry{}
