@@ -232,6 +232,13 @@ func TestForkInheritsSourceApprovalMode(t *testing.T) {
 		}
 	}
 turned:
+	for ctrl.Running() {
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("controller stayed active after turn_done")
+		}
+	}
 	if _, err := http.Post(srv.URL+"/tool-approval-mode", "application/json", strings.NewReader(`{"mode":"yolo"}`)); err != nil {
 		t.Fatal(err)
 	}
