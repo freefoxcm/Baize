@@ -22,7 +22,7 @@ import (
 // per-workspace session store and workspace root, instead of letting
 // boot.Build fall back to the global session dir.
 func TestBuildPreservesSessionDirAndWorkspace(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	isolateServeHome(t, t.TempDir())
 	proj := t.TempDir()
 	sessionDir := config.ProjectSessionDir(proj)
 	if sessionDir == "" {
@@ -114,7 +114,7 @@ func TestReplacementBuildContextsOutliveHTTPRequest(t *testing.T) {
 // TestSwitchModelKeepsSessionList verifies the user-visible contract: after a
 // model switch the GET /sessions list still shows the workspace's sessions.
 func TestSwitchModelKeepsSessionList(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	isolateServeHome(t, t.TempDir())
 	proj := t.TempDir()
 	sessionDir := config.ProjectSessionDir(proj)
 	if sessionDir == "" {

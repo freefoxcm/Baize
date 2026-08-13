@@ -353,7 +353,7 @@ func TestProviderSetupRejectsUnsafeOrAmbiguousRequests(t *testing.T) {
 func newProviderSetupTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	isolateServeHome(t, home)
 	t.Setenv("REASONIX_CREDENTIALS_STORE", "file")
 	t.Setenv(providerSetupTestKeyEnv, "")
 	configPath := config.UserConfigPath()

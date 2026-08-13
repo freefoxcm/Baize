@@ -16,6 +16,7 @@ const __T = {
     'loading': 'Loading...',
     'cache': 'Cache',
     'cost': 'Cost',
+    'multi_currency': 'Multiple currencies',
     'balance': 'Balance',
     'ready': 'Ready',
     'thinking': 'Thinking...',
@@ -286,6 +287,7 @@ const __T = {
     'loading': '加载中...',
     'cache': '缓存',
     'cost': '费用',
+    'multi_currency': '多币种',
     'balance': '余额',
     'ready': '就绪',
     'thinking': '思考中...',
@@ -793,7 +795,18 @@ function workspaceDisplayName(path){
   const parts=trimmed.split(/[\\/]/);return parts[parts.length-1]||raw;
 }
 function currencySymbol(c){const v=String(c||'¥').trim();if(/^(cny|rmb|yuan)$/i.test(v))return '¥';if(/^(usd|dollar)$/i.test(v))return '$';return v||'¥';}
-function fmtMoney(n,c){if(typeof n!=='number'||!isFinite(n))return '—';const s=currencySymbol(c);return s+(n<1?n.toFixed(4):n.toFixed(2));}
+function fmtMoney(n,c){if(typeof n!=='number'||!isFinite(n)||n<=0)return '—';const s=currencySymbol(c);return '≈'+s+(n<1?n.toFixed(4):n.toFixed(2));}
+function usageSelectedCost(usage){
+  if(!usage)return null;
+  const quote=usage.costQuote;
+  if(quote&&(quote.displayStatus==='bucketed'||quote.aggregateMode==='currency_buckets'))return{bucketed:true};
+  const selected=quote?.selected;
+  if(selected?.amount){const amount=Number(selected.amount);if(Number.isFinite(amount)&&amount>0)return{amount,currency:selected.currency||usage.currencyCode||usage.currency};}
+  if(quote)return null;
+  const amount=usage.cost??usage.costUsd;
+  if(typeof amount==='number'&&amount>0)return{amount,currency:usage.currencyCode||usage.currency};
+  return null;
+}
 function fmtElapsed(ms) {
   const s = Math.floor(Math.max(0, ms) / 1000); // desktop parity: whole seconds (12s / 1m 23s)
   if (s < 60) return s + 's';
@@ -2743,8 +2756,6 @@ es.onmessage=ev=>{setConnState('connected');
           turnArgChars = 0; // desktop parity: usage closes the streaming-args estimate
         }
         cumulativeTokens+=e.usage.totalTokens||0;
-        const usageCost=e.usage.cost??e.usage.costUsd;
-        if(typeof usageCost==='number')cumulativeCost+=usageCost;
         cumulativeCacheHit+=e.usage.cacheHitTokens||0;
         cumulativeCacheMiss+=e.usage.cacheMissTokens||0;
         updateRunStrip();
@@ -2804,11 +2815,12 @@ function fetchStatus(){
     goalText=(s.goal||'').trim();
     goalActive=goalText!==''&&(s.goalStatus||'')==='running';
     updateGoalUI();
+    sessionCostQuote=s.sessionCostQuote||null;
     // sidebar metrics
     const cacheTotal=(s.cacheHit||0)+(s.cacheMiss||0);
     $('#sm-cache').textContent=cacheTotal>0?Math.round((s.cacheHit||0)/cacheTotal*100)+'%':'—';
-    const lastCost=s.lastUsage?.cost??s.lastUsage?.costUsd??s.lastUsage?.totalCost;
-    if(typeof lastCost==='number')$('#sm-cost').textContent=fmtMoney(lastCost,s.lastUsage?.currency);
+    const lastPicked=usageSelectedCost(s.lastUsage);
+    $('#sm-cost').textContent=lastPicked?.bucketed?__('multi_currency'):lastPicked?fmtMoney(lastPicked.amount,lastPicked.currency):'—';
     if(s.balance){$('#sm-balance').textContent=s.balance.display||'--';}
   }).catch(()=>{});
 }
@@ -3694,7 +3706,7 @@ function renderWorkspacePreview(preview){
   if(preview.kind==='code'||preview.kind==='text'){workspaceCodeView(preview.body,preview.path);return;}
   if(preview.kind==='html'){renderWorkspaceHTML(preview);return;}
   if(preview.kind==='image'){const wrap=el('div','workspace-preview__media'),image=el('img');image.src=preview.contentUrl;image.alt=preview.name;image.onclick=()=>openImageViewer(preview.contentUrl);wrap.appendChild(image);workspacePreviewContent.appendChild(wrap);return;}
-  if(preview.kind==='pdf'){const frame=el('iframe','workspace-preview__frame');frame.src=preview.contentUrl;frame.title=preview.name;frame.setAttribute('sandbox','');frame.setAttribute('referrerpolicy','no-referrer');workspacePreviewContent.appendChild(frame);return;}
+  if(preview.kind==='pdf'){const frame=el('iframe','workspace-preview__frame');frame.src=preview.contentUrl;frame.title=preview.name;frame.setAttribute('referrerpolicy','no-referrer');workspacePreviewContent.appendChild(frame);return;}
   workspacePreviewContent.appendChild(el('div','workspace-preview__binary',__('workspace_binary')));
 }
 async function loadWorkspacePreview(path){
@@ -3726,8 +3738,9 @@ $('#workspace-resizer').addEventListener('pointerdown',event=>{
 // Session-scoped counters accumulated while this page is open. They reset on
 // session rotation (/new, /resume) so the stats card labeled "session cost"
 // never quietly turns into an all-sessions running total.
-let cumulativeTokens=0, cumulativeCost=0, cumulativeCacheHit=0, cumulativeCacheMiss=0;
-function resetCumulativeStats(){cumulativeTokens=0;cumulativeCost=0;cumulativeCacheHit=0;cumulativeCacheMiss=0;}
+let cumulativeTokens=0, cumulativeCacheHit=0, cumulativeCacheMiss=0;
+let sessionCostQuote=null;
+function resetCumulativeStats(){cumulativeTokens=0;cumulativeCacheHit=0;cumulativeCacheMiss=0;sessionCostQuote=null;}
 function openStats(){
   const modal=$('#stats-modal');
   if(!modal)return;
@@ -3740,10 +3753,10 @@ function openStats(){
     const hit=cumulativeCacheHit||s.cacheHit||0, miss=cumulativeCacheMiss||s.cacheMiss||0;
     const rate=hit+miss>0?Math.round(hit/(hit+miss)*100)+'%':'0%';
     $('#stats-cache-rate').textContent=rate;
-    // No single-request fallback here: rendering lastUsage.cost (one turn)
-    // under the session-cost label displayed one turn's spend as the session's.
-    const cost=cumulativeCost;
-    $('#stats-total-cost').textContent=cost>0?fmtMoney(cost,s.lastUsage?.currency):'-';
+    const quote=s.sessionCostQuote;
+    if(quote?.displayStatus==='bucketed'||quote?.aggregateMode==='currency_buckets')$('#stats-total-cost').textContent=__('multi_currency');
+    else if(quote?.selected?.amount)$('#stats-total-cost').textContent=fmtMoney(Number(quote.selected.amount),quote.selected.currency);
+    else $('#stats-total-cost').textContent='—';
     $('#stats-balance').textContent=s.balance?.display||'-';
     if(s.window){const pct=Math.min(100,Math.round(s.used/s.window*100));$('#stats-ctx-fill').style.width=pct+'%';$('#stats-ctx-used').textContent=fmtTok(s.used)+' tokens';$('#stats-ctx-window').textContent=fmtTok(s.window)+' tokens';}
   }).catch(()=>{});

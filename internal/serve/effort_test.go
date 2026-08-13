@@ -65,7 +65,7 @@ func TestApplyEffortEditKeepsExistingAnthropicThinking(t *testing.T) {
 // must surface as "auto" — not the model's default level — so the /effort menu
 // and the effort button highlight auto instead of collapsing to e.g. "high".
 func TestEffortHandlerCurrentDefaultsToAuto(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	isolateServeHome(t, t.TempDir())
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc, ModelRef: "deepseek-flash/deepseek-v4-flash"})
 	s := &Server{ctrl: ctrl, bc: bc}
@@ -88,7 +88,7 @@ func TestEffortHandlerCurrentDefaultsToAuto(t *testing.T) {
 // wins over the auto fallback.
 func TestEffortHandlerReportsStoredEffort(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	isolateServeHome(t, home)
 	body := "[[providers]]\nname = \"deepseek-flash\"\nkind = \"openai\"\nbase_url = \"https://api.deepseek.com\"\nmodel = \"deepseek-v4-flash\"\neffort = \"disabled\"\n"
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestEffortHandlerReportsStoredEffort(t *testing.T) {
 // auto, so GET /effort must report auto (not the stale stored value).
 func TestEffortHandlerReportsRuntimeNormalizedEffort(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	isolateServeHome(t, home)
 	body := "[[providers]]\nname = \"opencode-go\"\nkind = \"openai\"\nbase_url = \"https://opencode.ai/zen/go/v1\"\nmodels = [\"deepseek-v4-flash\", \"glm-5.2\"]\ndefault = \"deepseek-v4-flash\"\neffort = \"disabled\"\nmodel_overrides = { \"deepseek-v4-flash\" = { reasoning_protocol = \"deepseek\", supported_efforts = [\"disabled\", \"high\", \"max\"], default_effort = \"high\" } }\n"
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestEffortHandlerReportsRuntimeNormalizedEffort(t *testing.T) {
 // reports the current effort capability, a level argument switches through the
 // same path as /effort.
 func TestThinkingAliasSubmitsEffort(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	isolateServeHome(t, t.TempDir())
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc, ModelRef: "deepseek-flash/deepseek-v4-flash"})
 	s := &Server{ctrl: ctrl, bc: bc}

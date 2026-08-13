@@ -2,12 +2,17 @@
 
 import {
   projectTreeFolderDisclosure,
+  mergeProjectTopicPage,
+  projectTreeEventAffectsFolder,
+  projectTreeRevisionIsFresh,
+  projectTreeShouldApplyShellSnapshot,
   defaultExpandedProjectTreeKeys,
   activeSessionAncestorKeys,
   projectTreeTopicOpenRequest,
   projectTreeShouldSuppressOpenForRename,
   projectTreeReadActivityKey,
   projectTreeTopicHasUnreadActivity,
+  topicIsActive,
   projectTreeTopicArchiveBlocked,
   projectTreeShouldRenderTopicActions,
   projectTreeTopicMetaLine,
@@ -150,6 +155,19 @@ eq(
 
 eq(
   projectTreeTopicMetaLine({
+    key: "global_topic_indexing",
+    kind: "global_topic",
+    label: "Legacy topic",
+    topicId: "indexing",
+    turns: 0,
+    turnsState: "unknown",
+  }, testT),
+  "history.indexing",
+  "unknown legacy turn counts are never presented as zero turns",
+);
+
+eq(
+  projectTreeTopicMetaLine({
     key: "global_topic_recent",
     kind: "global_topic",
     label: "Recent blank topic",
@@ -192,6 +210,34 @@ eq(
   projectTreeTopicHasUnreadActivity({ ...completedTopic, status: "streaming", running: true }, { [completedTopicKey]: 1000 }, "project", "/repo", "other-topic"),
   false,
   "running topic keeps runtime status instead of completed-unread attention",
+);
+
+const relocatedTopic = { ...completedTopic, sessionPath: "/s/b.jsonl" };
+const relocatedKey = projectTreeReadActivityKey({ ...completedTopic, sessionPath: "/s/a.jsonl" }) ?? "";
+eq(
+  projectTreeReadActivityKey(relocatedTopic),
+  relocatedKey,
+  "unread key stays on the logical topic when the representative path changes",
+);
+eq(
+  projectTreeTopicHasUnreadActivity(relocatedTopic, { [relocatedKey]: 2000 }, "project", "/repo", "other-topic"),
+  false,
+  "marking a topic read survives a later representative-path refresh",
+);
+eq(
+  projectTreeTopicHasUnreadActivity(completedTopic, {}, "project", "/repo", "other-topic", undefined, 2000),
+  false,
+  "activity at or before the first-seen baseline is not unread",
+);
+eq(
+  projectTreeTopicHasUnreadActivity(completedTopic, {}, "project", "/repo", "other-topic", undefined, 1999),
+  true,
+  "activity newer than the first-seen baseline is unread",
+);
+eq(
+  topicIsActive({ ...completedTopic, sessionPath: "/s/a.jsonl" }, "project", "/repo", "topic-complete", "/s/other.jsonl"),
+  true,
+  "logical topic stays active when the representative path is not the open file",
 );
 
 for (const status of ["thinking", "streaming", "waiting_confirmation", "background_job"] as const) {
@@ -606,6 +652,48 @@ eq(
     iconStackClassName: "project-tree__icon-stack project-tree__icon-stack--expandable",
   },
   "expanded classic empty folders report the open state for the placeholder",
+);
+
+eq(
+  [projectTreeRevisionIsFresh(12, 11), projectTreeRevisionIsFresh(12, 12), projectTreeRevisionIsFresh(12, 13)],
+  [false, true, true],
+  "project tree ignores stale snapshots and pages while accepting the current revision",
+);
+
+eq(
+  [
+    projectTreeShouldApplyShellSnapshot({ currentRevision: 1, incomingRevision: 0, treeEmpty: true }),
+    projectTreeShouldApplyShellSnapshot({ currentRevision: 1, incomingRevision: 0, treeEmpty: false }),
+    projectTreeShouldApplyShellSnapshot({ currentRevision: 1, incomingRevision: 2, treeEmpty: false }),
+  ],
+  [true, false, true],
+  "empty-tree shell snapshots apply even after a faster catalog revision event",
+);
+
+eq(
+  mergeProjectTopicPage(
+    [
+      { key: "topic-a", kind: "topic", label: "A", topicId: "a" },
+      { key: "topic-b", kind: "topic", label: "Old B", topicId: "b" },
+    ],
+    [
+      { key: "topic-b", kind: "topic", label: "New B", topicId: "b" },
+      { key: "topic-c", kind: "topic", label: "C", topicId: "c" },
+    ],
+    true,
+  ).map((node) => `${node.key}:${node.label}`),
+  ["topic-a:A", "topic-b:New B", "topic-c:C"],
+  "overlapping keyset pages replace duplicates without changing stable order",
+);
+
+eq(
+  [
+    projectTreeEventAffectsFolder({ key: "global", kind: "global_folder", label: "Global" }, [""]),
+    projectTreeEventAffectsFolder({ key: "p", kind: "project", label: "P", root: "/repo" }, ["/other"]),
+    projectTreeEventAffectsFolder({ key: "p", kind: "project", label: "P", root: "/repo" }, []),
+  ],
+  [true, false, true],
+  "revision events refresh only affected expanded roots, with an empty roots list as broadcast",
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

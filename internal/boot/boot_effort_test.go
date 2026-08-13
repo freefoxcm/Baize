@@ -17,6 +17,7 @@ import (
 // high). The provider keeps its stored level for models that accept it.
 func TestBuildDegradesUnsupportedStoredEffort(t *testing.T) {
 	home := t.TempDir()
+	fenceBootTestHistoryCatalog(t)
 	t.Setenv("REASONIX_HOME", home)
 	body := `default_model = "opencode-go/deepseek-v4-flash"
 [[providers]]

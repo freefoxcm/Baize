@@ -40,7 +40,6 @@ import (
 	"reasonix/internal/provider/openai"
 	"reasonix/internal/serve"
 	"reasonix/internal/sessiontemp"
-	"reasonix/internal/stats"
 	"reasonix/internal/telemetry"
 
 	tea "charm.land/bubbletea/v2"
@@ -67,12 +66,9 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 	info = info.withDefaults()
 	version := info.Version
 	// Usage recording is asynchronous so provider/UI paths never wait on disk.
-	// Drain records accepted by this process before a normal CLI exit.
-	defer func() {
-		flushCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = stats.Flush(flushCtx, config.StatsDir())
-	}()
+	// Drain accepted records and fence the projection worker before returning.
+	// An embedded Run may outlive one invocation and remove its CacheDir.
+	defer closeCLIUsageCatalogs()
 	// Pick the UI language up front so even pre-config paths (the first-run
 	// welcome banner) come through localized. Env-only first; if a config
 	// exists and pins a language, that wins.
@@ -164,9 +160,8 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 	case "report":
 		configureCLIThemeFromConfig()
 		return reportCommand(rest)
-	case "session":
-		configureCLIThemeFromConfig()
-		return sessionCommand(rest)
+	case "session", "sessions", "catalogs":
+		return runSessionOrCatalogCommand(cmd, rest)
 	case "hook", "hooks":
 		configureCLIThemeFromConfig()
 		return hookCommand(rest)
@@ -306,34 +301,26 @@ func setupProfileWithOverrides(ctx context.Context, modelName string, maxStepsOv
 }
 
 func cliProfileBuildOptions(modelName string, maxStepsOverride int, requireKey bool, sink event.Sink, profile string, overrides cliBuildOverrides) boot.Options {
+	// profile is dual-write TokenMode; also set AgentPreset for the new path.
 	return boot.Options{
 		Model:                modelName,
 		MaxSteps:             maxStepsOverride,
 		MaxStepsKey:          "--max-steps",
 		RequireKey:           requireKey,
 		Sink:                 sink,
-		TokenMode:            profile,
+		AgentPreset:          boot.NormalizeAgentPreset(profile),
+		TokenMode:            boot.NormalizeTokenMode(profile),
 		SessionDir:           resolveCLISessionDir(),
 		WorkspaceRoot:        overrides.WorkspaceRoot,
 		EffortOverride:       overrides.Effort,
 		PermissionAllow:      overrides.PermissionAllow,
 		AdditionalDirs:       overrides.AdditionalDirs,
 		HeadlessApprovalMode: overrides.HeadlessApprovalMode,
-		AutoPricingCurrency:  cliAutoPricingCurrency(),
 		StatsSource:          "cli",
 		Stderr:               overrides.Stderr,
 		OnSessionRecovered:   overrides.OnSessionRecovered,
 		Ablation:             overrides.Ablation,
 		SessionTemp:          overrides.SessionTemp,
-	}
-}
-
-func cliAutoPricingCurrency() string {
-	switch i18n.CurrentLanguage() {
-	case "zh", "zh-TW":
-		return "CNY"
-	default:
-		return "USD"
 	}
 }
 
@@ -409,15 +396,17 @@ func setupQuietProfile(ctx context.Context, modelName string, maxStepsOverride i
 }
 
 func parseRuntimeProfile(value string) (string, error) {
+	// Accept both --preset light|balanced|delivery and legacy --profile
+	// economy|full|delivery. Returns dual-write TokenMode values.
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "balanced", boot.TokenModeFull:
 		return boot.TokenModeFull, nil
-	case boot.TokenModeEconomy:
+	case boot.TokenModeEconomy, "light", "lite", "eco":
 		return boot.TokenModeEconomy, nil
-	case boot.TokenModeDelivery:
+	case boot.TokenModeDelivery, "deliver", "quality":
 		return boot.TokenModeDelivery, nil
 	default:
-		return "", fmt.Errorf("unknown runtime profile %q (want economy, balanced, or delivery)", value)
+		return "", fmt.Errorf("unknown execution setting %q (want light, balanced, or delivery; legacy: economy, full)", value)
 	}
 }
 
@@ -495,10 +484,12 @@ func registerContinueFlag(fs *pflag.FlagSet) *bool {
 }
 
 func runAgent(args []string, version string) int {
+	defer closeCLIUsageCatalogs()
 	fs := pflag.NewFlagSet("run", pflag.ContinueOnError)
 	fs.SetInterspersed(true)
 	model := fs.String("model", "", "provider name (default: config default_model)")
-	profileFlag := fs.String("profile", "balanced", "runtime profile: economy | balanced | delivery")
+	profileFlag := fs.String("profile", "", "deprecated: use --preset (economy|balanced|delivery)")
+	presetFlag := fs.String("preset", "balanced", "agent execution setting: light | balanced | delivery")
 	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
 	showThinking := fs.Bool("show-thinking", false, "show thinking text instead of the collapsed thinking marker")
 	metricsPath := fs.String("metrics", "", "write a JSON token/cache/cost summary of the run to this path")
@@ -545,7 +536,13 @@ func runAgent(args []string, version string) int {
 		}
 		format = runOutputEventsJSONL
 	}
-	profile, err := parseRuntimeProfile(*profileFlag)
+	profileRaw := strings.TrimSpace(*profileFlag)
+	if profileRaw != "" {
+		fmt.Fprintln(os.Stderr, "warning: --profile is deprecated; use --preset light|balanced|delivery")
+	} else {
+		profileRaw = strings.TrimSpace(*presetFlag)
+	}
+	profile, err := parseRuntimeProfile(profileRaw)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
@@ -724,7 +721,7 @@ func runAgent(args []string, version string) int {
 	}
 	// Fresh sessions take the lease too (defensive: the path is brand new); a
 	// resumed path is already held, making this a no-op.
-	if err := leases.Rebind(ctrl.SessionPath()); err != nil {
+	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
 		return 1
 	}
@@ -791,7 +788,8 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	}
 	fs := flag.NewFlagSet(opts.command, flag.ContinueOnError)
 	model := fs.String("model", "", "provider name (default: config default_model)")
-	profileFlag := fs.String("profile", "balanced", "runtime profile: economy | balanced | delivery")
+	profileFlag := fs.String("profile", "", "deprecated: use --preset (economy|balanced|delivery)")
+	presetFlag := fs.String("preset", "balanced", "agent execution setting: light | balanced | delivery")
 	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
 	addr := fs.String("addr", "127.0.0.1:8787", "listen address")
 	resume := fs.String("resume", "", "resume a saved session file")
@@ -834,7 +832,13 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 			return 2
 		}
 	}
-	profile, err := parseRuntimeProfile(*profileFlag)
+	profileRaw := strings.TrimSpace(*profileFlag)
+	if profileRaw != "" {
+		fmt.Fprintln(os.Stderr, "warning: --profile is deprecated; use --preset light|balanced|delivery")
+	} else {
+		profileRaw = strings.TrimSpace(*presetFlag)
+	}
+	profile, err := parseRuntimeProfile(profileRaw)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
@@ -868,46 +872,12 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	}
 	applyServeLanguage(cfg)
 
-	// Build serve config, merging CLI flags over config file.
-	serveCfg := serveConfigWithCommandDefaults(opts.command, authExplicit, cfg.Serve)
-	// `reasonix web` is a local browser entry point and defaults to a freshly
-	// generated token. `reasonix serve` keeps its existing config-driven default,
-	// and an explicit --auth always wins for both commands.
-	if *auth != "" {
-		serveCfg.AuthMode = *auth
-	}
-	if *token != "" {
-		serveCfg.Token = *token
-	}
-	if *tokenFile != "" {
-		tok, err := readServeTokenFile(*tokenFile)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
-			return 1
-		}
-		serveCfg.Token = tok
-	}
-	if *behindProxy {
-		serveCfg.BehindProxy = true
-	}
-	mode, err := serve.NormalizeAuthMode(serveCfg.AuthMode)
+	serveCfg, err := resolveServeConfig(cfg.Serve, serveConfigOverrides{
+		command: opts.command, authExplicit: authExplicit, auth: *auth,
+		token: *token, tokenFile: *tokenFile, password: *password, behindProxy: *behindProxy,
+	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
-		return 1
-	}
-	serveCfg.AuthMode = mode
-	if *password != "" && serveCfg.AuthMode == "password" {
-		// Hash the password at startup so the config never stores plaintext.
-		// If a PasswordHash is already set in config, the CLI password overrides it.
-		h, err := serve.HashPassword(*password)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "failed to hash password:", err)
-			return 1
-		}
-		serveCfg.PasswordHash = h
-	}
-	if serveCfg.AuthMode == "password" && strings.TrimSpace(serveCfg.PasswordHash) == "" {
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "auth mode password requires --password or serve.password_hash")
 		return 1
 	}
 
@@ -966,18 +936,12 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	ctrl.EnsureSessionPath()
 	// Fresh sessions take the lease too (defensive: the path is brand new); a
 	// resumed path is already held, making this a no-op.
-	if err := leases.Rebind(ctrl.SessionPath()); err != nil {
+	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
 		return 1
 	}
 
-	srv := serve.New(ctrl, bc, serveCfg)
-	srv.SetSessionLeases(leases)
-	// Desktop parity for the standalone serve process: apply the configured
-	// desktop default tool-approval mode (auto unless configured otherwise).
-	serve.ApplyDesktopDefaultApprovalMode(ctrl)
-
-	return runServeFrontend(ctrl, srv, serveCfg, serveFrontendOptions{
+	return runConfiguredServeFrontend(ctrl, bc, leases, serveCfg, serveFrontendOptions{
 		command: opts.command, address: *addr,
 		portFile: *portFile, tokenFile: *tokenFile, pidFile: *pidFile,
 		openBrowser: *openBrowser && !*noOpen,
@@ -992,7 +956,8 @@ func chatREPL(args []string, version string) int {
 	fs := pflag.NewFlagSet("reasonix", pflag.ContinueOnError)
 	fs.SetInterspersed(true)
 	model := fs.String("model", "", "provider name (default: config default_model)")
-	profileFlag := fs.String("profile", "balanced", "runtime profile: economy | balanced | delivery")
+	profileFlag := fs.String("profile", "", "deprecated: use --preset (economy|balanced|delivery)")
+	presetFlag := fs.String("preset", "balanced", "agent execution setting: light | balanced | delivery")
 	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
 	cont := registerContinueFlag(fs)
 	resume := fs.StringP("resume", "r", "", "resume by session ID/query, or open the picker when no value is given")
@@ -1016,7 +981,13 @@ func chatREPL(args []string, version string) int {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	profile, err := parseRuntimeProfile(*profileFlag)
+	profileRaw := strings.TrimSpace(*profileFlag)
+	if profileRaw != "" {
+		fmt.Fprintln(os.Stderr, "warning: --profile is deprecated; use --preset light|balanced|delivery")
+	} else {
+		profileRaw = strings.TrimSpace(*presetFlag)
+	}
+	profile, err := parseRuntimeProfile(profileRaw)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
@@ -1170,7 +1141,7 @@ func chatREPL(args []string, version string) int {
 	ctrl.EnsureSessionPath()
 	// Fresh sessions take the lease too (defensive: the path is brand new); a
 	// resumed path is already held, making this a no-op.
-	if err := leases.Rebind(ctrl.SessionPath()); err != nil {
+	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
 		return 1
 	}
@@ -2356,8 +2327,7 @@ func configCurrencyCommand(args []string) int {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 			return 1
 		}
-		cfg.ApplyRuntimeAutoPricingCurrency(cliAutoPricingCurrency())
-		fmt.Printf("currency = %q (resolved: %s)\n", pricingCurrencyDisplay(cfg.DesktopCurrency()), cfg.DeepSeekOfficialPricingCurrency())
+		fmt.Printf("currency = %q (display: %s)\n", pricingCurrencyDisplay(cfg.DisplayCurrencyPref()), cfg.ResolveDisplayCurrency())
 		return 0
 	}
 	mode, err := parseCLIPricingCurrency(rest[0])
@@ -2373,19 +2343,16 @@ func configCurrencyCommand(args []string) int {
 	unlock := config.LockUserConfigEdits()
 	defer unlock()
 	cfg := config.LoadForEdit(path)
-	if err := cfg.SetDesktopCurrency(mode); err != nil {
+	if err := cfg.SetDisplayCurrency(mode); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	resolved := cfg.DeepSeekOfficialPricingCurrency()
-	if mode == "" && cfg.DesktopLanguage() == "" {
-		resolved = cliAutoPricingCurrency()
-	}
+	resolved := cfg.ResolveDisplayCurrency()
 	if err := cfg.SaveTo(path); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
 	}
-	fmt.Printf("currency = %q (resolved: %s, %s)\n", pricingCurrencyDisplay(mode), resolved, displayPath(path))
+	fmt.Printf("currency = %q (display: %s, %s)\n", pricingCurrencyDisplay(mode), resolved, displayPath(path))
 	return 0
 }
 

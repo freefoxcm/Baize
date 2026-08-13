@@ -235,7 +235,7 @@ func TestServeDefaultToolApprovalMode(t *testing.T) {
 	// itself must not touch the controller posture (tests and embedded use
 	// construct their own policy). Isolate via REASONIX_HOME so the operator's
 	// machine config cannot leak in.
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	isolateServeHome(t, t.TempDir())
 
 	mode := func(t *testing.T) string {
 		t.Helper()

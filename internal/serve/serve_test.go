@@ -1188,7 +1188,7 @@ func TestServeSwitchEffortUsesModelRefForDuplicateModelNames(t *testing.T) {
 func writeServeModelConfig(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	isolateServeHome(t, home)
 	cfgPath := config.UserConfigPath()
 	if cfgPath == "" {
 		t.Fatal("user config path is empty")

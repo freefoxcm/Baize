@@ -89,6 +89,11 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	if root == "" {
 		root = defaultBaseURL
 	}
+	requestURL, _ := cfg.Extra["request_url"].(string)
+	requestURL = strings.TrimSpace(requestURL)
+	if requestURL == "" {
+		requestURL = root + "/v1/messages"
+	}
 	officialDeepSeek := openai.IsDeepSeek(root)
 	keyEnv, _ := cfg.Extra["api_key_env"].(string) // for actionable auth errors
 	keySource, _ := cfg.Extra["api_key_source"].(string)
@@ -133,6 +138,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		keyEnv:           keyEnv,
 		keySource:        keySource,
 		baseURL:          root,
+		requestURL:       requestURL,
 		model:            cfg.Model,
 		nativeAnthropic:  strings.EqualFold(root, defaultBaseURL),
 		deepseek:         officialDeepSeek,
@@ -160,6 +166,7 @@ type client struct {
 	keyEnv           string // api_key_env name, surfaced in auth errors
 	keySource        string // source of keyEnv, surfaced in auth errors
 	baseURL          string
+	requestURL       string
 	model            string
 	nativeAnthropic  bool   // first-party endpoint: documented default-5m cache-write pricing applies
 	deepseek         bool   // official DeepSeek Anthropic endpoint: unsigned reasoning replay + automatic cache
@@ -224,7 +231,7 @@ func (c *client) MissingToolCallReasoningWarningIdentity() string {
 		protocol = "deepseek-anthropic"
 	}
 	return strings.Join([]string{
-		"anthropic", strings.TrimSpace(c.name), strings.TrimSpace(c.baseURL),
+		"anthropic", strings.TrimSpace(c.name), strings.TrimSpace(c.requestURL),
 		strings.TrimSpace(c.model), protocol, strings.TrimSpace(c.thinking), strings.TrimSpace(c.effort),
 	}, "\x00")
 }
@@ -291,7 +298,7 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 	bufPool.Put(buf)
 
 	newReq := func(ctx context.Context) (*http.Request, error) {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(body))
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.requestURL, bytes.NewReader(body))
 		if err != nil {
 			return nil, err
 		}
@@ -380,6 +387,7 @@ func (c *client) buildRequest(_ context.Context, req provider.Request) anthReque
 			} else if c.thinking == "adaptive" && m.ReasoningContent != "" && m.ReasoningSignature != "" {
 				blocks = append(blocks, contentBlock{Type: "thinking", Thinking: m.ReasoningContent, Signature: m.ReasoningSignature})
 			}
+			blocks = appendServerSearchBlocks(blocks, m.ServerSearch)
 			if m.Content != "" {
 				blocks = append(blocks, contentBlock{Type: "text", Text: m.Content})
 			}
@@ -538,7 +546,8 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 	}
 
 	tools := map[int]*provider.ToolCall{} // tool_use blocks, keyed by content index
-	argBuckets := map[int]int{}           // last emitted 2KB progress bucket per block
+	searches := newSearchStream()
+	argBuckets := map[int]int{} // last emitted 2KB progress bucket per block
 	var inTok, outTok, cacheCreate, cacheRead int
 	var stopReason string
 	haveUsage := false
@@ -589,27 +598,9 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 				mergeUsage(ev.Message.Usage)
 			}
 		case "content_block_start":
-			if ev.ContentBlock != nil {
-				switch ev.ContentBlock.Type {
-				case "tool_use":
-					tc := &provider.ToolCall{ID: ev.ContentBlock.ID, Name: ev.ContentBlock.Name}
-					tools[ev.Index] = tc
-					if !send(provider.Chunk{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: tc.ID, Name: tc.Name}}) {
-						return
-					}
-				case "web_search_tool_result":
-					// Search results are delivered inline in content_block.content as a
-					// JSON array of result objects (title, url, encrypted_content).
-					// Only the model sees the plain text; we surface titles and URLs.
-					// server_tool_use blocks (the model initiating the search) are
-					// intentionally skipped — the API executes them server-side and
-					// the results appear here.
-					formatted := formatWebSearchResults(ev.ContentBlock.Content)
-					if formatted != "" {
-						if !send(provider.Chunk{Type: provider.ChunkText, Text: formatted}) {
-							return
-						}
-					}
+			if chunk := beginContentBlock(ev.Index, ev.ContentBlock, tools, searches); chunk != nil {
+				if !send(*chunk) {
+					return
 				}
 			}
 		case "content_block_delta":
@@ -645,6 +636,11 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 						if !send(provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: tc.ID, Name: tc.Name}, ArgChars: len(tc.Arguments)}) {
 							return
 						}
+					}
+				}
+				if next := searches.argsDelta(ev.Index, ev.Delta.PartialJSON); next != nil {
+					if !send(provider.Chunk{Type: provider.ChunkServerSearch, ServerSearch: next}) {
+						return
 					}
 				}
 			}
@@ -754,42 +750,6 @@ func mapStopReason(s string) string {
 	}
 }
 
-// webSearchResult is a single result from a web_search_tool_result block.
-type webSearchResult struct {
-	URL      string `json:"url"`
-	Title    string `json:"title"`
-	Text     string `json:"text"`
-	SiteName string `json:"site_name"`
-}
-
-// formatWebSearchResults parses a web_search_tool_result content array
-// and formats titles and URLs as human-readable text. DeepSeek returns
-// encrypted_content rather than plain text at the transport layer; the
-// model still sees the original content.
-func formatWebSearchResults(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var results []webSearchResult
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range results {
-		if r.Title == "" && r.URL == "" {
-			continue
-		}
-		fmt.Fprintf(&b, "\n- **%s**", r.Title)
-		if r.URL != "" {
-			fmt.Fprintf(&b, "\n  <%s>", r.URL)
-		}
-	}
-	if b.Len() == 0 {
-		return ""
-	}
-	return "\n" + b.String() + "\n"
-}
-
 // Messages API wire protocol
 
 const cacheWrite5MinuteInputMultiplier = 1.25
@@ -887,14 +847,8 @@ type streamEvent struct {
 	Message *struct {
 		Usage *wireUsage `json:"usage"`
 	} `json:"message"`
-	ContentBlock *struct {
-		Type      string          `json:"type"`
-		ID        string          `json:"id"`
-		Name      string          `json:"name"`
-		ToolUseID string          `json:"tool_use_id"` // web_search_tool_result
-		Content   json.RawMessage `json:"content"`     // web_search_tool_result: array of result objects
-	} `json:"content_block"`
-	Delta *struct {
+	ContentBlock *streamContentBlock `json:"content_block"`
+	Delta        *struct {
 		Type             string          `json:"type"`         // text_delta | thinking_delta | signature_delta | input_json_delta | web_search_tool_result_delta
 		Text             string          `json:"text"`         // text_delta
 		Thinking         string          `json:"thinking"`     // thinking_delta

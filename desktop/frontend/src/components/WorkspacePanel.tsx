@@ -56,8 +56,16 @@ import type {
   RewindResultView,
   WorkspaceChangeDetailView,
   WorkspaceChangesView,
+  WireCompletionSummary,
 } from "../lib/types";
 import { workspaceGitStatusLabel } from "../lib/workspaceChanges";
+import {
+  completionGapLabel,
+  completionPresetLabel,
+  completionReviewLabel,
+  completionVerdictLabel,
+} from "../lib/completionSummaryDisplay";
+import { completionSummaryNeedsAttention } from "../lib/completionSummary";
 import { formatWorkspaceReference, WORKSPACE_REF_DRAG_TYPE } from "../lib/workspaceDrag";
 import { formatSelectionReference, languageFor } from "../lib/selectedTextContext";
 import { cleanGitDiff } from "../lib/diff";
@@ -209,6 +217,7 @@ export function WorkspacePanel({
   workspaceMemoryKey: workspaceMemoryKeyProp,
   workspaceMemoryVisitId: workspaceMemoryVisitIdProp,
   creationMode = false,
+  completionSummary,
 }: {
   open: boolean;
   tabId?: string;
@@ -234,6 +243,7 @@ export function WorkspacePanel({
   workspaceMemoryKey?: string;
   workspaceMemoryVisitId?: number;
   creationMode?: boolean;
+  completionSummary?: WireCompletionSummary;
 }) {
   const t = useT();
   const workspaceTabId = tabId ?? "";
@@ -1715,6 +1725,35 @@ export function WorkspacePanel({
             </div>
           ) : viewMode === "changed" && !selectedPath ? (
             <div className="workspace-git-history">
+              {completionSummary && (
+                <section
+                  className={`workspace-note workspace-completion-summary${completionSummaryNeedsAttention(completionSummary) ? " workspace-completion-summary--attention" : ""}`}
+                  aria-label={t("completion.panelTitle")}
+                >
+                  <div className="workspace-completion-summary__head">
+                    <strong>{t("completion.panelTitle")}</strong>
+                    <span>{completionPresetLabel(completionSummary.preset, t)}</span>
+                    <span>{completionVerdictLabel(completionSummary.verdict, t)}</span>
+                  </div>
+                  <div className="workspace-completion-summary__metrics">
+                    <span>{t("completion.mutations", { count: completionSummary.mutations })}</span>
+                    <span>{t("completion.checksPassed", { count: completionSummary.checks_passed })}</span>
+                    <span className={completionSummary.checks_failed > 0 ? "workspace-completion-summary__metric--attention" : undefined}>
+                      {t("completion.checksFailed", { count: completionSummary.checks_failed })}
+                    </span>
+                    <span className={completionSummary.checks_suppressed > 0 ? "workspace-completion-summary__metric--attention" : undefined}>
+                      {t("completion.checksSkipped", { count: completionSummary.checks_suppressed })}
+                    </span>
+                  </div>
+                  <div className="workspace-completion-summary__details">
+                    <span>{t("completion.review", { status: completionReviewLabel(completionSummary.review, t) })}</span>
+                    {(completionSummary.gap_kinds?.length ?? 0) > 0 && (
+                      <span>{t("completion.gaps", { gaps: completionSummary.gap_kinds!.map((gap) => completionGapLabel(gap, t)).join(t("notice.deliveryRequirementSeparator")) })}</span>
+                    )}
+                    {completionSummary.constraint_degraded && <span>{t("completion.constraintsLimited")}</span>}
+                  </div>
+                </section>
+              )}
               {workspaceGitWarning && (
                 <div className="workspace-note workspace-note--warning" role="status">
                   {workspaceGitWarning}
