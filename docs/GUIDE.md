@@ -1016,6 +1016,14 @@ Markdown files under `.reasonix/commands/` (project) or `~/.reasonix/commands/`
 (`git/commit.md` → `/git:commit`). The body is a prompt template; invoking the
 command sends it as a turn.
 
+A hand-authored Skill may keep `runAs` as its default and opt into a per-call
+choice with `allowed-run-modes: inline, subagent`. Pass `run_mode` to
+`run_skill`, use `/<name> --run-mode=inline|subagent <task>`, or omit the mode in
+an interactive frontend to be asked before the Skill starts. Inline execution
+uses the parent conversation and its permissions; subagent execution keeps the
+Skill's isolated context and tool allowlist. Headless calls use the declared
+`runAs` default when no mode is supplied.
+
 ### Subagent profiles
 
 Subagent profiles are manual Skills with `runAs: subagent` and

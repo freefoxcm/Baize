@@ -103,14 +103,15 @@ type RootInfo struct {
 
 // AssetEntry is one skill or command candidate.
 type AssetEntry struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Scope       string `json:"scope,omitempty"`
-	Path        string `json:"path"`
-	Status      string `json:"status"` // winner | shadowed | disabled | error
-	WinnerPath  string `json:"winner_path,omitempty"`
-	Error       string `json:"error,omitempty"`
-	RunAs       string `json:"run_as,omitempty"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Scope       string   `json:"scope,omitempty"`
+	Path        string   `json:"path"`
+	Status      string   `json:"status"` // winner | shadowed | disabled | error
+	WinnerPath  string   `json:"winner_path,omitempty"`
+	Error       string   `json:"error,omitempty"`
+	RunAs       string   `json:"run_as,omitempty"`
+	RunModes    []string `json:"run_modes,omitempty"`
 }
 
 // HookReport covers hook configuration.

@@ -19,13 +19,15 @@ const (
 // that Store.List omits. Used by capability diagnostics so rules stay aligned
 // with discovery without changing List/Read behavior.
 type Candidate struct {
-	Name        string
-	Description string
-	Scope       Scope
-	Path        string
-	Status      CandidateStatus
-	WinnerPath  string // set when Status is shadowed
-	RunAs       RunAs
+	Name            string
+	Description     string
+	Scope           Scope
+	Path            string
+	Status          CandidateStatus
+	WinnerPath      string // set when Status is shadowed
+	RunAs           RunAs
+	RunModes        []RunAs
+	InvalidRunModes []string
 }
 
 // Inspection is a read-only snapshot of skill discovery for diagnostics.
@@ -61,6 +63,7 @@ func (s *Store) Inspect() Inspection {
 					winnerByName[sk.Name] = Candidate{
 						Name: sk.Name, Description: sk.Description, Scope: sk.Scope,
 						Path: sk.Path, Status: CandidateWinner, RunAs: sk.RunAs,
+						RunModes: sk.RunModes(), InvalidRunModes: append([]string(nil), sk.InvalidRunModes...),
 					}
 				}
 			}
@@ -75,6 +78,7 @@ func (s *Store) Inspect() Inspection {
 					winnerByName[sk.Name] = Candidate{
 						Name: sk.Name, Description: sk.Description, Scope: sk.Scope,
 						Path: sk.Path, Status: CandidateWinner, RunAs: sk.RunAs,
+						RunModes: sk.RunModes(), InvalidRunModes: append([]string(nil), sk.InvalidRunModes...),
 					}
 				}
 			}
@@ -99,17 +103,20 @@ func classifyCandidate(sk Skill, disabled bool, winners map[string]Candidate) []
 		return []Candidate{{
 			Name: sk.Name, Description: sk.Description, Scope: sk.Scope,
 			Path: sk.Path, Status: CandidateDisabled, RunAs: sk.RunAs,
+			RunModes: sk.RunModes(), InvalidRunModes: append([]string(nil), sk.InvalidRunModes...),
 		}}
 	}
 	if win, ok := winners[sk.Name]; ok {
 		return []Candidate{{
 			Name: sk.Name, Description: sk.Description, Scope: sk.Scope,
 			Path: sk.Path, Status: CandidateShadowed, WinnerPath: win.Path, RunAs: sk.RunAs,
+			RunModes: sk.RunModes(), InvalidRunModes: append([]string(nil), sk.InvalidRunModes...),
 		}}
 	}
 	return []Candidate{{
 		Name: sk.Name, Description: sk.Description, Scope: sk.Scope,
 		Path: sk.Path, Status: CandidateWinner, RunAs: sk.RunAs,
+		RunModes: sk.RunModes(), InvalidRunModes: append([]string(nil), sk.InvalidRunModes...),
 	}}
 }
 

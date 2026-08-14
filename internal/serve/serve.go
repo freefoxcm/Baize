@@ -2145,15 +2145,25 @@ func previewTitle(first string) string {
 // skills lists discoverable skills.
 func (s *Server) skills(w http.ResponseWriter, _ *http.Request) {
 	type skillEntry struct {
-		Name        string `json:"name"`
-		Scope       string `json:"scope"`
-		Subagent    bool   `json:"subagent"`
-		Description string `json:"description"`
+		Name           string   `json:"name"`
+		Scope          string   `json:"scope"`
+		Subagent       bool     `json:"subagent"`
+		DefaultRunMode string   `json:"defaultRunMode"`
+		RunModes       []string `json:"runModes"`
+		Description    string   `json:"description"`
 	}
 	raw := s.ctl().Skills()
 	out := make([]skillEntry, len(raw))
 	for i, sk := range raw {
-		out[i] = skillEntry{Name: sk.Name, Scope: string(sk.Scope), Subagent: sk.RunAs == "subagent", Description: sk.Description}
+		modes := sk.RunModes()
+		runModes := make([]string, len(modes))
+		for j, mode := range modes {
+			runModes[j] = string(mode)
+		}
+		out[i] = skillEntry{
+			Name: sk.Name, Scope: string(sk.Scope), Subagent: sk.RunAs == "subagent",
+			DefaultRunMode: string(sk.RunAs), RunModes: runModes, Description: sk.Description,
+		}
 	}
 	writeJSON(w, out)
 }

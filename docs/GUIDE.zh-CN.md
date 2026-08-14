@@ -798,6 +798,12 @@ RPC 调用。两者都可按服务器覆盖。
 `review.md` 即 `/review`，子目录构成命名空间（`git/commit.md` → `/git:commit`）。文件正文
 是 prompt 模板，调用即作为一轮对话发出。
 
+手写 Skill 可以保留 `runAs` 作为默认值，并通过
+`allowed-run-modes: inline, subagent` 开启按次选择。可以给 `run_skill` 传入
+`run_mode`，使用 `/<name> --run-mode=inline|subagent <任务>`，或在交互式前端省略模式，
+由宿主在 Skill 启动前询问。inline 使用父会话上下文及其权限；subagent 保持隔离上下文和
+Skill 工具白名单。headless 调用未指定模式时使用声明的 `runAs` 默认值。
+
 ### 子智能体 Profile
 
 子智能体 profile 是带有 `runAs: subagent` 和 `invocation: manual` 的手动 Skill。

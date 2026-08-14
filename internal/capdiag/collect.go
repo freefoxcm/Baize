@@ -199,10 +199,7 @@ func collectSkills(root, home, reasonixHome string, cfg *config.Config, disp fun
 		})
 	}
 	for _, c := range insp.Candidates {
-		ent := AssetEntry{
-			Name: c.Name, Description: c.Description, Scope: string(c.Scope),
-			Path: disp(c.Path), Status: string(c.Status), RunAs: string(c.RunAs),
-		}
+		ent := skillAssetEntry(c, disp)
 		if c.WinnerPath != "" {
 			ent.WinnerPath = disp(c.WinnerPath)
 		}
@@ -210,6 +207,9 @@ func collectSkills(root, home, reasonixHome string, cfg *config.Config, disp fun
 		switch c.Status {
 		case skill.CandidateWinner:
 			rep.Winners++
+			if issue := invalidSkillRunModesIssue(c, disp); issue != nil {
+				issues = append(issues, *issue)
+			}
 			if skill.MissingDescription(c.Description) {
 				issues = append(issues, Issue{
 					Severity: "warning", Code: "skill.missing_description", Subsystem: "skills",
