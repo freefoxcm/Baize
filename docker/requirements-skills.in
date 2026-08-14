@@ -1,0 +1,7 @@
+requests
+PyYAML
+Jinja2
+pandas
+openpyxl
+matplotlib
+reportlab

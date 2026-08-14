@@ -6,6 +6,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"reasonix/internal/config"
+	"reasonix/internal/serve"
 )
 
 func TestReadServeTokenFileTrimsSingleLine(t *testing.T) {
@@ -50,6 +53,39 @@ func TestReadServeTokenFileRejectsLoosePermissions(t *testing.T) {
 	}
 	if _, err := readServeTokenFile(p); err == nil || !strings.Contains(err.Error(), "chmod 600") {
 		t.Fatalf("loose-permission token file accepted (err=%v)", err)
+	}
+}
+
+func TestReadServePasswordHashFile(t *testing.T) {
+	hash, err := serve.HashPassword("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "password.hash")
+	if err := os.WriteFile(p, []byte(hash+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readServePasswordHashFile(p)
+	if err != nil {
+		t.Fatalf("readServePasswordHashFile: %v", err)
+	}
+	if got != hash {
+		t.Fatal("password hash file changed while reading")
+	}
+	if err := os.WriteFile(p, []byte("not-bcrypt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readServePasswordHashFile(p); err == nil {
+		t.Fatal("invalid bcrypt hash accepted")
+	}
+}
+
+func TestResolveServeConfigRejectsPasswordAndHashFile(t *testing.T) {
+	_, err := resolveServeConfig(config.ServeConfig{}, serveConfigOverrides{
+		auth: "password", password: "secret", passwordHashFile: "unused",
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("conflicting password sources accepted (err=%v)", err)
 	}
 }
 

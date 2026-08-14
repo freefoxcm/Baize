@@ -257,6 +257,7 @@ reasonix serve --auth token
 reasonix serve --dir /srv/project --auth token
 reasonix serve --addr 0.0.0.0:8787 --auth token
 reasonix serve --auth password --password 'temporary-password'
+reasonix serve --auth password --password-hash-file /run/secrets/reasonix-password.hash
 ```
 
 Token mode prints a share URL with `#token=...`; the Web page exchanges the
@@ -266,6 +267,7 @@ token out of request URLs, browser history, referrers, and access logs. Pass `--
 `--password` at startup or a stored bcrypt hash:
 
 ```bash
+reasonix serve --hash-password # securely prompts on a TTY
 reasonix serve --hash-password --password 'strong-password'
 
 # <Reasonix home>/config.toml

@@ -50,13 +50,14 @@ type serveFrontendResources struct {
 }
 
 type serveConfigOverrides struct {
-	command      string
-	authExplicit bool
-	auth         string
-	token        string
-	tokenFile    string
-	password     string
-	behindProxy  bool
+	command          string
+	authExplicit     bool
+	auth             string
+	token            string
+	tokenFile        string
+	password         string
+	passwordHashFile string
+	behindProxy      bool
 }
 
 func resolveServeConfig(base config.ServeConfig, overrides serveConfigOverrides) (config.ServeConfig, error) {
@@ -82,6 +83,16 @@ func resolveServeConfig(base config.ServeConfig, overrides serveConfigOverrides)
 		return cfg, err
 	}
 	cfg.AuthMode = mode
+	if overrides.password != "" && overrides.passwordHashFile != "" {
+		return cfg, fmt.Errorf("--password and --password-hash-file cannot be used together")
+	}
+	if overrides.passwordHashFile != "" && mode == "password" {
+		hash, err := readServePasswordHashFile(overrides.passwordHashFile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.PasswordHash = hash
+	}
 	if overrides.password != "" && mode == "password" {
 		hash, err := serve.HashPassword(overrides.password)
 		if err != nil {
@@ -90,7 +101,7 @@ func resolveServeConfig(base config.ServeConfig, overrides serveConfigOverrides)
 		cfg.PasswordHash = hash
 	}
 	if mode == "password" && strings.TrimSpace(cfg.PasswordHash) == "" {
-		return cfg, fmt.Errorf("auth mode password requires --password or serve.password_hash")
+		return cfg, fmt.Errorf("auth mode password requires --password or serve.password_hash (alternatively --password-hash-file)")
 	}
 	return cfg, nil
 }

@@ -229,6 +229,7 @@ reasonix serve --auth token
 reasonix serve --dir /srv/project --auth token
 reasonix serve --addr 0.0.0.0:8787 --auth token
 reasonix serve --auth password --password 'temporary-password'
+reasonix serve --auth password --password-hash-file /run/secrets/reasonix-password.hash
 ```
 
 Token 模式会在终端打印带 `#token=...` 的分享链接；Web 页面会先将 fragment 换成
@@ -237,6 +238,7 @@ Referrer 和访问日志。可通过 `--token` 或 `[serve].token`
 复用固定 token。Password 模式必须在启动时传 `--password`，或在配置里保存 bcrypt hash：
 
 ```bash
+reasonix serve --hash-password # 从 TTY 安全读取密码
 reasonix serve --hash-password --password 'strong-password'
 
 # <Reasonix home>/config.toml
