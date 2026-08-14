@@ -75,7 +75,7 @@ jobs:
       - run: node --check internal/serve/assets/baize.js
       - name: Focused Windows tests
         shell: pwsh
-        run: go test ./internal/cli ./internal/serve ./internal/i18n ./internal/boot -count=1
+        run: pwsh -NoProfile -File scripts/test-windows-focused.ps1
       - name: Build CLI
         shell: pwsh
         run: |

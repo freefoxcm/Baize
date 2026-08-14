@@ -620,6 +620,7 @@ type Client struct {
 	toolsListed  bool
 	toolAdapters []tool.Tool
 	progressID   atomic.Uint64
+	httpSession  clientHTTPSessionState
 }
 
 func (c *Client) auxiliaryClient(ctx context.Context) (*Client, context.Context, context.CancelFunc, error) {
@@ -1507,17 +1508,6 @@ func (c *Client) withProgress(ctx context.Context, method string, params any) (a
 	return copyParams, unregister
 }
 
-func (c *Client) callTransport(ctx context.Context, method string, params any) (json.RawMessage, error) {
-	res, err := c.t.call(ctx, method, params)
-	if err == nil || method == "initialize" || !isHTTPSessionExpired(err) {
-		return res, err
-	}
-	if initErr := c.initializeSession(ctx, false); initErr != nil {
-		return nil, fmt.Errorf("%w; reinitialize failed: %w", err, initErr)
-	}
-	return c.t.call(ctx, method, params)
-}
-
 func (c *Client) contextWithCallTimeout(ctx context.Context, method string, params any) (context.Context, context.CancelFunc, time.Duration) {
 	if _, ok := ctx.Deadline(); ok {
 		return ctx, nil, 0
@@ -1575,12 +1565,11 @@ func formatTimeout(timeout time.Duration) string {
 }
 
 func (c *Client) notify(ctx context.Context, method string, params any) error {
+	if _, ok := c.t.(*httpTransport); ok {
+		c.httpSession.mu.Lock()
+		defer c.httpSession.mu.Unlock()
+	}
 	return c.t.notify(ctx, method, params)
-}
-
-func isHTTPSessionExpired(err error) bool {
-	var expired *httpSessionExpiredError
-	return errors.As(err, &expired)
 }
 
 func (c *Client) initialize(ctx context.Context) error {
@@ -1588,11 +1577,20 @@ func (c *Client) initialize(ctx context.Context) error {
 }
 
 func (c *Client) initializeSession(ctx context.Context, recordCapabilities bool) error {
+	return c.initializeSessionWith(ctx, recordCapabilities, c.call, c.notify)
+}
+
+func (c *Client) initializeSessionWith(
+	ctx context.Context,
+	recordCapabilities bool,
+	call func(context.Context, string, any) (json.RawMessage, error),
+	notify func(context.Context, string, any) error,
+) error {
 	capabilities := map[string]any{}
 	if len(mcpRoots(c.spec.WorkspaceRoot)) > 0 {
 		capabilities["roots"] = map[string]any{"listChanged": false}
 	}
-	res, err := c.call(ctx, "initialize", map[string]any{
+	res, err := call(ctx, "initialize", map[string]any{
 		"protocolVersion": protocolVersion,
 		"capabilities":    capabilities,
 		"clientInfo":      map[string]any{"name": "reasonix", "version": "dev"},
@@ -1602,7 +1600,7 @@ func (c *Client) initializeSession(ctx context.Context, recordCapabilities bool)
 	}
 	if !recordCapabilities {
 		// Runtime session refresh must not rewrite startup-only capability flags.
-		return c.notify(ctx, "notifications/initialized", map[string]any{})
+		return notify(ctx, "notifications/initialized", map[string]any{})
 	}
 	// Record which optional capabilities the server advertises. Presence of the
 	// key (even with an empty object) signals support.
@@ -1616,7 +1614,7 @@ func (c *Client) initializeSession(ctx context.Context, recordCapabilities bool)
 	_, c.hasPrompts = ir.Capabilities["prompts"]
 	_, c.hasResources = ir.Capabilities["resources"]
 
-	return c.notify(ctx, "notifications/initialized", map[string]any{})
+	return notify(ctx, "notifications/initialized", map[string]any{})
 }
 
 type mcpTool struct {

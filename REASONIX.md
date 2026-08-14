@@ -86,6 +86,12 @@ go test ./internal/tool/builtin/ ./internal/boot/  # catches tool/boot test brea
 shows up in `go vet`, and the CI round trip that catches it instead costs ten
 minutes.
 
+On native Windows, run `pwsh -NoProfile -File scripts/test-windows-focused.ps1`
+instead of `go test ./...`. It covers the stable Windows kernel/frontend set,
+including MCP plugins; Linux CI remains authoritative for the full suite that
+requires POSIX shells, symlink privileges, or external E2E fixtures. A changed
+package must still receive its own focused test when it is outside that set.
+
 ## Baize Windows release build
 
 - The runnable Windows deliverable is always `bin/reasonix.exe`. Never build or
