@@ -229,8 +229,12 @@ func isHTTPSessionExpiredResponse(status int, body []byte) bool {
 	if status != http.StatusNotFound {
 		return false
 	}
+	trimmed := bytes.TrimSpace(body)
+	if strings.EqualFold(string(trimmed), "session not found") {
+		return true
+	}
 	var resp rpcResponse
-	if err := json.Unmarshal(bytes.TrimSpace(body), &resp); err != nil || resp.Error == nil {
+	if err := json.Unmarshal(trimmed, &resp); err != nil || resp.Error == nil {
 		return false
 	}
 	return resp.Error.Code == -32001 && strings.Contains(strings.ToLower(resp.Error.Message), "session not found")

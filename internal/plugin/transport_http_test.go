@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -367,6 +368,199 @@ func TestHTTPTransportReinitializesExpiredSession(t *testing.T) {
 	}
 	if got := toolCallCount.Load(); got != 2 {
 		t.Errorf("tools/call count = %d, want 2", got)
+	}
+}
+
+func TestHTTPSessionExpiredResponseRecognition(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{name: "sdk plaintext", status: http.StatusNotFound, body: "session not found\n", want: true},
+		{name: "sdk plaintext case insensitive", status: http.StatusNotFound, body: " Session Not Found ", want: true},
+		{name: "json rpc", status: http.StatusNotFound, body: `{"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"Session not found"}}`, want: true},
+		{name: "ordinary 404", status: http.StatusNotFound, body: "route not found"},
+		{name: "partial plaintext", status: http.StatusNotFound, body: "MCP session not found"},
+		{name: "wrong json code", status: http.StatusNotFound, body: `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Session not found"}}`},
+		{name: "wrong status", status: http.StatusInternalServerError, body: "session not found"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isHTTPSessionExpiredResponse(tt.status, []byte(tt.body)); got != tt.want {
+				t.Fatalf("isHTTPSessionExpiredResponse(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHTTPTransportPlaintextExpiryRecoversConcurrentCallsOnce(t *testing.T) {
+	var initializeCount atomic.Int32
+	var toolCallCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     *int   `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+		if req.Method == "initialize" {
+			n := initializeCount.Add(1)
+			w.Header().Set("Mcp-Session-Id", fmt.Sprintf("sess-%d", n))
+			writeHTTPRPCResult(w, req.ID, map[string]any{
+				"protocolVersion": protocolVersion,
+				"serverInfo":      map[string]any{"name": "h", "version": "0"},
+			})
+			return
+		}
+		if req.ID == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		switch req.Method {
+		case "tools/list":
+			writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []map[string]any{{
+				"name": "greet", "description": "Greet someone.", "inputSchema": map[string]any{"type": "object"},
+			}}})
+		case "tools/call":
+			toolCallCount.Add(1)
+			if r.Header.Get("Mcp-Session-Id") == "sess-1" {
+				http.Error(w, "session not found", http.StatusNotFound)
+				return
+			}
+			writeHTTPRPCResult(w, req.ID, map[string]any{
+				"content": []map[string]any{{"type": "text", "text": "recovered"}},
+			})
+		default:
+			http.Error(w, "unknown method", http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	host, tools, err := StartAll(context.Background(), []Spec{{Name: "h", Type: "http", URL: srv.URL}})
+	if err != nil {
+		t.Fatalf("StartAll: %v", err)
+	}
+	defer host.Close()
+
+	const callers = 8
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Go(func() {
+			got, err := tools[0].Execute(context.Background(), json.RawMessage(`{}`))
+			if err == nil && got != "recovered" {
+				err = fmt.Errorf("Execute = %q, want recovered", got)
+			}
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := initializeCount.Load(); got != 2 {
+		t.Errorf("initialize count = %d, want 2", got)
+	}
+	if got := toolCallCount.Load(); got != callers+1 {
+		t.Errorf("tools/call count = %d, want %d", got, callers+1)
+	}
+}
+
+func TestHTTPTransportSessionRecoveryFailureDoesNotLoop(t *testing.T) {
+	tests := []struct {
+		name           string
+		failInitialize bool
+		wantError      string
+		wantToolCalls  int32
+	}{
+		{name: "reinitialize fails", failInitialize: true, wantError: "reinitialize failed", wantToolCalls: 1},
+		{name: "single retry fails", wantError: "retry failed", wantToolCalls: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var initializeCount atomic.Int32
+			var toolCallCount atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					ID     *int   `json:"id"`
+					Method string `json:"method"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				if req.Method == "initialize" {
+					n := initializeCount.Add(1)
+					if n == 2 && tt.failInitialize {
+						http.Error(w, "initialize unavailable", http.StatusServiceUnavailable)
+						return
+					}
+					w.Header().Set("Mcp-Session-Id", fmt.Sprintf("sess-%d", n))
+					writeHTTPRPCResult(w, req.ID, map[string]any{
+						"protocolVersion": protocolVersion,
+						"serverInfo":      map[string]any{"name": "h", "version": "0"},
+					})
+					return
+				}
+				if req.ID == nil {
+					w.WriteHeader(http.StatusAccepted)
+					return
+				}
+				if req.Method == "tools/list" {
+					writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []map[string]any{{
+						"name": "greet", "description": "Greet someone.", "inputSchema": map[string]any{"type": "object"},
+					}}})
+					return
+				}
+				if req.Method == "tools/call" {
+					n := toolCallCount.Add(1)
+					if n == 1 {
+						http.Error(w, "session not found", http.StatusNotFound)
+						return
+					}
+					http.Error(w, "retry failed", http.StatusInternalServerError)
+					return
+				}
+				http.Error(w, "unknown method", http.StatusBadRequest)
+			}))
+			defer srv.Close()
+
+			host, tools, err := StartAll(context.Background(), []Spec{{Name: "h", Type: "http", URL: srv.URL}})
+			if err != nil {
+				t.Fatalf("StartAll: %v", err)
+			}
+			defer host.Close()
+			_, err = tools[0].Execute(context.Background(), json.RawMessage(`{}`))
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("Execute error = %v, want containing %q", err, tt.wantError)
+			}
+			if got := initializeCount.Load(); got != 2 {
+				t.Errorf("initialize count = %d, want 2", got)
+			}
+			if got := toolCallCount.Load(); got != tt.wantToolCalls {
+				t.Errorf("tools/call count = %d, want %d", got, tt.wantToolCalls)
+			}
+		})
+	}
+}
+
+func TestHTTPTransportInitializeExpiryDoesNotRetry(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, "session not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	_, _, err := StartAll(context.Background(), []Spec{{Name: "h", Type: "http", URL: srv.URL}})
+	if err == nil {
+		t.Fatal("StartAll succeeded, want initialize failure")
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("request count = %d, want 1", got)
 	}
 }
 
