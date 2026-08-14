@@ -933,7 +933,10 @@ func TestServeIndexRendersAndReloadsExtensions(t *testing.T) {
 		"case 'extension_status': if(e.extension)renderExtensionSurface(e.extension); break;",
 		"const node=el('div','notice'",
 		"post('/extensions/reload',{})",
+		"{cmd:'reload',sig:'/reload',desc:__('cmd_reload'),group:'system'}",
 		"{cmd:'reload-cmd',sig:'/reload-cmd'",
+		"'cmd_reload': 'Reload tools, skills, MCP and extensions'",
+		"'cmd_reload': '重新加载工具、技能、MCP 和扩展'",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing extension support %q", want)
