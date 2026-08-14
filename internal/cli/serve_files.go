@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/term"
+
 	"reasonix/internal/fileutil"
 )
 
@@ -15,6 +18,21 @@ import (
 // secret never appears in argv (visible via ps). The file must hold a single
 // non-empty line and, on POSIX systems, must not be group/world accessible.
 func readServeTokenFile(path string) (string, error) {
+	return readServeSecretFile(path, "token")
+}
+
+func readServePasswordHashFile(path string) (string, error) {
+	hash, err := readServeSecretFile(path, "password hash")
+	if err != nil {
+		return "", err
+	}
+	if _, err := bcrypt.Cost([]byte(hash)); err != nil {
+		return "", fmt.Errorf("password hash file %s does not contain a valid bcrypt hash: %w", path, err)
+	}
+	return hash, nil
+}
+
+func readServeSecretFile(path, kind string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -25,26 +43,46 @@ func readServeTokenFile(path string) (string, error) {
 		return "", err
 	}
 	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("token file %s must be a regular file", path)
+		return "", fmt.Errorf("%s file %s must be a regular file", kind, path)
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
-		return "", fmt.Errorf("token file %s must not be group/world accessible (chmod 600)", path)
+		return "", fmt.Errorf("%s file %s must not be group/world accessible (chmod 600)", kind, path)
 	}
 	b, err := io.ReadAll(io.LimitReader(f, (64<<10)+1))
 	if err != nil {
 		return "", err
 	}
 	if len(b) > 64<<10 {
-		return "", fmt.Errorf("token file %s is too large", path)
+		return "", fmt.Errorf("%s file %s is too large", kind, path)
 	}
-	tok := strings.TrimSpace(string(b))
-	if tok == "" {
-		return "", fmt.Errorf("token file %s is empty", path)
+	secret := strings.TrimSpace(string(b))
+	if secret == "" {
+		return "", fmt.Errorf("%s file %s is empty", kind, path)
 	}
-	if strings.ContainsAny(tok, "\r\n") {
-		return "", fmt.Errorf("token file %s must hold a single line", path)
+	if strings.ContainsAny(secret, "\r\n") {
+		return "", fmt.Errorf("%s file %s must hold a single line", kind, path)
 	}
-	return tok, nil
+	return secret, nil
+}
+
+func promptServePassword(in *os.File, out io.Writer) (string, error) {
+	fd := int(in.Fd())
+	if !term.IsTerminal(fd) {
+		return "", fmt.Errorf("--hash-password requires --password when stdin is not a terminal")
+	}
+	if _, err := fmt.Fprint(out, "Password: "); err != nil {
+		return "", err
+	}
+	b, err := term.ReadPassword(fd)
+	_, _ = fmt.Fprintln(out)
+	if err != nil {
+		return "", err
+	}
+	password := string(b)
+	if password == "" {
+		return "", fmt.Errorf("password must not be empty")
+	}
+	return password, nil
 }
 
 // writeServeAddrFile records the actual bound listen address (host:port) so a

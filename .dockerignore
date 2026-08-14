@@ -1,0 +1,13 @@
+.git
+.github
+.pnpm-store
+.reasonix
+.worktrees
+bin
+dist
+temp
+desktop/node_modules
+desktop/frontend/node_modules
+**/*.exe
+**/*.log
+**/.DS_Store

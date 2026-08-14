@@ -806,7 +806,8 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	auth := fs.String("auth", "", authHelp)
 	token := fs.String("token", "", "pre-shared token for auth=token (auto-generated if empty)")
 	password := fs.String("password", "", "password for auth=password (use --hash-password to store a hash instead)")
-	hashPassword := fs.Bool("hash-password", false, "print a bcrypt hash of --password and exit")
+	passwordHashFile := fs.String("password-hash-file", "", "read the auth=password bcrypt hash from this owner-only file")
+	hashPassword := fs.Bool("hash-password", false, "print a bcrypt password hash and exit (prompts on a terminal when --password is omitted)")
 	behindProxy := fs.Bool("behind-proxy", false, "trust X-Forwarded-For / X-Forwarded-Proto headers from a reverse proxy")
 	portFile := fs.String("port-file", "", "write the actual bound listen address (host:port) to this file after binding")
 	tokenFile := fs.String("token-file", "", "read the auth=token pre-shared token from this file (overrides --token; keeps the secret out of argv)")
@@ -846,11 +847,15 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 
 	// --hash-password: generate a bcrypt hash and exit.
 	if *hashPassword {
-		if *password == "" {
-			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "--hash-password requires --password")
-			return 1
+		passwordValue := *password
+		if passwordValue == "" {
+			passwordValue, err = promptServePassword(os.Stdin, os.Stderr)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
+				return 1
+			}
 		}
-		h, err := serve.HashPassword(*password)
+		h, err := serve.HashPassword(passwordValue)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 			return 1
@@ -874,7 +879,8 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 
 	serveCfg, err := resolveServeConfig(cfg.Serve, serveConfigOverrides{
 		command: opts.command, authExplicit: authExplicit, auth: *auth,
-		token: *token, tokenFile: *tokenFile, password: *password, behindProxy: *behindProxy,
+		token: *token, tokenFile: *tokenFile, password: *password,
+		passwordHashFile: *passwordHashFile, behindProxy: *behindProxy,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
