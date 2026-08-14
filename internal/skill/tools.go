@@ -45,6 +45,7 @@ type runSkillTool struct {
 	store           *Store
 	runner          SubagentRunner
 	profileResolver ProfileResolver
+	modeSelector    RunModeSelector
 }
 
 // NewRunSkillTool builds the general skill-invocation tool. runner may be nil
@@ -57,6 +58,12 @@ func NewRunSkillTool(store *Store, runner SubagentRunner, profileResolver ...Pro
 	return &runSkillTool{store: store, runner: runner, profileResolver: pr}
 }
 
+// NewRunSkillToolWithModeSelector enables host-side per-invocation selection
+// for skills that explicitly declare more than one allowed run mode.
+func NewRunSkillToolWithModeSelector(store *Store, runner SubagentRunner, profileResolver ProfileResolver, selector RunModeSelector) tool.Tool {
+	return &runSkillTool{store: store, runner: runner, profileResolver: profileResolver, modeSelector: selector}
+}
+
 func (*runSkillTool) Name() string { return "run_skill" }
 
 // ReadOnly is false: an invoked subagent skill could call writer tools, so
@@ -65,7 +72,7 @@ func (*runSkillTool) Name() string { return "run_skill" }
 func (*runSkillTool) ReadOnly() bool { return false }
 
 func (*runSkillTool) Description() string {
-	return "Invoke a playbook from the Skills index pinned in the system prompt. For the built-in subagent skills (explore / research / review / security_review), prefer the dedicated top-level tools of the same name — they're easier to pick and do the same thing. Pass `name` as the BARE identifier (e.g. 'explore'), NOT the `[🧬 subagent]` tag that follows it in the index. `[🧬 subagent]` skills spawn an isolated subagent — only the final distilled answer returns; supply `arguments` describing the concrete task since the subagent has no other context. Untagged skills are inlined: the body becomes a tool result you read and follow."
+	return "Invoke a playbook from the Skills index pinned in the system prompt. For the built-in subagent skills (explore / research / review / security_review), prefer the dedicated top-level tools of the same name. Pass `name` as the bare identifier, without its display tag. `[🧬 subagent]` skills spawn an isolated subagent; untagged skills are inlined. Skills tagged `[↔ inline|subagent; default ...]` allow either mode for this invocation: pass `run_mode` when the user already chose, otherwise omit it so the host can ask. Subagents receive only `arguments`, so describe the complete task."
 }
 
 func (*runSkillTool) Schema() json.RawMessage {
@@ -74,6 +81,7 @@ func (*runSkillTool) Schema() json.RawMessage {
 "properties":{
   "name":{"type":"string","description":"Skill identifier as it appears in the pinned Skills index (e.g. 'explore', 'review'). Case-sensitive. Just the identifier, not the [🧬 subagent] tag."},
   "arguments":{"type":"string","description":"Free-form arguments. For inline skills: appended as an 'Arguments:' line; the skill's own instructions decide how to use them. For subagent skills: REQUIRED — becomes the entire task the subagent receives."},
+  "run_mode":{"type":"string","enum":["inline","subagent"],"description":"Optional per-invocation mode for a selectable skill. Pass only when the user already chose; otherwise omit it so the host can ask. Fixed-mode skills reject unsupported overrides."},
   "continue_from":{"type":"string","description":"Continue a prior compatible subagent transcript in the current conversation context. Only valid for runAs=subagent skills. Pass only the 'sa_...' value from the prior result's 'Subagent reference: ...' line."}
 },
 "required":["name"]
@@ -84,6 +92,7 @@ func (t *runSkillTool) Execute(ctx context.Context, args json.RawMessage) (strin
 	var p struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
+		RunMode   string `json:"run_mode"`
 		Continue  string `json:"continue_from"`
 		Fork      string `json:"fork_from"`
 	}
@@ -102,6 +111,11 @@ func (t *runSkillTool) Execute(ctx context.Context, args json.RawMessage) (strin
 		return "", fmt.Errorf("run_skill: %w", err)
 	}
 	sk = t.store.Prepare(sk)
+	mode, err := ResolveRunMode(ctx, sk, p.RunMode, t.modeSelector)
+	if err != nil {
+		return "", fmt.Errorf("run_skill: %w", err)
+	}
+	sk.RunAs = mode
 	rawArgs := strings.TrimSpace(p.Arguments)
 	opts := SubagentRunOptions{ContinueFrom: strings.TrimSpace(p.Continue), ForkFrom: strings.TrimSpace(p.Fork)}
 	if opts.ContinueFrom != "" && opts.ForkFrom != "" {
@@ -129,7 +143,8 @@ func (t *runSkillTool) Execute(ctx context.Context, args json.RawMessage) (strin
 
 func (t *runSkillTool) ResolveProfile(args json.RawMessage) *event.Profile {
 	var p struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		RunMode string `json:"run_mode"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return nil
@@ -139,9 +154,21 @@ func (t *runSkillTool) ResolveProfile(args json.RawMessage) *event.Profile {
 		return nil
 	}
 	sk, ok := t.store.Read(name)
-	if !ok || sk.RunAs != RunSubagent {
+	if !ok {
 		return nil
 	}
+	mode := sk.RunAs
+	if strings.TrimSpace(p.RunMode) != "" {
+		requested, valid := normalizeRunMode(p.RunMode)
+		if !valid || !sk.SupportsRunMode(requested) {
+			return nil
+		}
+		mode = requested
+	}
+	if mode != RunSubagent {
+		return nil
+	}
+	sk.RunAs = mode
 	return t.profileForSkill(sk)
 }
 
@@ -155,6 +182,7 @@ type readOnlySkillTool struct {
 	store           *Store
 	runner          SubagentRunner
 	profileResolver ProfileResolver
+	modeSelector    RunModeSelector
 }
 
 // NewReadOnlySkillTool builds an explicitly read-only skill entry point. Inline
@@ -166,6 +194,12 @@ func NewReadOnlySkillTool(store *Store, runner SubagentRunner, profileResolver .
 		pr = profileResolver[0]
 	}
 	return &readOnlySkillTool{store: store, runner: runner, profileResolver: pr}
+}
+
+// NewReadOnlySkillToolWithModeSelector is the selectable-mode counterpart to
+// NewReadOnlySkillTool.
+func NewReadOnlySkillToolWithModeSelector(store *Store, runner SubagentRunner, profileResolver ProfileResolver, selector RunModeSelector) tool.Tool {
+	return &readOnlySkillTool{store: store, runner: runner, profileResolver: profileResolver, modeSelector: selector}
 }
 
 func (*readOnlySkillTool) Name() string { return "read_only_skill" }
@@ -185,7 +219,8 @@ func (*readOnlySkillTool) Schema() json.RawMessage {
 "type":"object",
 "properties":{
   "name":{"type":"string","description":"Skill identifier as it appears in the pinned Skills index. Just the identifier, not the [🧬 subagent] tag."},
-  "arguments":{"type":"string","description":"Free-form arguments. For inline skills: appended as an 'Arguments:' line. For subagent skills: REQUIRED — becomes the read-only subagent's entire task."}
+  "arguments":{"type":"string","description":"Free-form arguments. For inline skills: appended as an 'Arguments:' line. For subagent skills: REQUIRED — becomes the read-only subagent's entire task."},
+  "run_mode":{"type":"string","enum":["inline","subagent"],"description":"Optional per-invocation mode for a selectable skill."}
 },
 "required":["name"]
 }`)
@@ -195,6 +230,7 @@ func (t *readOnlySkillTool) Execute(ctx context.Context, args json.RawMessage) (
 	var p struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
+		RunMode   string `json:"run_mode"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -211,6 +247,11 @@ func (t *readOnlySkillTool) Execute(ctx context.Context, args json.RawMessage) (
 		return "", fmt.Errorf("read_only_skill: %w", err)
 	}
 	sk = t.store.Prepare(sk)
+	mode, err := ResolveRunMode(ctx, sk, p.RunMode, t.modeSelector)
+	if err != nil {
+		return "", fmt.Errorf("read_only_skill: %w", err)
+	}
+	sk.RunAs = mode
 	rawArgs := strings.TrimSpace(p.Arguments)
 	if sk.RunAs == RunSubagent {
 		if t.runner == nil {
@@ -230,7 +271,8 @@ func (t *readOnlySkillTool) Execute(ctx context.Context, args json.RawMessage) (
 
 func (t *readOnlySkillTool) ResolveProfile(args json.RawMessage) *event.Profile {
 	var p struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		RunMode string `json:"run_mode"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return nil
@@ -240,9 +282,21 @@ func (t *readOnlySkillTool) ResolveProfile(args json.RawMessage) *event.Profile 
 		return nil
 	}
 	sk, ok := t.store.Read(name)
-	if !ok || sk.RunAs != RunSubagent {
+	if !ok {
 		return nil
 	}
+	mode := sk.RunAs
+	if strings.TrimSpace(p.RunMode) != "" {
+		requested, valid := normalizeRunMode(p.RunMode)
+		if !valid || !sk.SupportsRunMode(requested) {
+			return nil
+		}
+		mode = requested
+	}
+	if mode != RunSubagent {
+		return nil
+	}
+	sk.RunAs = mode
 	return profileForSkill(sk, t.profileResolver)
 }
 

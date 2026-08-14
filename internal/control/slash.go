@@ -663,7 +663,9 @@ func (c *Controller) skillListText() string {
 	fmt.Fprintf(&b, i18n.M.ListSkillsHeaderFmt+"\n", len(skills))
 	for _, s := range skills {
 		tag := ""
-		if s.RunAs == "subagent" {
+		if s.HasSelectableRunMode() {
+			tag = " ↔ (default " + string(s.RunAs) + ")"
+		} else if s.RunAs == "subagent" {
 			tag = " 🧬"
 		}
 		fmt.Fprintf(&b, "  /%s%s — %s\n", s.Name, tag, s.Description)

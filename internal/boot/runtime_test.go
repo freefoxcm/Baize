@@ -289,6 +289,42 @@ func TestRebuildMigratesSessionState(t *testing.T) {
 	oldCtrl.Close()
 }
 
+// TestRebuildPreservesWorkspaceAndSessionDir guards Serve's /reload path.
+// Rebuild callers intentionally omit these stable identity options; the new
+// runtime must not fall back to the process CWD and global session directory.
+func TestRebuildPreservesWorkspaceAndSessionDir(t *testing.T) {
+	isolateConfigHome(t)
+	workspace := robustTempDir(t)
+	writeRuntimeFixture(t, workspace)
+	sessionDir := filepath.Join(t.TempDir(), "project-sessions")
+
+	old, err := BuildRuntime(context.Background(), Options{
+		WorkspaceRoot: workspace,
+		SessionDir:    sessionDir,
+	})
+	if err != nil {
+		t.Fatalf("BuildRuntime: %v", err)
+	}
+	t.Cleanup(old.Controller.Close)
+
+	// Move the process away from the serving workspace. Without inheritance,
+	// the replacement either loads the wrong project config or points session
+	// listing at the global store.
+	t.Chdir(t.TempDir())
+	res, err := Rebuild(context.Background(), old.Controller, Options{})
+	if err != nil {
+		t.Fatalf("Rebuild: %v", err)
+	}
+	t.Cleanup(res.Controller.Close)
+
+	if got := res.Controller.WorkspaceRoot(); got != workspace {
+		t.Fatalf("WorkspaceRoot after rebuild = %q, want %q", got, workspace)
+	}
+	if got := res.Controller.SessionDir(); got != sessionDir {
+		t.Fatalf("SessionDir after rebuild = %q, want %q", got, sessionDir)
+	}
+}
+
 // TestRebuildCarriesGoalWithoutSessionPath covers the in-memory fallback: an
 // old controller that never pinned a session file has no Goal sidecar to
 // restore, so the running Goal migrates from memory.

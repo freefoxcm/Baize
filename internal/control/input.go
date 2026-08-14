@@ -17,9 +17,10 @@ import (
 // InvocationRequest is an explicit user-selected Skill or Subagent entity.
 // Offset is used only to preserve the visual order chosen in the composer.
 type InvocationRequest struct {
-	Name   string `json:"name"`
-	Kind   string `json:"kind"`
-	Offset int    `json:"offset"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	RunMode string `json:"runMode,omitempty"`
+	Offset  int    `json:"offset"`
 }
 
 // PlanModeMarker is prepended to every user turn while plan mode is on. It rides

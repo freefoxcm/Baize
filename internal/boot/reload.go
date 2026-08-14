@@ -82,6 +82,15 @@ func rebuildWithPrevious(ctx context.Context, old *control.Controller, previous 
 	if old == nil {
 		return nil, fmt.Errorf("boot: Rebuild requires the controller being replaced")
 	}
+	// Rebuild refreshes the same logical workspace and session store. Preserve
+	// their identity when callers such as Serve's /reload omit stable options;
+	// otherwise SessionDir-backed surfaces silently switch to global defaults.
+	if strings.TrimSpace(opts.WorkspaceRoot) == "" {
+		opts.WorkspaceRoot = old.WorkspaceRoot()
+	}
+	if strings.TrimSpace(opts.SessionDir) == "" {
+		opts.SessionDir = old.SessionDir()
+	}
 	if opts.Owner == nil {
 		opts.Owner = old.RuntimeOwner()
 	}

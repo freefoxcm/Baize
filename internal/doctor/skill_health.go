@@ -88,6 +88,9 @@ func CollectSkillHealthWarnings(opts SkillHealthOptions) []string {
 		for _, p := range sk.InvalidProfiles {
 			out = append(out, fmt.Sprintf("skill %q has illegal profiles value %q (valid: economy, balanced, delivery)", name, p))
 		}
+		for _, mode := range sk.InvalidRunModes {
+			out = append(out, fmt.Sprintf("skill %q has invalid allowed-run-modes value %q (valid: inline, subagent; the default runAs must be included)", name, mode))
+		}
 	}
 
 	for key, names := range requireTriggers {

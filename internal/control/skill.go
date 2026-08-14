@@ -63,6 +63,13 @@ func (s *skillSet) prepare(sk skill.Skill) skill.Skill {
 	return sk
 }
 
+func (s *skillSet) validate(sk skill.Skill) error {
+	if s.store != nil {
+		return s.store.ValidateInvocation(sk)
+	}
+	return nil
+}
+
 func (s *skillSet) render(sk skill.Skill, args string) string {
 	if s.store != nil {
 		return s.store.Render(sk, args)

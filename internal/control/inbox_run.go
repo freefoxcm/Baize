@@ -60,11 +60,11 @@ func (c *Controller) prepareInboxRun(env sessioninbox.PromptEnvelope) (func(cont
 			return c.runGoalLoopWithFrozenImagesRawDisplay(c.withTurnFormat(ctx, strings.TrimSpace(env.Format)), submit, raw, display, frozenImages)
 		}, "", nil
 	}
-	prepared, err := c.prepareInvocationTurn(submit, requests)
-	if err != nil {
-		return nil, err.Error(), nil
-	}
 	return func(ctx context.Context) error {
+		prepared, err := c.prepareInvocationTurn(ctx, submit, requests)
+		if err != nil {
+			return err
+		}
 		return c.runPreparedInvocationTurn(c.withTurnFormat(ctx, strings.TrimSpace(env.Format)), prepared, submit, raw, display, frozenImages)
 	}, "", nil
 }
@@ -85,7 +85,11 @@ func sessionInboxInvocations(requests []InvocationRequest) []sessioninbox.Struct
 	}
 	out := make([]sessioninbox.StructuredInvocation, 0, len(requests))
 	for _, request := range requests {
-		out = append(out, sessioninbox.StructuredInvocation{Name: request.Name, Kind: request.Kind, Offset: request.Offset})
+		args := map[string]string(nil)
+		if strings.TrimSpace(request.RunMode) != "" {
+			args = map[string]string{"runMode": request.RunMode}
+		}
+		out = append(out, sessioninbox.StructuredInvocation{Name: request.Name, Kind: request.Kind, Offset: request.Offset, Args: args})
 	}
 	return out
 }
@@ -97,7 +101,7 @@ func controlInvocationsFromInbox(env sessioninbox.PromptEnvelope) []InvocationRe
 	}
 	out := make([]InvocationRequest, 0, len(stored))
 	for _, invocation := range stored {
-		out = append(out, InvocationRequest{Name: invocation.Name, Kind: invocation.Kind, Offset: invocation.Offset})
+		out = append(out, InvocationRequest{Name: invocation.Name, Kind: invocation.Kind, RunMode: invocation.Args["runMode"], Offset: invocation.Offset})
 	}
 	return out
 }

@@ -255,7 +255,8 @@ type Controller struct {
 	// behind its own locks, off c.mu. The Controller keeps the I/O orchestration
 	// (requestApproval/Ask emit events + fire hooks + rebuild the executor gate).
 	// See approval.go.
-	approval approvalManager
+	approval    approvalManager
+	interaction interactionState
 
 	// mu guards the run state; every critical section under it is short and
 	// non-blocking.
@@ -1132,18 +1133,6 @@ func (c *Controller) runTurnWithRawDisplay(ctx context.Context, input, raw, disp
 	return newTurnOrchestrator(c).runTurnWithRawDisplay(ctx, input, raw, display)
 }
 
-func (c *Controller) runSubagentSkillSlash(sk skill.Skill, task, raw, display string) {
-	sk = c.skills.prepare(sk)
-	c.runGuarded(func(ctx context.Context) error {
-		planMode := c.PlanMode()
-		runner := c.skillRunner
-		if runner == nil {
-			return fmt.Errorf("subagent skill runner is unavailable for /%s", sk.Name)
-		}
-		return newTurnOrchestrator(c).runSubagentSkillGoalLoop(ctx, sk, task, raw, display, runner, planMode)
-	})
-}
-
 func (c *Controller) stopGoal(status string) {
 	path, data, ok := c.goals.stop(status, c.goalTodos())
 	c.persistGoalState(path, data, ok)
@@ -1258,12 +1247,11 @@ func (c *Controller) submitInvocations(input, display string, requests []Invocat
 		c.SubmitDisplay(display, input)
 		return
 	}
-	prepared, err := c.prepareInvocationTurn(input, requests)
-	if err != nil {
-		c.notice(err.Error())
-		return
-	}
 	c.runGuarded(func(ctx context.Context) error {
+		prepared, err := c.prepareInvocationTurn(ctx, input, requests)
+		if err != nil {
+			return err
+		}
 		return c.runPreparedInvocationTurn(ctx, prepared, input, input, display, nil)
 	})
 }
@@ -1273,7 +1261,7 @@ type preparedInvocationTurn struct {
 	subagents []skill.Skill
 }
 
-func (c *Controller) prepareInvocationTurn(input string, requests []InvocationRequest) (preparedInvocationTurn, error) {
+func (c *Controller) prepareInvocationTurn(ctx context.Context, input string, requests []InvocationRequest) (preparedInvocationTurn, error) {
 	ordered := append([]InvocationRequest(nil), requests...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Offset < ordered[j].Offset })
 	inline := make([]skill.Skill, 0, len(ordered))
@@ -1283,14 +1271,23 @@ func (c *Controller) prepareInvocationTurn(input string, requests []InvocationRe
 		if !ok {
 			return preparedInvocationTurn{}, fmt.Errorf("unknown invocation: /%s", strings.TrimSpace(request.Name))
 		}
+		if err := c.skills.validate(sk); err != nil {
+			return preparedInvocationTurn{}, err
+		}
 		kind := "skill"
 		if sk.RunAs == skill.RunSubagent {
 			kind = "subagent"
 		}
-		if strings.TrimSpace(request.Kind) != "" && request.Kind != kind {
+		if strings.TrimSpace(request.Kind) != "" && request.Kind != kind && !sk.HasSelectableRunMode() {
 			return preparedInvocationTurn{}, fmt.Errorf("invocation /%s is %s, not %s", sk.SlashName(), kind, request.Kind)
 		}
-		if sk.RunAs == skill.RunSubagent {
+		mode, err := skill.ResolveRunMode(ctx, sk, request.RunMode, c.selectSkillRunMode)
+		if err != nil {
+			return preparedInvocationTurn{}, err
+		}
+		sk.RunAs = mode
+		sk = c.skills.prepare(sk)
+		if mode == skill.RunSubagent {
 			subagents = append(subagents, sk)
 		} else {
 			inline = append(inline, sk)
@@ -1548,19 +1545,7 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 			})
 			return
 		}
-		if sk, task, ok := c.resolveSkillInvocation(trimmed); ok {
-			if sk.RunAs == skill.RunSubagent {
-				if strings.TrimSpace(task) == "" {
-					c.notice("usage: /" + sk.Name + " <task>")
-					return
-				}
-				c.runSubagentSkillSlash(sk, task, trimmed, display)
-				return
-			}
-			sent := c.skills.render(sk, task)
-			c.runGuarded(func(ctx context.Context) error {
-				return runGoalLoop(ctx, sent, sent, display)
-			})
+		if c.submitSkillInvocation(trimmed, display) {
 			return
 		}
 		// Unknown slash input is prose more often than a typo ("/etc/hosts
@@ -2013,9 +1998,10 @@ func (c *Controller) RunSubagentProfile(ctx context.Context, name, task string, 
 	if !ok {
 		return "", fmt.Errorf("unknown or disabled subagent profile %q", name)
 	}
-	if sk.RunAs != skill.RunSubagent {
-		return "", fmt.Errorf("skill %q is not runAs=subagent", name)
+	if !sk.SupportsRunMode(skill.RunSubagent) {
+		return "", fmt.Errorf("skill %q does not allow subagent execution", name)
 	}
+	sk.RunAs = skill.RunSubagent
 	sk = c.skills.prepare(sk)
 	runner := c.skillRunner
 	if readOnly {
@@ -2231,6 +2217,7 @@ func (c *Controller) recordDecisionReceipt(pending pendingApproval, outcome stri
 // Interactive frontends (chat, desktop) call this; the headless run keeps the
 // silent gate and a nil asker from setup.
 func (c *Controller) EnableInteractiveApproval() {
+	c.interaction.enabled.Store(true)
 	trustGate := planModeReadOnlyTrustApprover{c}
 	escapeApprover := sandboxEscapeApprover{c}
 	configApprover := managedConfigWriteApprover{c}
@@ -2393,6 +2380,7 @@ func rulesWithoutFreshHumanApproval(rules []permission.Rule) []permission.Rule {
 // by the gate for every mode. The only exception is a controller-assessed,
 // create-only project/reference memory; every other memory write remains denied.
 func (c *Controller) ApplyHeadlessApprovalMode(mode string) {
+	c.interaction.enabled.Store(false)
 	mode = normalizeToolApprovalMode(mode)
 	c.approval.setMode(mode)
 	if c.subagentGate != nil {

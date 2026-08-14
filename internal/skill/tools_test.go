@@ -116,6 +116,34 @@ func TestRunSkillInline(t *testing.T) {
 	}
 }
 
+func TestRunSkillSelectableModes(t *testing.T) {
+	home := t.TempDir()
+	writeSkill(t, home, ".reasonix/skills/report.md", "---\ndescription: report\nrunAs: subagent\nallowed-run-modes: inline, subagent\n---\nBuild report.")
+	store := New(Options{HomeDir: home, DisableBuiltins: true})
+	selectorCalls := 0
+	runnerCalls := 0
+	runner := func(_ context.Context, sk Skill, task string, _ SubagentRunOptions) (string, error) {
+		runnerCalls++
+		if sk.RunAs != RunSubagent || task != "task" {
+			t.Fatalf("runner skill=%+v task=%q", sk, task)
+		}
+		return "subagent result", nil
+	}
+	tl := NewRunSkillToolWithModeSelector(store, runner, nil, func(context.Context, Skill) (RunAs, error) {
+		selectorCalls++
+		return RunInline, nil
+	})
+
+	out, err := tl.Execute(context.Background(), json.RawMessage(`{"name":"report","arguments":"task","run_mode":"subagent"}`))
+	if err != nil || out != "subagent result" || runnerCalls != 1 || selectorCalls != 0 {
+		t.Fatalf("explicit subagent out=%q runner=%d selector=%d err=%v", out, runnerCalls, selectorCalls, err)
+	}
+	out, err = tl.Execute(context.Background(), json.RawMessage(`{"name":"report","arguments":"task"}`))
+	if err != nil || !strings.Contains(out, "Build report.") || runnerCalls != 1 || selectorCalls != 1 {
+		t.Fatalf("selected inline out=%q runner=%d selector=%d err=%v", out, runnerCalls, selectorCalls, err)
+	}
+}
+
 func TestRunSkillUnknown(t *testing.T) {
 	tl := NewRunSkillTool(New(Options{HomeDir: t.TempDir(), DisableBuiltins: true}), nil)
 	if _, err := tl.Execute(context.Background(), json.RawMessage(`{"name":"nope"}`)); err == nil {

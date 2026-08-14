@@ -79,9 +79,15 @@ type Skill struct {
 	// AllowedTools, when non-empty, scopes a subagent skill's tool registry to
 	// these literal tool names (from the `allowed-tools` frontmatter).
 	AllowedTools []string
-	RunAs        RunAs  // inline | subagent
-	Model        string // optional model override for runAs=subagent (frontmatter `model:`)
-	Effort       string // optional effort for runAs=subagent (frontmatter `effort:`)
+	RunAs        RunAs // default execution mode: inline | subagent
+	// AllowedRunModes opts a skill into per-invocation mode selection. Empty
+	// preserves the historical fixed RunAs behavior.
+	AllowedRunModes []RunAs
+	// InvalidRunModes preserves rejected frontmatter values for diagnostics and
+	// prevents a malformed selector from silently broadening execution.
+	InvalidRunModes []string
+	Model           string // optional model override for runAs=subagent (frontmatter `model:`)
+	Effort          string // optional effort for runAs=subagent (frontmatter `effort:`)
 	// ReadOnly, when true, runs a subagent skill against the read-only tool
 	// registry: writer tools are stripped and bash enforces the read-only
 	// command policy at execution time (frontmatter `read-only:`). This is a
@@ -299,6 +305,9 @@ func (s *Store) Render(sk Skill, args string) string { return Render(s.Prepare(s
 func (s *Store) ValidateInvocation(sk Skill) error {
 	if s == nil {
 		return nil
+	}
+	if len(sk.InvalidRunModes) > 0 {
+		return fmt.Errorf("%w: skill %q has invalid allowed-run-modes: %s", ErrInvocationUnavailable, sk.Name, strings.Join(sk.InvalidRunModes, ", "))
 	}
 	if len(sk.Requires) > 0 && s.requiresReady != nil {
 		if missing := s.requiresReady(sk.Requires); len(missing) > 0 {
@@ -811,6 +820,7 @@ func (s *Store) parseSkill(path, stem string, scope Scope, requireSkillMarker bo
 	if desc == "" {
 		fmt.Fprintf(s.stderr, "warning: skill %q at %s has no description: — it will load but won't appear in the skills index\n", name, path)
 	}
+	runAs := parseRunAs(fm[skillFrontmatterRunAs], fm[skillFrontmatterContext], fm[skillFrontmatterAgent])
 	sk := Skill{
 		Name:         name,
 		Description:  desc,
@@ -818,7 +828,7 @@ func (s *Store) parseSkill(path, stem string, scope Scope, requireSkillMarker bo
 		Scope:        scope,
 		Path:         path,
 		AllowedTools: parseAllowedTools(firstNonEmptySkillValue(fm[skillFrontmatterAllowedTools], fm["tools"])),
-		RunAs:        parseRunAs(fm[skillFrontmatterRunAs], fm[skillFrontmatterContext], fm[skillFrontmatterAgent]),
+		RunAs:        runAs,
 		Model:        strings.TrimSpace(fm[skillFrontmatterModel]),
 		Effort:       strings.TrimSpace(fm[skillFrontmatterEffort]),
 		ReadOnly:     parseBoolFrontmatter(fm[skillFrontmatterReadOnly]),
@@ -833,6 +843,7 @@ func (s *Store) parseSkill(path, stem string, scope Scope, requireSkillMarker bo
 		Invocation:     parseInvocation(fm[skillFrontmatterInvocation]),
 		Requires:       parseCSVFrontmatter(fm[skillFrontmatterRequires]),
 	}
+	sk.AllowedRunModes, sk.InvalidRunModes = parseAllowedRunModes(fm[skillFrontmatterAllowedRunModes], runAs)
 	sk.Profiles, sk.InvalidProfiles = parseProfilesFrontmatter(fm[skillFrontmatterProfiles])
 	return sk, true
 }
@@ -880,6 +891,7 @@ const (
 	skillFrontmatterDescription      = "description"
 	skillFrontmatterName             = "name"
 	skillFrontmatterRunAs            = "runas"
+	skillFrontmatterAllowedRunModes  = "allowed-run-modes"
 	skillFrontmatterContext          = "context"
 	skillFrontmatterAgent            = "agent"
 	skillFrontmatterAllowedTools     = "allowed-tools"
@@ -901,6 +913,7 @@ var skillMarkerFrontmatterKeys = []string{
 	skillFrontmatterDescription,
 	skillFrontmatterName,
 	skillFrontmatterRunAs,
+	skillFrontmatterAllowedRunModes,
 	skillFrontmatterContext,
 	skillFrontmatterAgent,
 	skillFrontmatterAllowedTools,
