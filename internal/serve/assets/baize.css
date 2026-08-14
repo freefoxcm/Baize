@@ -18,7 +18,7 @@
   --shadow-md:0 8px 24px -8px oklch(0% 0 0/.5);
   --shadow-lg:0 24px 60px -16px oklch(0% 0 0/.65);
   --radius:8px;--radius-lg:12px;
-  --sidebar-width:220px;--workspace-width:420px;
+  --sidebar-width:220px;--workspace-width:720px;
   /* chat column width, matches desktop's --maxw (960px) */
   --chat-maxw:960px;
   --sans:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -75,7 +75,7 @@ input,textarea{font:inherit;color:inherit}
 
 .app{display:grid;grid-template-columns:var(--sidebar-width) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;height:100vh;position:relative;transition:grid-template-columns .2s ease}
 .app--sidebar-collapsed{--sidebar-width:56px}
-.app--workspace-open{grid-template-columns:var(--sidebar-width) minmax(0,1fr) minmax(360px,var(--workspace-width))}
+.app--workspace-open{grid-template-columns:var(--sidebar-width) minmax(0,1fr)}
 .sidebar{grid-row:1/3;background:var(--bg-2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .transcript{grid-column:2;grid-row:1;overflow-y:auto;padding:24px 28px;position:relative}
 .footer{grid-column:2;grid-row:2;border-top:1px solid var(--border);background:var(--bg);padding:12px 28px 16px;display:flex;flex-direction:column;gap:8px;position:relative}
@@ -663,11 +663,11 @@ input,textarea{font:inherit;color:inherit}
 .session-del:hover{color:var(--danger)}
 
 /* workspace browser and preview */
-.workspace-panel{display:none;grid-column:3;grid-row:1/3;min-width:0;position:relative;background:var(--bg-2);border-left:1px solid var(--border);overflow:hidden}
-.app--workspace-open .workspace-panel{display:flex;flex-direction:column}
-.workspace-resizer{position:absolute;z-index:4;inset:0 auto 0 -4px;width:8px;cursor:col-resize}
+.workspace-panel{position:fixed;z-index:180;inset:0 0 0 auto;width:min(var(--workspace-width),80vw,1200px);min-width:0;display:flex;flex-direction:column;background:var(--bg-2);border-left:1px solid var(--border-strong);box-shadow:var(--shadow-lg);overflow:hidden;transform:translateX(102%);visibility:hidden;pointer-events:none;transition:transform .22s ease,visibility .22s}
+.app--workspace-open .workspace-panel{transform:translateX(0);visibility:visible;pointer-events:auto}
+.workspace-resizer{position:absolute;z-index:4;inset:0 auto 0 -4px;width:8px;cursor:col-resize;touch-action:none}
 .workspace-resizer::after{content:'';position:absolute;inset:0 auto 0 3px;width:1px;background:transparent;transition:background .15s}
-.workspace-resizer:hover::after,.workspace-resizer--active::after{background:var(--accent)}
+.workspace-resizer:hover::after,.workspace-resizer:focus-visible::after,.workspace-resizer--active::after{background:var(--accent)}
 .workspace-panel__head{height:52px;display:flex;align-items:center;gap:6px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--border);flex:0 0 auto}
 .workspace-panel__title-wrap{min-width:0;display:flex;flex-direction:column;flex:1}
 .workspace-panel__title{font-family:var(--heading);font-size:13px}
@@ -730,6 +730,8 @@ input,textarea{font:inherit;color:inherit}
 .workspace-preview__binary{height:100%;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;color:var(--muted)}
 .workspace-resizing,.workspace-resizing *{cursor:col-resize!important;user-select:none!important}
 .workspace-resize-guide{position:fixed;z-index:200;inset:0 auto 0 0;width:2px;background:var(--accent);box-shadow:0 0 8px color-mix(in oklab,var(--accent) 55%,transparent);pointer-events:none;will-change:transform}
+.decision-pending .footer{z-index:220}
+.decision-pending .workspace-panel,.decision-pending .settings-drawer{pointer-events:none}
 
 @media(max-width:768px){
   .app,.app--sidebar-collapsed,.app--workspace-open{grid-template-columns:1fr}
@@ -753,8 +755,7 @@ input,textarea{font:inherit;color:inherit}
   .menu-btn svg{width:16px;height:16px}
   .footer{padding:10px 16px 12px}
   .transcript{padding:16px}
-  .workspace-panel,.app--workspace-open .workspace-panel{position:fixed;display:none;inset:0;z-index:120;border-left:0}
-  .app--workspace-open .workspace-panel{display:flex}
+  .workspace-panel,.app--workspace-open .workspace-panel{inset:0;width:100vw;max-width:none;border-left:0}
   .workspace-resizer{display:none}
   .workspace-panel__body{grid-template-columns:minmax(140px,34%) minmax(0,1fr)}
   .jump-bar{display:none} /* narrow layout: the 56px rail would cover right-aligned messages */

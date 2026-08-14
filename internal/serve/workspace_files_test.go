@@ -295,7 +295,8 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`id="btn-sidebar-collapse"`,
 		`id="btn-workspace"`,
 		`id="workspace-panel"`,
-		`id="workspace-resizer"`,
+		`id="workspace-resizer" role="separator"`,
+		`aria-valuemin="480" aria-valuemax="1200" aria-valuenow="720" tabindex="0"`,
 		`id="workspace-html-toggle"`,
 	} {
 		if !strings.Contains(html, marker) {
@@ -308,6 +309,9 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`.app--workspace-open`,
 		`.workspace-panel`,
 		`.workspace-resize-guide`,
+		`position:fixed;z-index:180`,
+		`width:min(var(--workspace-width),80vw,1200px)`,
+		`.decision-pending .footer`,
 		`@media(max-width:768px)`,
 	} {
 		if !strings.Contains(css, marker) {
@@ -327,6 +331,14 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`connect-src 'none'`,
 		`requestAnimationFrame(paint)`,
 		`fixWorkspaceLinks(root)`,
+		`workspacePathCandidate(code.textContent,false)`,
+		`openWorkspacePath(path)`,
+		`if(error?.status===404)`,
+		`WORKSPACE_WIDTH_DEFAULT=720`,
+		`window.innerWidth*.8`,
+		`workspaceResizer.addEventListener('keydown'`,
+		`decisionInteractionLocked`,
+		`closeSettings({preserveDraft:true,restoreFocus:false})`,
 		`usageSelectedCost`,
 		`s.sessionCostQuote`,
 		`__('multi_currency')`,

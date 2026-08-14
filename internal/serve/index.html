@@ -115,11 +115,11 @@
     </div>
   </section>
 
-  <aside class="workspace-panel" id="workspace-panel" aria-hidden="true">
-    <div class="workspace-resizer" id="workspace-resizer" role="separator" aria-orientation="vertical" aria-label="__('workspace_resize')"></div>
+  <aside class="workspace-panel" id="workspace-panel" aria-hidden="true" aria-labelledby="workspace-title">
+    <div class="workspace-resizer" id="workspace-resizer" role="separator" aria-orientation="vertical" aria-label="__('workspace_resize')" aria-valuemin="480" aria-valuemax="1200" aria-valuenow="720" tabindex="0"></div>
     <header class="workspace-panel__head">
       <div class="workspace-panel__title-wrap">
-        <strong class="workspace-panel__title">__('workspace_files')</strong>
+        <strong class="workspace-panel__title" id="workspace-title">__('workspace_files')</strong>
         <span class="workspace-panel__root" id="workspace-root-name">-</span>
       </div>
       <button type="button" class="workspace-icon-btn" id="workspace-refresh" title="__('workspace_refresh')" aria-label="__('workspace_refresh')">
