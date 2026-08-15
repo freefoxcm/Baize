@@ -48,11 +48,6 @@ type Server struct {
 	bindMu sync.Mutex
 	ctrl   control.SessionAPI
 	bc     *Broadcaster
-	// profileMu guards tokenMode, which the /profile switch mutates (under
-	// bindMu) and GET /profile reads. build() reads it to pass TokenMode to
-	// boot.Build, mapping full/economy/delivery onto the runtime profile.
-	profileMu sync.RWMutex
-	tokenMode string
 	// buildController builds the replacement controller during a model switch.
 	// Nil in production (switchModel falls back to boot.Build); tests inject a
 	// fake so switchModel can be exercised without real provider IO.
@@ -105,7 +100,6 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		}
 		s.subagentSummaries.observe(s.ctl().SessionPath(), e)
 	})
-	s.tokenMode = boot.TokenModeFull
 	if cfg, err := config.Load(); err == nil {
 		bc.SetDisplayCurrency(cfg.ExplicitDisplayCurrency())
 	}
@@ -307,22 +301,16 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 }
 
 // build returns the replacement controller for a model switch, using the
-// injected builder in tests and boot.Build in production. TokenMode is read
-// from the current /profile setting so a work-mode switch rebuilds the
-// controller under the target runtime profile's tool contract.
+// injected builder in tests and boot.Build in production.
 func (s *Server) build(ctx context.Context, ref string) (*control.Controller, error) {
 	if s.buildController != nil {
 		return s.buildController(controllerLifecycleContext(ctx), ref)
 	}
-	s.profileMu.RLock()
-	tokenMode := s.tokenMode
-	s.profileMu.RUnlock()
 	opts := boot.Options{
 		Model:       ref,
 		Sink:        s.bc,
 		Stderr:      os.Stderr,
 		StatsSource: "serve",
-		TokenMode:   tokenMode,
 	}
 	// Rebuilds (model/effort/work-mode switches) must keep the serving
 	// workspace's session store and workspace root; boot.Build would otherwise
@@ -522,88 +510,12 @@ func (s *Server) setEffort(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// switchProfile rebuilds the controller under a new runtime profile (work
-// mode). It mirrors switchModel's Snapshot/Build/Adopt/Close skeleton so the
-// conversation, history, and session authorizations carry across the rebuild.
-func (s *Server) switchProfile(ctx context.Context, mode string) error {
-	s.bindMu.Lock()
-	defer s.bindMu.Unlock()
-
-	cur := s.ctl()
-	if controllerHasActiveRuntimeWork(cur) {
-		return fmt.Errorf("cannot switch work mode while active work or background jobs are running")
-	}
-	ref := currentModelRef(cur)
-	if err := cur.Snapshot(); err != nil {
-		slog.Warn("serve: snapshot before work-mode switch", "err", err)
-	}
-	prevPath := cur.SessionPath()
-	carried := cur.History()
-
-	s.profileMu.Lock()
-	s.tokenMode = mode
-	s.profileMu.Unlock()
-
-	newCtrl, err := s.build(ctx, ref)
-	if err != nil {
-		return fmt.Errorf("switch work mode: %w", err)
-	}
-	newPath := agent.ContinueSessionPath(prevPath, newCtrl.SessionDir(), newCtrl.Label())
-	if fresh := newCtrl.History(); len(fresh) > 0 && fresh[0].Role == provider.RoleSystem {
-		if len(carried) > 0 && carried[0].Role == provider.RoleSystem {
-			carried[0] = fresh[0]
-		} else {
-			carried = append([]provider.Message{fresh[0]}, carried...)
-		}
-	}
-	newCtrl.AdoptHistory(carried, newPath)
-	if prev, ok := cur.(*control.Controller); ok {
-		newCtrl.RestoreSessionAuthorizations(prev.SessionAuthorizations())
-		// Keep the runtime approval posture across work-mode rebuilds too.
-		newCtrl.SetToolApprovalMode(prev.ToolApprovalMode())
-	}
-	if newPath != "" {
-		if err := newCtrl.Snapshot(); err != nil {
-			newCtrl.Close()
-			return fmt.Errorf("switch work mode: snapshot adopted history: %w", err)
-		}
-	}
-	activePath := newCtrl.SessionPath()
-	if err := s.rebindSessionLease(activePath); err != nil {
-		newCtrl.Close()
-		if errors.Is(err, agent.ErrSessionLeaseHeld) {
-			return fmt.Errorf("switch work mode: %s", sessionInUseError(err))
-		}
-		slog.Error("serve: bind replacement session lease", "err", err)
-		return fmt.Errorf("switch work mode: unable to secure replacement session")
-	}
-	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
-	s.mu.Lock()
-	if s.ctrl != cur {
-		s.mu.Unlock()
-		if restoreErr := s.rebindSessionLease(cur.SessionPath()); restoreErr != nil {
-			newCtrl.Close()
-			slog.Error("serve: restore outgoing session lease after aborted work-mode switch", "err", restoreErr)
-			return fmt.Errorf("switch work mode: session changed during switch")
-		}
-		newCtrl.Close()
-		return fmt.Errorf("switch work mode: session changed during switch")
-	}
-	s.ctrl = newCtrl
-	s.mu.Unlock()
-	cur.Close()
-	return nil
-}
-
-// profile reports the current work mode (runtime profile) as full/economy/delivery.
+// profile is a one-release compatibility endpoint for removed execution modes.
 func (s *Server) profile(w http.ResponseWriter, _ *http.Request) {
-	s.profileMu.RLock()
-	mode := s.tokenMode
-	s.profileMu.RUnlock()
-	writeJSON(w, map[string]any{"mode": mode})
+	writeJSON(w, map[string]any{"mode": boot.TokenModeFull})
 }
 
-// setProfile switches the work mode (runtime profile) for the active session.
+// setProfile accepts legacy mode values as no-ops for one compatibility release.
 func (s *Server) setProfile(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Mode string `json:"mode"`
@@ -617,15 +529,6 @@ func (s *Server) setProfile(w http.ResponseWriter, r *http.Request) {
 	case boot.TokenModeFull, boot.TokenModeEconomy, boot.TokenModeDelivery:
 	default:
 		http.Error(w, "invalid mode", http.StatusBadRequest)
-		return
-	}
-	mode := boot.NormalizeTokenMode(raw)
-	if controllerHasActiveRuntimeWork(s.ctl()) {
-		http.Error(w, "cannot switch work mode while work is running", http.StatusConflict)
-		return
-	}
-	if err := s.switchProfile(r.Context(), mode); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -873,17 +776,23 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Input  string `json:"input"`
 		Format string `json:"format"`
+		Action string `json:"action"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Input == "" {
 		http.Error(w, "missing input", http.StatusBadRequest)
 		return
 	}
 	body.Format = strings.TrimSpace(body.Format)
+	body.Action = strings.TrimSpace(body.Action)
 	switch body.Format {
 	case "", "json_object":
 		// Supported: empty = default text output, json_object = structured.
 	default:
 		http.Error(w, `unsupported format (supported: "json_object")`, http.StatusBadRequest)
+		return
+	}
+	if err := validateSubmitAction(body.Format, body.Action); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	trimmed := strings.TrimSpace(body.Input)
@@ -949,7 +858,7 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session is busy; use POST /inbox/items for durable follow-up", http.StatusConflict)
 		return
 	}
-	ctrl.SubmitHTTPFormat(body.Input, body.Format)
+	submitWithAction(ctrl, body.Input, body.Format, body.Action)
 	// After synchronous admission, a successful start sets Running. A silent
 	// drop (rotating/closed) leaves Running false — return 409 instead of 202.
 	// Finishing-window park also leaves Running false briefly; prefer 202 only
@@ -1252,6 +1161,7 @@ type historyToolCall struct {
 type historyMessage struct {
 	Role       string            `json:"role"`
 	Content    string            `json:"content"`
+	Missing    []string          `json:"missing,omitempty"`
 	Reasoning  string            `json:"reasoning,omitempty"`
 	ToolCalls  []historyToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string            `json:"toolCallId,omitempty"`
@@ -1270,6 +1180,11 @@ func historyMessages(msgs []provider.Message, summaries ...map[string]*subagentE
 	// predate ToolDurationMs persistence.
 	var lastToolCallAt int64
 	for _, m := range msgs {
+		if recovered, handled := finalReadinessHistoryMessage(m); handled {
+			out = append(out, recovered...)
+			continue
+		}
+		// Steer messages are surfaced as a notice, not a user message.
 		if m.Role == provider.RoleUser {
 			if text, handled := agent.ReplaySteerText(m.Content); handled {
 				if text != "" {
@@ -1413,30 +1328,6 @@ func (rw *responseWriter) Flush() {
 	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
-}
-
-// rewind rewinds the session to a checkpoint.
-func (s *Server) rewind(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Turn  int    `json:"turn"`
-		Scope string `json:"scope"` // "code", "conversation", "both"
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Turn < 0 {
-		http.Error(w, "missing turn", http.StatusBadRequest)
-		return
-	}
-	scope := control.RewindBoth
-	switch body.Scope {
-	case "code":
-		scope = control.RewindCode
-	case "conversation":
-		scope = control.RewindConversation
-	}
-	if err := s.ctl().Rewind(body.Turn, scope); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // fork creates a new branch at a checkpoint.

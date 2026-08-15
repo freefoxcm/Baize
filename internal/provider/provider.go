@@ -100,6 +100,9 @@ type Message struct {
 	// ModelMessages strips the field before handing requests to providers.
 	DecisionReceipts []*DecisionReceipt       `json:"decision_receipts,omitempty"`
 	InterruptedTurn  *InterruptedTurnRecovery `json:"interrupted_turn,omitempty"`
+	// FinalReadinessRecovery is durable host state on a LocalOnly sentinel.
+	// ModelMessages removes it before provider serialization.
+	FinalReadinessRecovery *FinalReadinessRecovery `json:"final_readiness_recovery,omitempty"`
 	// ToolExecution is local shell UI metadata on tool-result messages. It is
 	// persisted for Desktop/CLI/Serve cards and stripped by ModelMessages before
 	// any provider request so tool schemas and prompt-cache prefixes stay stable.
@@ -235,14 +238,22 @@ type ResponseFormat struct {
 }
 
 // Auto ladder for max_output_tokens=0. Bounds completion only; never compact_ratio.
+// Official DeepSeek does not use this ladder: Chat/Responses omit the field
+// (server 384K ceiling) and Anthropic sends DeepSeekMaxOutputTokens.
 const (
-	DefaultOrdinaryOutputTokens      = 16 * 1024  // non-reasoning
-	DefaultReasoningOutputTokens     = 32 * 1024  // ordinary reasoning
-	DefaultHighReasoningOutputTokens = 64 * 1024  // high/max effort
+	DefaultOrdinaryOutputTokens      = 16 * 1024  // non-reasoning / non-DeepSeek
+	DefaultReasoningOutputTokens     = 32 * 1024  // ordinary reasoning / MiMo
+	DefaultHighReasoningOutputTokens = 64 * 1024  // high/max effort on non-DeepSeek
 	DefaultHighOutputTokens          = 128 * 1024 // explicit only; never auto
+	// DeepSeekMaxOutputTokens is the official V4 Flash/Pro completion ceiling.
+	// Pricing page: 输出长度最大 384K. K is decimal thousands, matching the
+	// documented 1M context = 1,000,000 tokens. Anthropic requires max_tokens.
+	DeepSeekMaxOutputTokens = 384_000
 )
 
-// AutoOutputBudget maps max_output_tokens=0 to 16K/32K/64K by reasoning effort.
+// AutoOutputBudget maps max_output_tokens=0 to 16K/32K/64K for non-DeepSeek
+// vendors. Official DeepSeek omits the field (Chat/Responses) or sends
+// DeepSeekMaxOutputTokens (Anthropic).
 func AutoOutputBudget(reasoningEnabled bool, effort string) int {
 	if !reasoningEnabled {
 		return DefaultOrdinaryOutputTokens

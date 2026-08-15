@@ -9,47 +9,15 @@ import (
 	"reasonix/internal/sessioncatalog"
 )
 
-// resolveCanonicalSessionPath returns a unique adopted/canonical leaf for the
-// topic that owns path, when the catalog has one. Empty means keep path.
-// Retarget happens before Controller create/rebind so the new controller leases
-// and binds authority on the canonical path only.
-func (a *App) resolveCanonicalSessionPath(path string) string {
-	if a == nil || strings.TrimSpace(path) == "" {
-		return ""
-	}
-	catalog := a.sessionCatalog.Load()
-	if catalog == nil {
-		return ""
-	}
-	ctx := context.Background()
-	rec, ok, err := catalog.GetSession(ctx, path)
-	if err != nil || !ok {
-		return ""
-	}
-	if rec.TopicID == "" {
-		// Group by recovery group when topic is unset.
-		if rec.RecoveryCanonical && (rec.RecoveryRole == sessioncatalog.RecoveryRoleAdopted || rec.RecoveryRole == sessioncatalog.RecoveryRolePreferred) {
-			return ""
-		}
-		return ""
-	}
-	topic, ok, err := catalog.GetTopic(ctx, sessioncatalog.TopicKey{Scope: rec.Scope, WorkspaceRoot: rec.WorkspaceRoot, TopicID: rec.TopicID})
-	if err != nil || !ok {
-		return ""
-	}
-	return sessioncatalog.CanonicalSessionPathForTopic(topic.Sessions, path)
-}
-
 func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath string) (string, string) {
 	actualRoot := workspaceRoot
 	if scope == "global" {
 		actualRoot = globalWorkspaceRoot()
 	}
-	// Only suppress covering-leaf continue when the live runtime is already
-	// on this path. Opening a different ordinary session of the same topic
-	// must still detach and switch (OpenGlobalTab latest-session contract).
+	// Keep a live controller on this path (including paused). Opening a
+	// different ordinary session of the same topic must still switch.
 	if continued := a.continuePathForOpen(sessionPath); continued != "" {
-		if a.sessionHasActiveRuntimeWork(sessionPath) {
+		if a.sessionHasLiveController(sessionPath) {
 			return actualRoot, sessionPath
 		}
 		sessionPath = continued
@@ -57,7 +25,7 @@ func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath stri
 	return actualRoot, sessionPath
 }
 
-func (a *App) sessionHasActiveRuntimeWork(path string) bool {
+func (a *App) sessionHasLiveController(path string) bool {
 	key := sessionRuntimeKey(path)
 	if a == nil || key == "" {
 		return false
@@ -66,7 +34,7 @@ func (a *App) sessionHasActiveRuntimeWork(path string) bool {
 	defer a.mu.RUnlock()
 	for _, tabs := range []map[string]*WorkspaceTab{a.tabs, a.detachedSessions} {
 		for _, tab := range tabs {
-			if tab != nil && sessionRuntimeKey(tab.currentSessionPath()) == key && tab.hasActiveRuntimeWork() {
+			if tab != nil && tab.Ctrl != nil && sessionRuntimeKey(tab.currentSessionPath()) == key {
 				return true
 			}
 		}
@@ -74,8 +42,8 @@ func (a *App) sessionHasActiveRuntimeWork(path string) bool {
 	return false
 }
 
-func (a *App) skipCoveringLeafRebind(tab *WorkspaceTab, target string) bool {
-	if tab == nil || !tab.hasActiveRuntimeWork() {
+func (a *App) skipContinuationRebind(tab *WorkspaceTab, target string) bool {
+	if tab == nil || tab.Ctrl == nil {
 		return false
 	}
 	next := a.continuePathForOpen(tab.currentSessionPath())
@@ -161,7 +129,7 @@ func (a *App) resumeSessionPageForTab(tabID, path string, limit int) (HistoryPag
 	return a.HistoryPageForTab(tab.ID, 0, limit), nil
 }
 
-func (a *App) retargetOpenTabsToCoveringLeaves() {
+func (a *App) retargetOpenTabsToContinuations() {
 	if a == nil {
 		return
 	}

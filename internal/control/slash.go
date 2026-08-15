@@ -548,7 +548,7 @@ func (c *Controller) managementNotice(trimmed string) bool {
 func (c *Controller) helpText() string {
 	var b strings.Builder
 	b.WriteString(i18n.M.HelpHeaderCommands)
-	for _, line := range strings.Split(i18n.M.HelpCommands, "\n") {
+	for line := range strings.SplitSeq(i18n.M.HelpCommands, "\n") {
 		b.WriteString("\n" + line)
 	}
 	for _, cmd := range c.Commands() {

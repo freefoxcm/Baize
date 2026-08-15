@@ -14,6 +14,16 @@ Every controlled upstream integration must add one entry before its merge commit
 - Backend conflicts / 后端冲突：list and resolution or `none`
 - Verification / 验证：commands and browser checks
 
+## 2026-08-15 — `c7bc2f3e1` → `8b9e779ec`
+
+- Baize revision / Baize 版本：pre-merge `custom/baize@bdd13930b`
+- Upstream WebUI changes / 上游 WebUI 变化：desktop gained the 1.25.2 line plus adaptive TaskPolicy, final-readiness recovery, session transition/write-authority hardening, dynamic MCP tool refresh, project and transcript recovery, Markdown media handling, live rendering, and blank-project/worktree improvements; Baize Serve removed the legacy Light/Balanced/Delivery selector and now uses the standard adaptive task modes
+- Ported / 已移植：the complete upstream history through `8b9e779ec3119a6073b63510b85f09a13142a6fd`; Baize Boot combines upstream child write roots and TaskPolicy v2 with Skill/MCP call-asker inheritance; MCP keeps Baize plaintext HTTP session recovery while refreshing tools after `notifications/tools/list_changed`; Serve keeps Baize branding, workspace, login, reports, sessions, Skills, MCP and IPAP while routing final-readiness recovery through `/submit` with `final_readiness_recovery` and restoring that state from history; `complete_step` keeps canonical Baize step/Skill semantics and includes upstream terminal completion behavior
+- Intentionally skipped / 明确忽略：desktop React presentation was not duplicated into the independently maintained Baize Serve HTML/CSS/JS surface; `/profile` remains as a one-release compatibility no-op and the legacy `/delivery-recovery` backend route remains temporarily available, while the WebUI no longer calls either legacy path
+- Backend conflicts / 后端冲突：resolved 11 paths covering CI, Boot assembly and golden fixtures, CLI/Web handoff, Plugin, Serve, `complete_step`, and repolint; retained only the three `baize-*` workflows as enabled and kept upstream `ci.yml` disabled, combined workspace `--dir` handoff with removal of runtime profile switching, regenerated golden output from real Boot assembly, and updated the repolint baseline only for moved existing debt without expanding it
+- Workflow state / Workflow 状态：the upstream CI test changes were retained, including the isolated vendored WebView2 edge test, while the fork workflow allowlist remains unchanged; `main-v2` stays a read-only mirror at `8b9e779ec`
+- Verification / 验证：`git diff --check`; `node --check internal/serve/assets/baize.js`; `go vet ./...`; `go run ./tools/repolint`; fixed `golangci-lint v2.12.2`; focused Boot, CLI, Plugin, Serve, Config and `complete_step` tests; `scripts/test-windows-focused.ps1`; desktop production build and focused frontend tests; CGO-disabled release build; live in-app Chromium verified Baize branding, workspace rendering, absence of the legacy work-mode selector, standard Normal/Plan/Goal modes, healthy requests, and no console warnings or errors. Full Windows `go test ./... -count=1` reached all code-related packages but cannot execute POSIX Bash and symlink-privilege cases in this environment; the frontend all-suite also exposed a Windows timing-only transcript-tail timeout that passes in isolation. Linux PR CI is the final cross-platform authority.
+
 ## 2026-08-13 — `bb58eec24` → `42a9de71d`
 
 - Baize revision / Baize 版本：pre-merge `custom/baize@790925f3e`

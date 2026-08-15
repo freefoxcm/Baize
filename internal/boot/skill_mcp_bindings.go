@@ -1,6 +1,7 @@
 package boot
 
 import (
+	"slices"
 	"strings"
 
 	"reasonix/internal/skill"
@@ -20,10 +21,8 @@ func skillMCPBindingRequested(sk skill.Skill, binding tool.MCPBinding) bool {
 		if !strings.HasPrefix(ref, "mcp__") && !strings.HasPrefix(ref, "mcp-tool:") {
 			continue
 		}
-		for _, alias := range aliases {
-			if ref == alias {
-				return true
-			}
+		if slices.Contains(aliases, ref) {
+			return true
 		}
 	}
 	return false

@@ -103,30 +103,6 @@ type ReasonixFinalReadiness struct {
 	Risks          []string `json:"risks"`
 }
 
-type ReasonixUsage struct {
-	PromptTokens     int                `json:"promptTokens"`
-	CompletionTokens int                `json:"completionTokens"`
-	ReasoningTokens  int                `json:"reasoningTokens"`
-	CacheHitTokens   int                `json:"cacheHitTokens"`
-	CacheMissTokens  int                `json:"cacheMissTokens"`
-	Estimated        bool               `json:"estimated,omitempty"`
-	CacheHitRatio    *float64           `json:"cacheHitRatio"`
-	EstimatedCost    *float64           `json:"estimatedCost"`
-	Currency         *string            `json:"currency"`
-	CostComplete     *bool              `json:"costComplete,omitempty"`
-	DisplayComplete  *bool              `json:"displayComplete,omitempty"`
-	DisplayStatus    string             `json:"displayStatus,omitempty"`
-	AggregateMode    string             `json:"aggregateMode,omitempty"`
-	OriginalTotals   []billing.Money    `json:"originalTotals,omitempty"`
-	CostQuote        *billing.CostQuote `json:"costQuote,omitempty"`
-	UsageSource      string             `json:"usageSource"`
-}
-
-type ReasonixStatusUsage struct {
-	Turn       ReasonixUsage `json:"turn"`
-	Cumulative ReasonixUsage `json:"cumulative"`
-}
-
 // ReasonixSessionStatus is the stable schemaVersion=1 recovery snapshot.
 // Reasoning text and unbounded terminal output are intentionally absent.
 type ReasonixSessionStatus struct {
@@ -253,6 +229,7 @@ func (a *usageAccumulator) addQuoted(u *provider.Usage, pricing *provider.Pricin
 
 func (a usageAccumulator) wire() ReasonixUsage {
 	usage := ReasonixUsage{
+		TotalTokens:      a.promptTokens + a.completionTokens,
 		PromptTokens:     a.promptTokens,
 		CompletionTokens: a.completionTokens,
 		ReasoningTokens:  a.reasoningTokens,
@@ -647,9 +624,6 @@ func (s *service) sessionRuntimeState(ctx context.Context, p SessionRuntimeState
 		if err != nil {
 			return SessionRuntimeState{}, err
 		}
-		if isLightRuntimeProfile(p.RuntimeProfile) {
-			state.PlannerMode = "off"
-		}
 		if strings.TrimSpace(state.PlannerMode) == "" {
 			state.PlannerMode = "on"
 		}
@@ -658,20 +632,7 @@ func (s *service) sessionRuntimeState(ctx context.Context, p SessionRuntimeState
 		}
 		return state, nil
 	}
-	state := defaultSessionRuntimeState(p.Cwd)
-	if isLightRuntimeProfile(p.RuntimeProfile) {
-		state.PlannerMode = "off"
-	}
-	return state, nil
-}
-
-func isLightRuntimeProfile(profile string) bool {
-	switch strings.ToLower(strings.TrimSpace(profile)) {
-	case "economy", "light", "lite", "eco":
-		return true
-	default:
-		return false
-	}
+	return defaultSessionRuntimeState(p.Cwd), nil
 }
 
 func (s *service) bindStatusEvents(sess *acpSession) {
@@ -721,7 +682,6 @@ func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
 	ctrl := s.ctrl
 	model := s.model
 	effort := cloneStringPtr(s.effortOverride)
-	workMode := s.runtimeProfile
 	mode := s.modeID
 	runtimeState := s.runtimeState
 	telemetry := s.status
@@ -758,20 +718,10 @@ func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
 		goalStatus = t.goalOverride
 	}
 	mode = normalizeACPCollaborationMode(mode)
-	workMode = strings.ToLower(strings.TrimSpace(workMode))
-	switch workMode {
-	case "economy", "light", "delivery":
-		if workMode == "light" {
-			workMode = "economy" // dual-write public status label
-		}
-	default:
-		workMode = "balanced"
-	}
-	// Recompute planner mode from the live role setting so in-place switches
-	// do not leave a stale on/off flag from the last controller rebuild.
-	if isLightRuntimeProfile(workMode) {
-		runtimeState.PlannerMode = "off"
-	} else if runtimeState.PlannerMode != "off" {
+	// WorkMode is a deprecated wire-compat field pinned to the historical
+	// default; execution modes no longer exist at runtime.
+	workMode := "balanced"
+	if runtimeState.PlannerMode != "off" {
 		runtimeState.PlannerMode = "on"
 	}
 	if runtimeState.Sandbox.WriteRoots == nil {
