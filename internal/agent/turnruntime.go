@@ -13,12 +13,13 @@ type turnRuntime struct {
 	runMaxSteps    int
 	runMaxStepsKey string
 
-	emptyFinalBlocks   int
-	handoffNudges      int
-	usedAnyTool        bool
-	contextToolRepairs int
-	graceRound         bool
-	recoveryGraceRound bool
+	emptyFinalBlocks        int
+	handoffNudges           int
+	usedAnyTool             bool
+	contextToolRepairs      int
+	completeStepJSONRepairs int
+	graceRound              bool
+	recoveryGraceRound      bool
 
 	todoProgress         int
 	trackingTodoProgress bool

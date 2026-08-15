@@ -20,6 +20,7 @@ type finalReadinessCheck struct {
 	incompleteTodos           int
 	missingAcceptanceCriteria int
 	missingVerification       int
+	missingObservation        int
 	missingReview             int
 	missingSignoff            int
 	missingActionEvidence     int
@@ -28,11 +29,12 @@ type finalReadinessCheck struct {
 }
 
 func (c finalReadinessCheck) progressSignature() string {
-	return fmt.Sprintf("%d/%d/%d/%d/%d/%d/%d/%d/%d/%d\x00%s",
+	return fmt.Sprintf("%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d\x00%s",
 		c.missingProjectChecks,
 		c.incompleteTodos,
 		c.missingAcceptanceCriteria,
 		c.missingVerification,
+		c.missingObservation,
 		c.missingReview,
 		c.missingSignoff,
 		c.missingActionEvidence,
@@ -44,7 +46,7 @@ func (c finalReadinessCheck) progressSignature() string {
 }
 
 func (c finalReadinessCheck) missingIDs() []string {
-	missing := make([]string, 0, 9)
+	missing := make([]string, 0, 10)
 	add := func(id string, count int) {
 		if count > 0 {
 			missing = append(missing, id)
@@ -54,6 +56,7 @@ func (c finalReadinessCheck) missingIDs() []string {
 	add("todo", c.incompleteTodos)
 	add("criteria", c.missingAcceptanceCriteria)
 	add("verification", c.missingVerification)
+	add("observation", c.missingObservation)
 	add("review", c.missingReview)
 	add("signoff", c.missingSignoff)
 	add("action", c.missingActionEvidence)
@@ -71,6 +74,7 @@ func (c finalReadinessCheck) audit(result evidence.ReadinessAuditResult, recover
 		CommandMismatchMissing:    c.missingProjectChecks,
 		MissingAcceptanceCriteria: c.missingAcceptanceCriteria,
 		MissingVerification:       c.missingVerification,
+		MissingObservation:        c.missingObservation,
 		MissingReview:             c.missingReview,
 		MissingSignoff:            c.missingSignoff,
 		MissingActionEvidence:     c.missingActionEvidence,
@@ -132,7 +136,8 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 			deliveryMutation = true
 		}
 		workObserved := a.task.ledger.HasSuccessfulWorkReceipt() || (checkpointApplies && checkpoint.WorkObserved)
-		if a.turn.deliveryTaskExpected && !a.turn.deliveryPersistentExpected && !workObserved {
+		goalReported := a.task.ledger.HasSuccessfulToolReceipt("update_goal")
+		if a.turn.deliveryTaskExpected && !a.turn.deliveryPersistentExpected && !workObserved && !goalReported {
 			out.missingActionEvidence++
 			missing = append(missing, "perform host-observable work for this technical task before answering")
 		}
@@ -147,6 +152,8 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 		if !hasWriter && a.task.ledger.HasSuccessfulVerificationCommand() {
 			writer, hasWriter = -1, true
 			deliveryVerificationOnly = true
+		} else if !hasWriter && workObserved {
+			writer, hasWriter = -1, true
 		}
 		// Required/preferred capability gates apply before the no-writer fast
 		// path below: a user-required Skill/MCP must not be skippable by
@@ -238,23 +245,37 @@ func (a *Agent) appendClosedLoopReadiness(out *finalReadinessCheck, missing []st
 	a.emitTurnPhase(event.TurnPhaseVerifying)
 	if !(a.turn.deliveryCriteriaEstablished || (checkpointApplies && checkpoint.CriteriaEstablished)) {
 		out.missingAcceptanceCriteria++
-		missing = append(missing, "establish concrete acceptance criteria with todo_write before changing state")
+		if deliveryMutation {
+			missing = append(missing, "establish concrete acceptance criteria with todo_write before changing state")
+		} else {
+			missing = append(missing, "establish concrete acceptance criteria with todo_write before completing the analysis")
+		}
 	}
 	if !a.task.ledger.HasSuccessfulCompleteStepAfter(writer) {
 		out.missingSignoff++
-		missing = append(missing, "call complete_step after the latest mutation")
+		if deliveryMutation {
+			missing = append(missing, "call complete_step after the latest mutation")
+		} else {
+			missing = append(missing, "call complete_step after the current read/query work")
+		}
 	}
-	if !a.task.ledger.HasSuccessfulDeliverySignoffAfter(writer) {
+	if deliveryMutation && !a.task.ledger.HasSuccessfulDeliverySignoffAfter(writer) {
 		out.missingVerification++
 		missing = append(missing, "run relevant verification after the latest mutation and cite that successful command in complete_step")
+	}
+	if !deliveryMutation && !a.task.ledger.HasSuccessfulObservationSignoffAfter(writer) {
+		out.missingObservation++
+		missing = append(missing, "cite a successful read/query tool result from the current step as kind tool evidence in complete_step")
 	}
 	if deliveryMutation && !a.task.ledger.HasSuccessfulReviewAfter(writer) {
 		out.missingReview++
 		missing = append(missing, "inspect the changed result after the latest mutation (read the touched file or run git diff/status)")
 	}
-	if msg := a.deliveryReviewGateFailure(); msg != "" {
-		out.missingReview++
-		missing = append(missing, msg)
+	if deliveryMutation {
+		if msg := a.deliveryReviewGateFailure(); msg != "" {
+			out.missingReview++
+			missing = append(missing, msg)
+		}
 	}
 	return missing
 }

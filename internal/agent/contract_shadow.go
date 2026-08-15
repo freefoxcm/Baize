@@ -93,7 +93,8 @@ func resolveCitedCriteria(c *taskcontract.Contract, r evidence.Receipt) {
 
 // criterionEvidenceKind mirrors the ledger's own classification so staleness
 // behaves identically: a mutation proves it happened and never stales, while a
-// verification, review, or manual check must be re-proven after later changes.
+// verification, review, tool observation, or manual check must be re-proven
+// after later changes.
 func criterionEvidenceKind(kind string) taskcontract.EvidenceKind {
 	switch kind {
 	case "verification":

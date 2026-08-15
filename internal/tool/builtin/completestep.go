@@ -26,6 +26,7 @@ type stepEvidence struct {
 	Kind        string   `json:"kind"`
 	Summary     string   `json:"summary"`
 	Command     string   `json:"command,omitempty"`
+	Tool        string   `json:"tool,omitempty"`
 	Paths       []string `json:"paths,omitempty"`
 	CriterionID string   `json:"criterion_id,omitempty"`
 }
@@ -37,13 +38,14 @@ var validEvidenceKinds = map[string]bool{
 	"review":       true, // a completed built-in review run, fresh for any later mutation
 	"diff":         true, // a concrete code change; cite what changed
 	"files":        true, // files created/edited/inspected; cite the paths
+	"tool":         true, // a successful output-producing read tool in this step
 	"manual":       true, // a manual check; cite what was confirmed and how
 }
 
 func (completeStep) Name() string { return "complete_step" }
 
 func (completeStep) Description() string {
-	return "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Prefer `step` with the verbatim current todo title; `step_id` (when present) is the most stable citation. Use `step_index` only when the host has explicitly reported the canonical index; if both a title and an index are supplied they MUST identify the same todo or the call is rejected. Never skip ahead: after the last sub-step the next signable todo can be its parent phase. Fields: `step`, optional `step_id`/`step_index`, `result`, `evidence` (≥1 item, each with `kind` = verification|review|diff|files|manual and a `summary`, plus optional `command`/`paths`, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`."
+	return "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a successful read/query tool result from the current step, a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Prefer `step` with the verbatim current todo title; `step_id` (when present) is the most stable citation. Use `step_index` only when the host has explicitly reported the canonical index; if both a title and an index are supplied they MUST identify the same todo or the call is rejected. Never skip ahead: after the last sub-step the next signable todo can be its parent phase. Fields: `step`, optional `step_id`/`step_index`, `result`, `evidence` (≥1 item, each with `kind` = verification|tool|review|diff|files|manual and a `summary`, plus the required `command`, `tool`, or `paths` for that kind, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`."
 }
 
 func (completeStep) Schema() json.RawMessage {
@@ -62,9 +64,10 @@ func (completeStep) Schema() json.RawMessage {
       "type":"object",
       "properties":{
         "criterion_id":{"type":"string","description":"The acceptance criterion this proof satisfies, as the plan renders it (e.g. \"c2\" from \"accept [c2]: ...\"). Cite it whenever the step has criteria: a command succeeding is not the same as a criterion being met, and the host records the proof against the criterion you name."},
-        "kind":{"type":"string","enum":["verification","review","diff","files","manual"],"description":"verification = a command/test was run (command REQUIRED); review = a built-in review run completed and, after changes, inspected the latest changed result (the verdict/findings still apply separately); diff = a concrete code change (paths REQUIRED); files = files created/edited/inspected (paths REQUIRED); manual = a manual check."},
+        "kind":{"type":"string","enum":["verification","tool","review","diff","files","manual"],"description":"verification = a command/test was run (command REQUIRED); tool = a successful output-producing read/query tool ran during the current step (tool REQUIRED); review = a built-in review run completed and, after changes, inspected the latest changed result (the verdict/findings still apply separately); diff = a concrete code change (paths REQUIRED); files = files created/edited/inspected (paths REQUIRED); manual = a manual check."},
         "summary":{"type":"string","description":"The evidence itself: the test result, what the diff does, or what was confirmed."},
         "command":{"type":"string","description":"REQUIRED for verification evidence: the command as it actually ran (e.g. \"go test ./...\") — it is checked against this session's real command history."},
+        "tool":{"type":"string","description":"REQUIRED for tool evidence: the exact read/query tool name, or its unique MCP raw-name suffix (e.g. \"aggregate_cases\"). The host verifies a successful call with non-empty output after the current step began."},
         "paths":{"type":"array","items":{"type":"string"},"description":"REQUIRED for diff/files evidence: the files this evidence refers to, as the paths were passed to the tools that touched them."}
       },
       "required":["kind","summary"]
@@ -120,7 +123,7 @@ func (completeStep) Execute(ctx context.Context, args json.RawMessage) (string, 
 	kinds := make([]string, 0, len(p.Evidence))
 	for i, e := range p.Evidence {
 		if !validEvidenceKinds[e.Kind] {
-			return "", fmt.Errorf("evidence %d: invalid kind %q (want verification|diff|files|manual)", i+1, e.Kind)
+			return "", fmt.Errorf("evidence %d: invalid kind %q (want verification|tool|review|diff|files|manual)", i+1, e.Kind)
 		}
 		if strings.TrimSpace(e.Summary) == "" {
 			return "", fmt.Errorf("evidence %d: summary is required — the evidence is the summary, not just its kind", i+1)
@@ -290,6 +293,16 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified
 		case "review":
 			if !ledger.HasCompletedReview() {
 				return 0, 0, fmt.Errorf("evidence %d: review evidence requires a completed review run in this turn; after a mutation, the review must be newer and cover the changed result", i+1)
+			}
+			hostVerified++
+		case "tool":
+			toolName := strings.TrimSpace(e.Tool)
+			if toolName == "" {
+				return 0, 0, fmt.Errorf("evidence %d: tool is required for read/query evidence — cite the tool exactly as it ran", i+1)
+			}
+			boundary := ledger.StepEvidenceBoundary()
+			if _, matchErr := ledger.MatchSuccessfulReadToolAfter(toolName, boundary); matchErr != nil {
+				return 0, 0, fmt.Errorf("evidence %d: %w", i+1, matchErr)
 			}
 			hostVerified++
 		case "diff":

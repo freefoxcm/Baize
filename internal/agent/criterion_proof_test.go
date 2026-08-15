@@ -72,6 +72,28 @@ func TestCitedCriterionBecomesSatisfied(t *testing.T) {
 	}
 }
 
+func TestToolEvidenceCanSatisfyCitedCriterion(t *testing.T) {
+	plan := criterionPlan()
+	first := plan.Steps[0].Acceptance[0].ID
+	args, err := json.Marshal(map[string]any{
+		"step":   "do it",
+		"result": "done",
+		"evidence": []map[string]any{
+			{"kind": "tool", "tool": "aggregate_cases", "summary": "query returned totals", "criterion_id": first},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	c := buildShadowContract("analyze totals", []evidence.Receipt{
+		{ToolName: "complete_step", Success: true, Step: "do it", Args: args},
+	}, &plan)
+	req, ok := requirementByID(c, first)
+	if !ok || req.Status != taskcontract.Satisfied || len(req.Evidence) == 0 || req.Evidence[0].Kind != taskcontract.EvidenceRead {
+		t.Fatalf("tool evidence did not bind as read proof: %+v", req)
+	}
+}
+
 // Freshness is the point: a criterion proven by a test run stops counting once
 // the code changes underneath it.
 func TestVerifiedCriterionGoesStaleAfterALaterMutation(t *testing.T) {

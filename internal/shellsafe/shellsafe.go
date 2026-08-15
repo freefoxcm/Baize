@@ -34,7 +34,7 @@ var readOnlyCommands = map[string]bool{
 	// cmdlets whose verb is intrinsically observational belong here. The parser
 	// still rejects pipelines, substitutions, redirections, and command chains.
 	"get-childitem": true, "get-content": true, "get-item": true,
-	"get-location": true, "get-process": true, "get-command": true,
+	"get-location": true, "get-process": true, "get-command": true, "get-date": true,
 	"get-nettcpconnection": true,
 	"resolve-path":         true, "select-string": true, "measure-object": true,
 	"compare-object": true,

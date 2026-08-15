@@ -525,6 +525,10 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			StopReason: reason,
 		}
 	}
+	if a.repairRawCompleteStepJSON(ctx, state, text) {
+		a.contextManager().ObserveUsage(usage)
+		return true, nil
+	}
 	readiness := a.finalReadinessCheckFor()
 	if state.graceRound && (readiness.reason != "" || !hasVisibleFinalAnswer(text)) {
 		a.contextManager().ObserveUsage(usage)

@@ -20,6 +20,7 @@ type ReadinessAudit struct {
 	CommandMismatchMissing    int
 	MissingAcceptanceCriteria int
 	MissingVerification       int
+	MissingObservation        int
 	MissingReview             int
 	MissingSignoff            int
 	MissingActionEvidence     int
