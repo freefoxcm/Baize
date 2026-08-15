@@ -1067,8 +1067,12 @@ func (t *UseCapabilityTool) resolveSkillCall(skillName, id string, args json.Raw
 			if len(payload) == 0 || string(payload) == "null" {
 				payload = json.RawMessage(fmt.Sprintf(`{"name":%q}`, skillName))
 			} else {
-				var m map[string]any
-				if json.Unmarshal(payload, &m) == nil {
+				var freeform string
+				if json.Unmarshal(payload, &freeform) == nil {
+					if b, err := json.Marshal(map[string]string{"name": skillName, "arguments": freeform}); err == nil {
+						payload = b
+					}
+				} else if m := map[string]any{}; json.Unmarshal(payload, &m) == nil {
 					if _, has := m["name"]; !has {
 						m["name"] = skillName
 						if b, err := json.Marshal(m); err == nil {

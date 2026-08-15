@@ -107,6 +107,19 @@ func TestServeBaizeAssetRoutes(t *testing.T) {
 	}
 }
 
+func TestServeClipboardHasInsecureContextFallback(t *testing.T) {
+	source := string(baizeJS)
+	for _, want := range []string{
+		"navigator.clipboard?.writeText",
+		"document.execCommand('copy')",
+		"return fallbackCopyText(text)",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("baize.js missing clipboard behavior %q", want)
+		}
+	}
+}
+
 func TestServePDFJSAssetRoutes(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc})

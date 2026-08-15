@@ -1999,10 +1999,31 @@ function setToolStatus(card, tone, label) {
   const ico=card.querySelector('.ico');
   if(ico){ico.className='ico'+(tone==='accent'?' spin':'');ico.innerHTML=toolIcon(tone);}
 }
-function copyText(text) {
-  if(!text)return Promise.resolve(false);
-  if(navigator.clipboard?.writeText)return navigator.clipboard.writeText(text).then(()=>true).catch(()=>false);
-  return Promise.resolve(false);
+function fallbackCopyText(text) {
+  const active=document.activeElement;
+  const selection=document.getSelection?.();
+  const ranges=[];
+  if(selection)for(let i=0;i<selection.rangeCount;i++)ranges.push(selection.getRangeAt(i));
+  const textarea=document.createElement('textarea');
+  textarea.value=text;
+  textarea.setAttribute('readonly','');
+  textarea.style.cssText='position:fixed;inset:0 auto auto 0;width:1px;height:1px;opacity:0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0,textarea.value.length);
+  let ok=false;
+  try{ok=document.execCommand('copy');}catch{}
+  finally{
+    textarea.remove();
+    if(selection){selection.removeAllRanges();ranges.forEach(range=>selection.addRange(range));}
+    if(active instanceof HTMLElement)active.focus();
+  }
+  return ok;
+}
+async function copyText(text) {
+  if(!text)return false;
+  try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return true;}}catch{}
+  return fallbackCopyText(text);
 }
 // renderDiffView renders a unified-diff string as red/green lines with a
 // +N -M stat recorded on the container (used for the collapsed card meta).
