@@ -9,8 +9,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <script>
-// Theme persistence: set data-theme before first paint to avoid a flash; dark is the default.
-(function(){try{if(localStorage.getItem('baize-theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();
+// Resolve the stored palette before first paint to avoid a theme flash.
+(function(){
+  var dark=['charcoal-copper','night-paper','paper-workbench'];
+  var light=['ivory-morning','mist-stone','sand-apricot'];
+  function stored(key,fallback){try{return localStorage.getItem(key)||fallback;}catch(e){return fallback;}}
+  function valid(value,list,fallback){return list.indexOf(value)>=0?value:fallback;}
+  var legacy=stored('baize-theme','dark');
+  var preference=stored('baize-theme-preference',legacy);
+  if(preference==='dark')preference='charcoal-copper';
+  if(preference==='light')preference='ivory-morning';
+  var darkPalette=valid(stored('baize-theme-dark-palette','charcoal-copper'),dark,'charcoal-copper');
+  var lightPalette=valid(stored('baize-theme-light-palette','ivory-morning'),light,'ivory-morning');
+  var systemLight=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;
+  var active=preference==='auto'?(systemLight?lightPalette:darkPalette):preference;
+  if(dark.indexOf(active)<0&&light.indexOf(active)<0)active='charcoal-copper';
+  document.documentElement.dataset.theme=active;
+  document.documentElement.dataset.themeFamily=light.indexOf(active)>=0?'light':'dark';
+})();
 </script>
 <link rel="stylesheet" href="/assets/baize.css" />
 </head>
@@ -286,7 +302,28 @@
       <label class="settings-field"><span>__('settings_reasoning_language')</span><select name="reasoningLanguage"><option value="auto">__('settings_follow_conversation')</option><option value="zh">中文</option><option value="en">English</option></select></label>
     </section>
     <section class="settings-group"><h3>__('settings_appearance')</h3>
-      <label class="settings-field"><span>__('settings_theme')</span><select id="setting-theme"><option value="auto">__('settings_theme_auto')</option><option value="dark">__('settings_theme_dark')</option><option value="light">__('settings_theme_light')</option></select></label>
+      <fieldset class="theme-picker" id="setting-theme-picker">
+        <legend>__('settings_theme')</legend>
+        <label class="theme-choice theme-choice--auto">
+          <input type="radio" name="appearanceTheme" value="auto">
+          <span class="theme-choice__body"><strong>__('settings_theme_auto')</strong><small>__('settings_theme_auto_hint')</small></span>
+          <span class="theme-choice__check" aria-hidden="true">✓</span>
+        </label>
+        <div class="theme-picker__group"><span class="theme-picker__label">__('settings_theme_dark_group')</span>
+          <div class="theme-picker__grid">
+            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="charcoal-copper"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#1d1c1b"></i><i style="--swatch:#34302c"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_charcoal_copper')</strong><small>__('theme_charcoal_copper_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="night-paper"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#202123"></i><i style="--swatch:#eee7da"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_night_paper')</strong><small>__('theme_night_paper_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="paper-workbench"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#202123"></i><i style="--swatch:#f8f3e9"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_paper_workbench')</strong><small>__('theme_paper_workbench_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+          </div>
+        </div>
+        <div class="theme-picker__group"><span class="theme-picker__label">__('settings_theme_light_group')</span>
+          <div class="theme-picker__grid">
+            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="ivory-morning"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#eee7dc"></i><i style="--swatch:#fffaf2"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_ivory_morning')</strong><small>__('theme_ivory_morning_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="mist-stone"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#e6e5e1"></i><i style="--swatch:#fcfbf8"></i><i style="--swatch:#db7138"></i></span><span class="theme-choice__body"><strong>__('theme_mist_stone')</strong><small>__('theme_mist_stone_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="sand-apricot"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#e5d5c1"></i><i style="--swatch:#fff4e6"></i><i style="--swatch:#c96838"></i></span><span class="theme-choice__body"><strong>__('theme_sand_apricot')</strong><small>__('theme_sand_apricot_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+          </div>
+        </div>
+      </fieldset>
       <label class="settings-field"><span>__('settings_density')</span><select id="setting-density"><option value="comfortable">__('settings_density_comfortable')</option><option value="compact">__('settings_density_compact')</option></select></label>
       <label class="settings-field"><span>__('settings_reasoning_display')</span><select id="setting-reasoning-display"><option value="closed">__('settings_reasoning_closed')</option><option value="auto">__('settings_reasoning_auto')</option><option value="open">__('settings_reasoning_open')</option></select></label>
       <label class="settings-field"><span>__('settings_subagent_preview')</span><select id="setting-subagent-preview"><option value="full">__('settings_preview_full')</option><option value="compact">__('settings_preview_compact')</option></select></label>

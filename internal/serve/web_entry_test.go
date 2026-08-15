@@ -277,3 +277,62 @@ func TestBaizeSessionSubagentAndSettingsUIContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestBaizeThemePaletteContracts(t *testing.T) {
+	html := string(indexHTML)
+	css := string(baizeCSS)
+	js := string(baizeJS)
+	themes := []string{
+		"night-paper",
+		"charcoal-copper",
+		"paper-workbench",
+		"ivory-morning",
+		"mist-stone",
+		"sand-apricot",
+	}
+	for _, theme := range themes {
+		if !strings.Contains(html, `name="appearanceTheme" value="`+theme+`"`) {
+			t.Errorf("Baize settings UI missing theme %q", theme)
+		}
+		if !strings.Contains(css, `:root[data-theme="`+theme+`"]`) {
+			t.Errorf("Baize stylesheet missing theme tokens for %q", theme)
+		}
+	}
+	for _, want := range []string{
+		`name="appearanceTheme" value="auto"`,
+		`id="setting-theme-picker"`,
+		`baize-theme-dark-palette`,
+		`baize-theme-light-palette`,
+		`preference==='dark'`,
+		`preference==='light'`,
+		`document.documentElement.dataset.themeFamily`,
+		`window.matchMedia('(prefers-color-scheme: light)')`,
+	} {
+		if !strings.Contains(html+js, want) {
+			t.Errorf("Baize theme implementation missing %q", want)
+		}
+	}
+	darkFirst := strings.Index(html, `name="appearanceTheme" value="charcoal-copper"`)
+	nightPaper := strings.Index(html, `name="appearanceTheme" value="night-paper"`)
+	lightFirst := strings.Index(html, `name="appearanceTheme" value="ivory-morning"`)
+	mistStone := strings.Index(html, `name="appearanceTheme" value="mist-stone"`)
+	if darkFirst < 0 || nightPaper < 0 || darkFirst > nightPaper {
+		t.Fatal("charcoal copper must be the first dark palette")
+	}
+	if lightFirst < 0 || mistStone < 0 || lightFirst > mistStone {
+		t.Fatal("ivory morning must be the first light palette")
+	}
+	for _, want := range []string{
+		`if(preference==='dark')preference='charcoal-copper'`,
+		`family==='light'?'ivory-morning':'charcoal-copper'`,
+	} {
+		if !strings.Contains(html+js, want) {
+			t.Errorf("Baize default theme implementation missing %q", want)
+		}
+	}
+	model := strings.Index(html, `id="btn-composer-model"`)
+	settings := strings.Index(html, `id="settings-drawer"`)
+	if model < 0 || settings < 0 || model > settings {
+		t.Fatal("composer model selector moved out of the composer before the settings drawer")
+	}
+}
