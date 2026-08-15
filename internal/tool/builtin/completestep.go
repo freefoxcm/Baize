@@ -17,14 +17,9 @@ import (
 
 func init() { tool.RegisterBuiltin(completeStep{}) }
 
-// completeStep records an evidence-backed completion of one step of an approved
-// plan. Like todo_write it has no host side effects — the claim and its evidence
-// live in the call's args, which a frontend renders as a signed-off step. Its
-// reason for existing is the enforcement in Execute: a completion with no evidence
-// is rejected, so the model can't flip a step to "done" without showing why it is
-// done (the verification it ran, the diff/files it changed, or a manual check).
-// It complements todo_write — todo_write keeps the list moving (one item
-// in_progress), complete_step is the formal sign-off of a finished step.
+// completeStep records an evidence-backed completion of an approved plan step.
+// Unlike todo_write, it formally signs off finished work and rejects claims
+// without verification, changed files, a diff, review, or a manual check.
 type completeStep struct{}
 
 type stepEvidence struct {
@@ -261,11 +256,11 @@ func nextTodoStatus(todos []evidence.TodoItem, match evidence.TodoStepMatch) str
 			suffix = " (phase sign-off)"
 		}
 		if todo.StepID != "" {
-			return fmt.Sprintf(" The host advanced the task list. Next signable todo: %d %q%s (step_id %q). Copy this step_id; do not guess a later index.", i+1, todo.Content, suffix, todo.StepID)
+			return fmt.Sprintf(" The host advanced the task list; continue with the next step. Next signable todo: %d %q%s (step_id %q). Copy this step_id; do not guess a later index.", i+1, todo.Content, suffix, todo.StepID)
 		}
-		return fmt.Sprintf(" The host advanced the task list. Next signable todo: %d %q%s. Copy this exact title; do not guess a later index.", i+1, todo.Content, suffix)
+		return fmt.Sprintf(" The host advanced the task list; continue with the next step. Next signable todo: %d %q%s. Copy this exact title; do not guess a later index.", i+1, todo.Content, suffix)
 	}
-	return " The host advanced the task list. All canonical todos are completed."
+	return " All steps completed — the task list has no remaining steps. All canonical todos are completed; deliver a final summary and end the turn."
 }
 
 func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified int, manualUnverified int, err error) {
@@ -287,9 +282,9 @@ func verifyStepEvidence(ctx context.Context, items []stepEvidence) (hostVerified
 				hint := allCommandHints(ctx, ledger)
 				return 0, 0, fmt.Errorf("evidence %d: verification command %q has no matching successful receipt — cite the command exactly as it ran in the session%s", i+1, command, hint)
 			}
-			_, deliveryHasMutation := ledger.LatestSuccessfulMutationIndex()
-			if evidence.DeliveryProfileFromContext(ctx) && deliveryHasMutation && !evidence.IsDeliveryVerificationCommand(command) {
-				return 0, 0, fmt.Errorf("evidence %d: command %q ran successfully but is not a recognized delivery verification; do not cite an opaque command as verification. Use a project test/check/lint command, or for JavaScript syntax use node --check <file> (a read-only extraction pipeline ending in node --check also works). If this was only a visible/manual inspection, cite kind manual or files without a command, then rerun and cite a recognized verifier after any opaque mutation", i+1, command)
+			_, closedLoopHasMutation := ledger.LatestSuccessfulMutationIndex()
+			if evidence.ClosedLoopExecutionFromContext(ctx) && closedLoopHasMutation && !evidence.IsVerificationCommand(command) {
+				return 0, 0, fmt.Errorf("evidence %d: command %q ran successfully but is not a recognized closed-loop verification; do not cite an opaque command as verification. Use a project test/check/lint command, or for JavaScript syntax use node --check <file> (a read-only extraction pipeline ending in node --check also works). If this was only a visible/manual inspection, cite kind manual or files without a command, then rerun and cite a recognized verifier after any opaque mutation", i+1, command)
 			}
 			hostVerified++
 		case "review":

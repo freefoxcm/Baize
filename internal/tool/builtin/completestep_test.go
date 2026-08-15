@@ -205,7 +205,7 @@ func TestCompleteStepExplainsRenewalAgainstCompletedTodoList(t *testing.T) {
 func TestCompleteStepDeliveryRejectsOpaqueEvalVerification(t *testing.T) {
 	ledger := evidence.NewLedger()
 	ledger.Record(evidence.ReceiptFromToolCall("bash", json.RawMessage(`{"command":"node -e 'console.log(1)'"}`), true, false))
-	ctx := evidence.WithDeliveryProfile(evidence.WithLedger(context.Background(), ledger))
+	ctx := evidence.WithClosedLoopExecution(evidence.WithLedger(context.Background(), ledger))
 
 	_, err := completeStep{}.Execute(ctx, json.RawMessage(`{
 		"step":"Check JavaScript",
@@ -215,7 +215,7 @@ func TestCompleteStepDeliveryRejectsOpaqueEvalVerification(t *testing.T) {
 	if err == nil {
 		t.Fatal("delivery complete_step should reject a command the final gate cannot recognize")
 	}
-	for _, want := range []string{"not a recognized delivery verification", "node --check"} {
+	for _, want := range []string{"not a recognized closed-loop verification", "node --check"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing recovery hint %q", err, want)
 		}
@@ -226,7 +226,7 @@ func TestCompleteStepDeliveryAcceptsNodeSyntaxCheck(t *testing.T) {
 	ledger := evidence.NewLedger()
 	ledger.Record(evidence.ReceiptFromToolCall("edit_file", json.RawMessage(`{"path":"app.js"}`), true, false))
 	ledger.Record(evidence.ReceiptFromToolCall("bash", json.RawMessage(`{"command":"node --check app.js"}`), true, false))
-	ctx := evidence.WithDeliveryProfile(evidence.WithLedger(context.Background(), ledger))
+	ctx := evidence.WithClosedLoopExecution(evidence.WithLedger(context.Background(), ledger))
 
 	if _, err := (completeStep{}).Execute(ctx, json.RawMessage(`{
 		"step":"Check JavaScript",
@@ -240,7 +240,7 @@ func TestCompleteStepDeliveryAcceptsNodeSyntaxCheck(t *testing.T) {
 func TestCompleteStepDeliveryKeepsReadOnlyEvidenceCompatibility(t *testing.T) {
 	ledger := evidence.NewLedger()
 	ledger.Record(evidence.ReceiptFromToolCall("bash", json.RawMessage(`{"command":"grep -n TODO app.js"}`), true, false))
-	ctx := evidence.WithDeliveryProfile(evidence.WithLedger(context.Background(), ledger))
+	ctx := evidence.WithClosedLoopExecution(evidence.WithLedger(context.Background(), ledger))
 
 	if _, err := (completeStep{}).Execute(ctx, json.RawMessage(`{
 		"step":"Inspect JavaScript",
@@ -425,7 +425,7 @@ func TestCompleteStepRequiresTitleAndIndexToMatch(t *testing.T) {
 
 func TestCompleteStepReportsCanonicalLayeredAdvance(t *testing.T) {
 	todos := make([]evidence.TodoItem, 20)
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		todos[i] = evidence.TodoItem{Content: fmt.Sprintf("completed %d", i+1), Status: "completed"}
 	}
 	todos[16] = evidence.TodoItem{Content: "快捷栏 12 槽", Status: "pending"}

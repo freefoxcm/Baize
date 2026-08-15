@@ -52,10 +52,6 @@ const __T = {
     'task_mode_direct': 'Standard',
     'task_mode_plan': 'Plan',
     'task_mode_goal': 'Goal',
-    'work_mode_title': 'Work mode',
-    'work_mode_balanced': 'Balanced',
-    'work_mode_lightweight': 'Lightweight',
-    'work_mode_delivery': 'Delivery',
     'model_search': 'Search models',
     'provider_label_deepseek': 'DeepSeek Official',
     'model_no_match': 'No matching models',
@@ -401,10 +397,6 @@ const __T = {
     'task_mode_direct': '常规',
     'task_mode_plan': '计划',
     'task_mode_goal': '目标',
-    'work_mode_title': '工作模式',
-    'work_mode_balanced': '均衡',
-    'work_mode_lightweight': '轻量',
-    'work_mode_delivery': '交付',
     'model_search': '搜索模型',
     'provider_label_deepseek': 'DeepSeek 官方',
     'model_no_match': '没有匹配的模型',
@@ -1032,7 +1024,7 @@ function renderDeliveryCard(it){
     disableDeliveryCards();
     deliveryRecoveryActive=true;
     const prompt=__('delivery_continue_prompt');
-    post('/delivery-recovery',{display:prompt,input:prompt}).then(async response=>{
+    post('/submit',{input:prompt,action:'final_readiness_recovery'}).then(async response=>{
       if(response.ok)return;
       throw new Error((await response.text()).trim()||('HTTP '+response.status));
     }).catch(err=>{
@@ -1044,13 +1036,16 @@ function renderDeliveryCard(it){
   actions.appendChild(btn);card.appendChild(actions);
   return card;
 }
-function showDeliveryReadiness(e){
-  disableDeliveryCards();
+function deliveryReadinessItem(e){
   const missing=Array.isArray(e&&e.readiness&&e.readiness.missing)?e.readiness.missing:[];
   const labels=missing.map(id=>DELIVERY_REQUIREMENTS[id]).filter(Boolean).map(key=>__(key));
   const detail=labels.length?__('delivery_missing').replace('{items}',labels.join(__LANG==='zh'?'、':', ')):'';
   const raw=String(e&&e.err||'');
-  const it={id:genItemId(),kind:'delivery',detail,raw,turn:currentTurn};
+  return {id:genItemId(),kind:'delivery',detail,raw,turn:currentTurn};
+}
+function showDeliveryReadiness(e){
+  disableDeliveryCards();
+  const it=deliveryReadinessItem(e);
   items.push(it);
   const card=renderDeliveryCard(it);appendItem(it,card);scrollDown(true);
 }
@@ -3213,6 +3208,7 @@ function renderHistoryMessages(ms){
     if(m.role==='user')return !!m.content;
     if(m.role==='assistant')return !!(m.content||m.reasoning||(m.toolCalls||[]).some(tc=>!hiddenTranscriptTool(tc.name)));
     if(m.role==='tool')return !hiddenTranscriptTool(m.toolName)&&!!(m.content||m.toolCallId||m.toolName);
+    if(m.role==='final_readiness')return true;
     return false;
   });
   hasVisibleHistory=visible;
@@ -3231,6 +3227,13 @@ function renderHistoryMessages(ms){
   let histTurn=0; // /history has no turn ids; a user message opens a new turn
   ms.forEach(m=>{
     if(m.role==='system')return;
+    if(m.role==='final_readiness'){
+      const it=deliveryReadinessItem({readiness:{missing:Array.isArray(m.missing)?m.missing:[]}});
+      it.turn=histTurn;
+      items.push(it);
+      const d=renderItem(it);if(d)appendItem(it,d);
+      return;
+    }
     if(m.role==='user'){
       if(m.content){const it={id:genItemId(),kind:'user',text:m.content,dom:null,turn:++histTurn};items.push(it);const d=renderItem(it);if(d)appendItem(it,d);}
       return;
@@ -3808,33 +3811,6 @@ $('#todos-head').onclick=function(e){
 // toolbar buttons
 btnSend.onclick=()=>void send();
 btnStop.onclick=()=>{foldGuidanceBackToDraft();post('/cancel');};
-// work mode (desktop runtime profile): full=Balanced / economy=Lightweight / delivery=Delivery
-const WORKMODE_ICONS = {
-  full: '<line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/>',
-  economy: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
-  delivery: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
-};
-const WORKMODE_KEYS = { full: 'work_mode_balanced', economy: 'work_mode_lightweight', delivery: 'work_mode_delivery' };
-let workMode = 'full';
-const workmodeMenu = $('#workmode-menu');
-function updateWorkModeUI() {
-  $('#workmode-label').textContent = __(WORKMODE_KEYS[workMode] || 'work_mode_balanced');
-  $('#workmode-icon').innerHTML = WORKMODE_ICONS[workMode] || WORKMODE_ICONS.full;
-  workmodeMenu.querySelectorAll('.workmode__item').forEach(it => it.classList.toggle('is-active', it.dataset.mode === workMode));
-}
-function fetchWorkMode() {
-  fetch('/profile').then(r => r.json()).then(d => { if (d && d.mode) { workMode = d.mode; updateWorkModeUI(); } }).catch(() => {});
-}
-$('#btn-workmode').onclick=()=>{ if(running)return; workmodeMenu.style.display = workmodeMenu.style.display === 'none' ? '' : 'none'; };
-workmodeMenu.querySelectorAll('.workmode__item').forEach(it=>{
-  it.onclick=()=>{
-    workmodeMenu.style.display='none';
-    if (it.dataset.mode === workMode) return;
-    post('/profile', { mode: it.dataset.mode }).then(() => fetchWorkMode());
-  };
-});
-document.addEventListener('click', e => { if (workmodeMenu.style.display !== 'none' && !e.target.closest('.workmode')) workmodeMenu.style.display = 'none'; });
-fetchWorkMode();
 // task mode trigger
 const taskModeMenu = $('#task-mode-menu');
 $('#btn-task-mode').onclick=()=>{if(running)return;taskModeMenu.style.display=taskModeMenu.style.display==='none'?'':'none';};

@@ -1,7 +1,6 @@
 package serve
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -71,7 +70,7 @@ func TestServeFileServesWorkspaceImages(t *testing.T) {
 	}
 
 	// Absolute path inside workspace works too.
-	if resp, _ := http.Get(srv.URL + "/file?path=" + filepath.ToSlash(filepath.Join(ws, "pic.png"))); resp.StatusCode != 200 {
+	if resp, _ := http.Get(srv.URL + "/file?path=" + filepath.ToSlash(filepath.Join(ws, "pic.png"))); resp.StatusCode != http.StatusOK {
 		t.Errorf("absolute path status = %d, want 200", resp.StatusCode)
 	}
 }
@@ -169,7 +168,7 @@ func TestServeAttachSavesBase64Image(t *testing.T) {
 	}
 
 	// The saved file is now servable through /file.
-	if resp, _ := http.Get(srv.URL + "/file?path=" + out.Path); resp.StatusCode != 200 {
+	if resp, _ := http.Get(srv.URL + "/file?path=" + out.Path); resp.StatusCode != http.StatusOK {
 		t.Errorf("attached file not servable, status = %d", resp.StatusCode)
 	}
 
@@ -326,7 +325,7 @@ func TestServeSubmitEffortBare(t *testing.T) {
 	}
 }
 
-// TestServeProfileEndpoints checks the work-mode (runtime profile) endpoints.
+// TestServeProfileEndpoints checks the one-release no-op compatibility surface.
 func TestServeProfileEndpoints(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{
@@ -335,15 +334,6 @@ func TestServeProfileEndpoints(t *testing.T) {
 		SessionDir: t.TempDir(),
 	})
 	server := New(ctrl, bc, config.ServeConfig{})
-	var rebuilt bool
-	server.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
-		rebuilt = true
-		return control.New(control.Options{
-			Sink:       bc,
-			Label:      "m",
-			SessionDir: t.TempDir(),
-		}), nil
-	}
 	srv := httptest.NewServer(server.Handler())
 	defer srv.Close()
 
@@ -372,7 +362,7 @@ func TestServeProfileEndpoints(t *testing.T) {
 		}
 	}
 
-	// Switching to economy rebuilds the controller and persists the mode.
+	// Legacy values are accepted but ignored under the standard task policy.
 	ok, err := http.Post(srv.URL+"/profile", "application/json", strings.NewReader(`{"mode":"economy"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -380,9 +370,6 @@ func TestServeProfileEndpoints(t *testing.T) {
 	ok.Body.Close()
 	if ok.StatusCode != http.StatusNoContent {
 		t.Fatalf("POST /profile economy status = %d, want 204", ok.StatusCode)
-	}
-	if !rebuilt {
-		t.Error("work-mode switch did not rebuild the controller")
 	}
 	resp2, err := http.Get(srv.URL + "/profile")
 	if err != nil {
@@ -392,8 +379,8 @@ func TestServeProfileEndpoints(t *testing.T) {
 	if err := json.NewDecoder(resp2.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body["mode"] != "economy" {
-		t.Fatalf("mode after switch = %v, want economy", body["mode"])
+	if body["mode"] != "full" {
+		t.Fatalf("mode after compatibility request = %v, want full", body["mode"])
 	}
 }
 

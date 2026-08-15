@@ -34,7 +34,7 @@ func TestWebSlashRequestsFrontendHandoff(t *testing.T) {
 	if m.launchWebWorkspaceRoot != workspace {
 		t.Fatalf("fresh /web handoff workspace = %q, want %q", m.launchWebWorkspaceRoot, workspace)
 	}
-	args := strings.Join(webHandoffArgs(m.launchWebResumePath, m.launchWebSessionID, m.launchWebModelRef, "balanced", m.launchWebWorkspaceRoot), " ")
+	args := strings.Join(webHandoffArgs(m.launchWebResumePath, m.launchWebSessionID, m.launchWebModelRef, m.launchWebWorkspaceRoot), " ")
 	if strings.Contains(args, "--resume") || !strings.Contains(args, "--session-id "+wantID) || !strings.Contains(args, "--dir "+workspace) {
 		t.Fatalf("fresh /web handoff args = %q, must not resume the reserved path", args)
 	}
@@ -70,7 +70,7 @@ func TestWebSlashResumesMaterializedSession(t *testing.T) {
 	if m.launchWebSessionID != agent.BranchID(path) {
 		t.Fatalf("materialized /web handoff session id = %q, want %q", m.launchWebSessionID, agent.BranchID(path))
 	}
-	args := strings.Join(webHandoffArgs(m.launchWebResumePath, m.launchWebSessionID, m.launchWebModelRef, "balanced", m.launchWebWorkspaceRoot), " ")
+	args := strings.Join(webHandoffArgs(m.launchWebResumePath, m.launchWebSessionID, m.launchWebModelRef, m.launchWebWorkspaceRoot), " ")
 	if !strings.Contains(args, "--resume "+path) || strings.Contains(args, "--session-id") || !strings.Contains(args, "--dir "+workspace) {
 		t.Fatalf("materialized /web handoff args = %q, want resume path %q", args, path)
 	}

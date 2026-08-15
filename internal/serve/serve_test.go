@@ -898,7 +898,8 @@ func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
 	for _, want := range []string{
 		"e.outcome==='final_readiness'",
 		"showDeliveryReadiness(e)",
-		"post('/delivery-recovery',{display:prompt,input:prompt})",
+		"post('/submit',{input:prompt,action:'final_readiness_recovery'})",
+		"m.role==='final_readiness'",
 		"'delivery_incomplete_title': 'Delivery checks are not complete'",
 		"'delivery_incomplete_title': '交付检查尚未完成'",
 		"project_check:'delivery_requirement_project_check'",

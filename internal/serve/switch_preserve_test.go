@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"reasonix/internal/agent"
-	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
@@ -37,7 +36,7 @@ func TestBuildPreservesSessionDirAndWorkspace(t *testing.T) {
 		WorkspaceRoot: proj,
 		Label:         "old",
 	})
-	s := &Server{ctrl: old, bc: bc, tokenMode: boot.TokenModeFull}
+	s := &Server{ctrl: old, bc: bc}
 
 	newCtrl, err := s.build(context.Background(), "deepseek-flash/deepseek-v4-flash")
 	if err != nil {
@@ -79,7 +78,7 @@ func TestReplacementBuildContextsOutliveHTTPRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			old := control.New(control.Options{Sink: event.Discard, Label: "old"})
 			defer old.Close()
-			s := &Server{ctrl: old, bc: NewBroadcaster(), tokenMode: boot.TokenModeFull}
+			s := &Server{ctrl: old, bc: NewBroadcaster()}
 
 			var lifecycleCtx context.Context
 			var replacement *control.Controller
@@ -138,7 +137,7 @@ func TestSwitchModelKeepsSessionList(t *testing.T) {
 		WorkspaceRoot: proj,
 		Label:         "old",
 	})
-	s := &Server{ctrl: old, bc: bc, tokenMode: boot.TokenModeFull}
+	s := &Server{ctrl: old, bc: bc}
 	s.titles = newTitleCache(sessionDir)
 
 	if err := s.switchModel(context.Background(), "deepseek-flash/deepseek-v4-flash"); err != nil {
@@ -159,35 +158,6 @@ func TestSwitchModelKeepsSessionList(t *testing.T) {
 	}
 }
 
-// TestSwitchProfilePreservesApprovalMode extends the same guard to the
-// work-mode rebuild path (switchProfile), which shares build() and the
-// authorization carry-over but runs its own publish sequence.
-func TestSwitchProfilePreservesApprovalMode(t *testing.T) {
-	bc := NewBroadcaster()
-	old := control.New(control.Options{
-		Executor: agent.New(nil, nil, agent.NewSession("sys"), agent.Options{}, event.Discard),
-		Sink:     bc,
-		Label:    "old",
-	})
-	old.SetToolApprovalMode("auto")
-
-	s := &Server{ctrl: old, bc: bc, tokenMode: boot.TokenModeFull}
-	var built *control.Controller
-	s.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
-		built = control.New(control.Options{Sink: bc, Label: "new"})
-		return built, nil
-	}
-
-	if err := s.switchProfile(context.Background(), boot.TokenModeEconomy); err != nil {
-		t.Fatalf("switchProfile: %v", err)
-	}
-	defer built.Close()
-
-	if got := s.ctl().ToolApprovalMode(); got != "auto" {
-		t.Fatalf("approval mode after work-mode switch = %q, want %q", got, "auto")
-	}
-}
-
 // TestSwitchModelPreservesApprovalMode guards the runtime approval posture
 // (ask/auto/yolo) across a rebuild: boot.Build starts from config defaults, so
 // switchModel must copy the outgoing controller's mode onto the replacement.
@@ -200,7 +170,7 @@ func TestSwitchModelPreservesApprovalMode(t *testing.T) {
 	})
 	old.SetToolApprovalMode("auto")
 
-	s := &Server{ctrl: old, bc: bc, tokenMode: boot.TokenModeFull}
+	s := &Server{ctrl: old, bc: bc}
 	var built *control.Controller
 	s.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
 		built = control.New(control.Options{Sink: bc, Label: "new"})

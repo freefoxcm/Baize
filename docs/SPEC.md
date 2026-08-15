@@ -274,11 +274,12 @@ when the sole automatic threshold is crossed.
   user-global value used by desktop and new CLI sessions. UI always shows the
   **effective** ratio.
 - `max_output_tokens` is an independent **per-turn** completion ceiling.
-  Recommended: `0` (**automatic**, not unlimited; DeepSeek default high → ~64K).
-  User presets: `32768` ordinary coding / cost control, `65536` heavy reasoning /
-  long tool loops, `131072` only after repeated `finish_reason=length`.
-  Negative omits optional wire limits when the protocol allows. Clipped only at
-  send time against remaining window and **never** changes `triggerTokens` or
+  Recommended: `0` — official DeepSeek omits the field so the server uses the
+  documented **384K** output cap; thinking depth is `effort` only (default high).
+  A positive value is an explicit cost cap. Negative omits optional wire limits
+  when the protocol allows; official DeepSeek Anthropic still sends 384K because
+  `max_tokens` is required (`budget_tokens` is ignored). Clipped only at send
+  time against remaining window and **never** changes `triggerTokens` or
   maintenance timing. Billing follows actual completion tokens, not the ceiling.
 - Giant tool results are bounded **once**, on first entry to the model:
   `Content` is the stable ≤32KB visible form; `RawContent` holds the full original
@@ -324,11 +325,15 @@ when the sole automatic threshold is crossed.
   budgets. This never mutates the stable system prompt or tool schemas.
 - The owning controller may auto-allow only a bounded, non-sensitive,
   create-only project/reference `remember`, including in a top-level headless
-  run. Global facts, preferences, feedback,
-  updates, duplicates, sensitive/oversized content, and every `forget` require a
-  fresh human approval even under Auto or YOLO. Guardian/safety review cannot
-  answer these prompts on the user's behalf. Sub-agents and headless surfaces
-  without the owning scoped controller fail closed. The approval request includes a compact preview, while
+  run. In Ask, global facts, preferences, feedback, updates, duplicates,
+  sensitive/oversized content, and every `forget` require a fresh human
+  approval. Interactive Auto treats `remember` and `forget` as normal policy
+  fallback while preserving explicit `ask` and `deny` rules. Interactive YOLO
+  bypasses memory ask prompts unless an explicit deny rule matches.
+  Guardian/safety review cannot answer these prompts on the user's
+  behalf. Sub-agents and headless surfaces without the owning scoped
+  controller fail closed, including headless YOLO except for the create-only
+  path above. The approval request includes a compact preview, while
   external notification hooks only receive the tool name.
 - Facts carry immutable IDs, monotonic revisions, timestamps, type, and scope.
   Updates snapshot the previous revision; restore and archive recovery create a
@@ -496,9 +501,11 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
 - **User decisions are separate from tool approvals.** Runtime tool approval has
   three user-facing postures: `ask` ("需要批准"), `auto` ("自动批准"), and
   `yolo` ("Yolo批准"). `auto` lets the permission policy auto-approve the writer
-  fallback while preserving explicit ask/deny rules; `yolo` skips ordinary tool
-  permission prompts for approval-gated tools such as writers and Bash. Explicit
-  deny rules and forced fresh reviews still apply. Nested or indirect Bash
+  and interactive memory fallback while preserving explicit ask/deny rules;
+  `yolo` skips ordinary tool permission prompts for approval-gated tools such
+  as writers, Bash, and explicit interactive `remember`/`forget` ask prompts.
+  Explicit deny rules and forced fresh reviews
+  for plans, sandbox escapes, and managed config writes still apply. Nested or indirect Bash
   commands require a human in interactive Ask/Auto even during the approved-plan
   window; ordinary expansions, assignments, redirects, and globs continue under
   Auto fallback but cannot inherit reusable Bash rules. YOLO is the sole mode
@@ -556,8 +563,8 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
 | Tool approval posture | Tool approvals | Plan approval | `ask` questions |
 | --- | --- | --- | --- |
 | Need approval / `ask` | Follow permission policy (`Ask` prompts interactively) | Waits for user | Waits for user |
-| Auto approve / `auto` | Writer fallback auto-allowed; explicit ask/deny rules still apply | Waits for user | Waits for user |
-| YOLO approval / `yolo` | Ordinary prompts auto-allowed; deny rules and fresh reviews remain | Waits for user | Waits for user |
+| Auto approve / `auto` | Writer fallback and interactive `remember`/`forget` fallback auto-allowed; explicit ask/deny rules still apply | Waits for user | Waits for user |
+| YOLO approval / `yolo` | Ordinary prompts auto-allowed, including `remember`/`forget`; deny rules and plan/sandbox/config reviews remain | Waits for user | Waits for user |
 | Approved-plan execution window | Approved plan's writer fallback is auto-allowed; explicit `ask` / `deny` rules remain | Future plans still wait | Waits for user |
 
 Out of the box (`mode = "ask"`, no rules), interactive `reasonix` prompts before
@@ -1035,10 +1042,10 @@ default        = "deepseek-v4-flash"   # optional; defaults to models[0]
 api_key_env    = "DEEPSEEK_API_KEY"
 web_search     = true
 context_window = 1000000   # tokens; harness compacts older history near this limit (0 disables)
-# max_output_tokens = 0              # recommended: automatic (DeepSeek default high → ~64K)
-# max_output_tokens = 32768          # ordinary coding / cost control
-# max_output_tokens = 65536          # heavy reasoning / long tool loops
-# max_output_tokens = 131072         # only after repeated finish_reason=length
+# max_output_tokens = 0              # recommended: official DeepSeek omits the field (server 384K)
+# max_output_tokens = 32768          # optional cost cap
+# max_output_tokens = 65536          # optional cost cap
+# max_output_tokens = 131072         # optional cost cap
 # max_output_tokens never changes compact_ratio
 # model_overrides = { "deepseek-v4-flash" = { context_window = 1000000, max_output_tokens = 32768 } }
 
@@ -1155,6 +1162,14 @@ the connection is ready.
 ```
 
 `[sandbox]` is the *enforcement* layer beneath permissions (which are *policy*).
+They stay two layers: a permitted call still cannot write outside the approved
+roots. Interactive sessions can extend those roots with a write-access approval
+(once / session / project `reasonix.toml` / deny). File tools request the target
+parent directory automatically. Bash must declare `additional_write_dirs` and a
+`justification`; the host does not infer paths from the command text. Headless
+`reasonix run` fails closed unless the directory is already in
+`[sandbox].allow_write` or `--add-dir`. Granting `${HOME}` is allowed with a
+high-risk warning; the filesystem root and Reasonix session/state paths are not.
 Phase 0 confines the file-writing built-ins (`write_file`, `edit_file`,
 `multi_edit`, `move_file`) to `workspace_root` (default cwd), the Reasonix user
 config dir, plus `allow_write`: a write whose target — resolved to an absolute,

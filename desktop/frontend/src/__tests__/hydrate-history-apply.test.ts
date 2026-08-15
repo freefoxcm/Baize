@@ -5,6 +5,7 @@ import {
   hasCachedLiveTurn,
   hydratedHistoryApplyMode,
   sameSessionPlaceholderItems,
+  shouldPreferResidentHistory,
 } from "../lib/hydrateHistoryApply";
 
 let passed = 0;
@@ -73,6 +74,44 @@ ok(
 ok(
   (sameSessionPlaceholderItems("a.jsonl", { meta: { sessionPath: "a.jsonl" }, items: [{ kind: "user" }] }) ?? []).length === 1,
   "same-session items stay placeholders",
+);
+
+ok(
+  !shouldPreferResidentHistory(false, false),
+  "retry / explicit no-cache hydrates must not serve the resident snapshot",
+);
+ok(shouldPreferResidentHistory(false, true), "preserveCachedHistory still allows a resident hit");
+ok(shouldPreferResidentHistory(false, undefined), "unspecified preserveCachedHistory still allows a resident hit");
+ok(!shouldPreferResidentHistory(true, true), "reset hydrates never prefer the resident snapshot");
+
+const liveIdle = {
+  items: [{ kind: "user" }, { kind: "assistant" }, { kind: "user" }],
+  historyRevision: 10,
+  historyDigest: "rev-10",
+};
+ok(
+  mode(false, true, false, liveIdle, {
+    items: [{ kind: "user" }],
+    revision: 10,
+    digest: "rev-10",
+  }) === "skip",
+  "idle transcript is not replaced by a shorter same-fingerprint resident snapshot",
+);
+ok(
+  mode(false, true, false, liveIdle, {
+    items: [{ kind: "user" }, { kind: "assistant" }, { kind: "user" }, { kind: "assistant" }],
+    revision: 11,
+    digest: "rev-11",
+  }) === "replace",
+  "a newer backend page still replaces the idle transcript",
+);
+ok(
+  mode(false, true, false, { items: [] }, {
+    items: [{ kind: "user" }],
+    revision: 10,
+    digest: "rev-10",
+  }) === "replace",
+  "empty idle surface still applies history",
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

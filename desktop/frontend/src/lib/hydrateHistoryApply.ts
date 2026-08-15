@@ -7,9 +7,39 @@ export type HydrateLiveState = {
   pendingUser?: unknown;
   historyTotalTurns?: number;
   items: ReadonlyArray<{ kind: string; streaming?: boolean; status?: string }>;
+  historyRevision?: number;
+  historyDigest?: string;
 };
 
 export type HydratedHistoryApplyMode = "replace" | "prepend" | "skip";
+
+export type HydrateProjection = {
+  items: ReadonlyArray<unknown>;
+  revision?: number;
+  digest?: string;
+};
+
+export function shouldPreferResidentHistory(reset: boolean, preserveCachedHistory?: boolean): boolean {
+  return !reset && preserveCachedHistory !== false;
+}
+
+function sameHydrateFingerprint(state: HydrateLiveState | undefined, projection: HydrateProjection | undefined): boolean {
+  if (!state || !projection) return false;
+  const revision = projection.revision ?? 0;
+  const digest = (projection.digest ?? "").trim();
+  if (revision > 0 && state.historyRevision === revision) return true;
+  if (digest !== "" && (state.historyDigest ?? "") === digest) return true;
+  return false;
+}
+
+export function isStaleResidentProjection(
+  state: HydrateLiveState | undefined,
+  projection: HydrateProjection | undefined,
+): boolean {
+  if (!state || !projection || state.items.length === 0) return false;
+  if (projection.items.length >= state.items.length) return false;
+  return sameHydrateFingerprint(state, projection);
+}
 
 // A live turn is only "cached" once a history page has landed behind it.
 // Without that, a session opened mid-stream reports a cached turn, skips the
@@ -27,15 +57,18 @@ export function hasCachedLiveTurn(state: HydrateLiveState | undefined): boolean 
 // An empty surface has to apply history or switch-back shows Welcome. A turn
 // that has already streamed rows keeps them — but a tab with no history page
 // behind it still gets one, prepended, instead of a blank transcript above the
-// live turn. Only an already-hydrated live turn is left alone.
+// live turn. Only an already-hydrated live turn is left alone. An idle
+// same-fingerprint resident page that is shorter than the visible transcript
+// is skipped so Retry/clear cannot roll the chat back.
 export function hydratedHistoryApplyMode(
   skipHistory: boolean,
   hasProjection: boolean,
   foregroundTurnActive: boolean,
   state: HydrateLiveState | undefined,
+  projection?: HydrateProjection,
 ): HydratedHistoryApplyMode {
   if (skipHistory || !hasProjection) return "skip";
-  if (!foregroundTurnActive) return "replace";
+  if (!foregroundTurnActive) return isStaleResidentProjection(state, projection) ? "skip" : "replace";
   if ((state?.items.length ?? 0) === 0 && !hasCachedLiveTurn(state)) return "replace";
   return (state?.historyTotalTurns ?? 0) === 0 ? "prepend" : "skip";
 }
