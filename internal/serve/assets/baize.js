@@ -264,8 +264,23 @@ const __T = {
     'settings_appearance': 'Appearance',
     'settings_theme': 'Theme',
     'settings_theme_auto': 'Follow system',
+    'settings_theme_auto_hint': 'Uses your latest dark and light palettes',
     'settings_theme_dark': 'Dark',
     'settings_theme_light': 'Light',
+    'settings_theme_dark_group': 'Dark & mixed',
+    'settings_theme_light_group': 'Light',
+    'theme_night_paper': 'Night Paper',
+    'theme_night_paper_hint': 'Graphite frame · ivory focus',
+    'theme_charcoal_copper': 'Charcoal Copper',
+    'theme_charcoal_copper_hint': 'Low-glare dark workbench',
+    'theme_paper_workbench': 'Paper Workbench',
+    'theme_paper_workbench_hint': 'Paper canvas · dark controls',
+    'theme_ivory_morning': 'Ivory Morning',
+    'theme_ivory_morning_hint': 'Warm · closest to sign-in',
+    'theme_mist_stone': 'Mist Stone',
+    'theme_mist_stone_hint': 'Neutral · professional',
+    'theme_sand_apricot': 'Sand Apricot',
+    'theme_sand_apricot_hint': 'Warm · distinctive',
     'settings_density': 'Density',
     'settings_density_comfortable': 'Comfortable',
     'settings_density_compact': 'Compact',
@@ -609,8 +624,23 @@ const __T = {
     'settings_appearance': '外观',
     'settings_theme': '主题',
     'settings_theme_auto': '跟随系统',
+    'settings_theme_auto_hint': '使用最近选择的深色和浅色方案',
     'settings_theme_dark': '深色',
     'settings_theme_light': '浅色',
+    'settings_theme_dark_group': '深色与混合',
+    'settings_theme_light_group': '浅色',
+    'theme_night_paper': '夜幕暖纸',
+    'theme_night_paper_hint': '石墨框架 · 象牙重点',
+    'theme_charcoal_copper': '炭灰铜橙',
+    'theme_charcoal_copper_hint': '低眩光深色工作台',
+    'theme_paper_workbench': '纸本工作台',
+    'theme_paper_workbench_hint': '纸张画布 · 深色控件',
+    'theme_ivory_morning': '象牙晨光',
+    'theme_ivory_morning_hint': '温润 · 最接近登录页',
+    'theme_mist_stone': '雾灰橙印',
+    'theme_mist_stone_hint': '克制 · 专业工具感',
+    'theme_sand_apricot': '沙丘杏白',
+    'theme_sand_apricot_hint': '温暖 · 品牌鲜明',
     'settings_density': '显示密度',
     'settings_density_comfortable': '舒适',
     'settings_density_compact': '紧凑',
@@ -4294,30 +4324,61 @@ $('#delete-confirm').onclick=()=>{
 // welcome examples
 $$('.welcome__ex').forEach(btn=>{btn.onclick=()=>{input.value=btn.dataset.prompt;send();};});
 
-// ── theme toggle (light/dark; persisted per-browser, dark default) ──
+function storageValue(key,fallback){try{return localStorage.getItem(key)||fallback;}catch{return fallback;}}
+function setStorageValue(key,value){try{localStorage.setItem(key,value);}catch{}}
+
+// ── theme palettes (per-browser; charcoal copper default) ──
 const themeBtn=$('#btn-theme');
-function applyTheme(mode){
-  if(mode==='light'){document.documentElement.setAttribute('data-theme','light');localStorage.setItem('baize-theme','light');themeBtn.title=__('theme_switch_dark');}
-  else{document.documentElement.removeAttribute('data-theme');localStorage.setItem('baize-theme','dark');themeBtn.title=__('theme_switch_light');}
+const DARK_THEMES=['charcoal-copper','night-paper','paper-workbench'];
+const LIGHT_THEMES=['ivory-morning','mist-stone','sand-apricot'];
+function themeFamily(theme){return LIGHT_THEMES.includes(theme)?'light':'dark';}
+function validPalette(value,family){const choices=family==='light'?LIGHT_THEMES:DARK_THEMES;const fallback=family==='light'?'ivory-morning':'charcoal-copper';return choices.includes(value)?value:fallback;}
+function storedThemePreference(){
+  let preference=storageValue('baize-theme-preference',storageValue('baize-theme','dark'));
+  if(preference==='dark')preference='charcoal-copper';
+  if(preference==='light')preference='ivory-morning';
+  return preference==='auto'||DARK_THEMES.includes(preference)||LIGHT_THEMES.includes(preference)?preference:'charcoal-copper';
+}
+function latestTheme(family){return validPalette(storageValue('baize-theme-'+family+'-palette',family==='light'?'ivory-morning':'charcoal-copper'),family);}
+function effectiveTheme(preference=storedThemePreference()){
+  if(preference!=='auto')return validPalette(preference,themeFamily(preference));
+  const systemLight=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;
+  return latestTheme(systemLight?'light':'dark');
+}
+function syncThemePicker(preference){
+  const input=document.querySelector('input[name="appearanceTheme"][value="'+preference+'"]');
+  if(input)input.checked=true;
+}
+function applyTheme(theme){
+  const active=DARK_THEMES.includes(theme)||LIGHT_THEMES.includes(theme)?theme:'charcoal-copper';
+  const family=themeFamily(active);
+  document.documentElement.dataset.theme=active;
+  document.documentElement.dataset.themeFamily=family;
+  setStorageValue('baize-theme',family);
+  themeBtn.title=family==='light'?__('theme_switch_dark'):__('theme_switch_light');
   themeBtn.setAttribute('aria-label',themeBtn.title);
 }
-applyTheme(document.documentElement.getAttribute('data-theme')==='light'?'light':'dark');
-themeBtn.onclick=()=>{const next=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';setStorageValue('baize-theme-preference',next);applyTheme(next);};
+function storeThemePreference(preference){
+  const normalized=preference==='auto'||DARK_THEMES.includes(preference)||LIGHT_THEMES.includes(preference)?preference:'charcoal-copper';
+  setStorageValue('baize-theme-preference',normalized);
+  if(normalized!=='auto')setStorageValue('baize-theme-'+themeFamily(normalized)+'-palette',normalized);
+  return normalized;
+}
+function applyAppearanceSettings(){
+  const preference=storedThemePreference();
+  applyTheme(effectiveTheme(preference));
+  syncThemePicker(preference);
+  document.documentElement.dataset.density=storageValue('baize-density','comfortable');
+}
+themeBtn.onclick=()=>{
+  const current=document.documentElement.dataset.themeFamily==='light'?'light':'dark';
+  storeThemePreference(latestTheme(current==='light'?'dark':'light'));
+  applyAppearanceSettings();
+};
 
 // ── settings drawer ──
 const settingsDrawer=$('#settings-drawer'),settingsBackdrop=$('#settings-backdrop'),settingsButton=$('#btn-settings'),settingsForm=$('#settings-form');
 let settingsRevision='',settingsSnapshot=null,settingsDirty=false;
-function storageValue(key,fallback){try{return localStorage.getItem(key)||fallback;}catch{return fallback;}}
-function setStorageValue(key,value){try{localStorage.setItem(key,value);}catch{}}
-function effectiveThemePreference(){
-  const pref=storageValue('baize-theme-preference',storageValue('baize-theme','dark'));
-  if(pref==='auto')return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
-  return pref==='light'?'light':'dark';
-}
-function applyAppearanceSettings(){
-  applyTheme(effectiveThemePreference());
-  document.documentElement.dataset.density=storageValue('baize-density','comfortable');
-}
 function openSettings(){
   if(!ordinaryOverlayAllowed())return;
   closeWorkspacePanel({restoreFocus:false});closeOrdinaryModals();
@@ -4337,7 +4398,7 @@ function populateSettings(view){
   settingsSnapshot=view;settingsRevision=view.revision||'';const value=view.global||{};const models=value.models||[];
   fillModelSetting($('#setting-default-model'),models,value.defaultModel,false);fillModelSetting($('#setting-planner-model'),models,value.plannerModel,true);fillModelSetting($('#setting-subagent-model'),models,value.subagentModel,true);
   Object.entries(value).forEach(([name,val])=>{const field=settingsForm.elements.namedItem(name);if(field&&field.tagName!=='SELECT'&&field.tagName!=='INPUT')return;if(field&&name!=='defaultModel'&&name!=='plannerModel'&&name!=='subagentModel')field.value=String(val);});
-  $('#setting-theme').value=storageValue('baize-theme-preference',storageValue('baize-theme','dark'));
+  syncThemePicker(storedThemePreference());
   $('#setting-density').value=storageValue('baize-density','comfortable');
   $('#setting-reasoning-display').value=storageValue('baize-reasoning-display','closed');
   $('#setting-subagent-preview').value=storageValue('baize-subagent-preview','full');
@@ -4361,11 +4422,13 @@ function runtimeSettingsPayload(){
   payload.compactRatio=Number(data.get('compactRatio'));return payload;
 }
 function saveAppearanceSettings(){
-  setStorageValue('baize-theme-preference',$('#setting-theme').value);setStorageValue('baize-density',$('#setting-density').value);setStorageValue('baize-reasoning-display',$('#setting-reasoning-display').value);setStorageValue('baize-subagent-preview',$('#setting-subagent-preview').value);setStorageValue('baize-subagent-auto-collapse',String($('#setting-subagent-collapse').checked));applyAppearanceSettings();
+  const selected=document.querySelector('input[name="appearanceTheme"]:checked');
+  storeThemePreference(selected?selected.value:storedThemePreference());setStorageValue('baize-density',$('#setting-density').value);setStorageValue('baize-reasoning-display',$('#setting-reasoning-display').value);setStorageValue('baize-subagent-preview',$('#setting-subagent-preview').value);setStorageValue('baize-subagent-auto-collapse',String($('#setting-subagent-collapse').checked));applyAppearanceSettings();
 }
-['setting-theme','setting-density','setting-reasoning-display','setting-subagent-preview','setting-subagent-collapse'].forEach(id=>{const field=$('#'+id);if(field)field.addEventListener('change',saveAppearanceSettings);});
-settingsForm.addEventListener('input',event=>{if(event.target?.name)settingsDirty=true;});
-settingsForm.addEventListener('change',event=>{if(event.target?.name)settingsDirty=true;});
+$$('input[name="appearanceTheme"]').forEach(field=>field.addEventListener('change',saveAppearanceSettings));
+['setting-density','setting-reasoning-display','setting-subagent-preview','setting-subagent-collapse'].forEach(id=>{const field=$('#'+id);if(field)field.addEventListener('change',saveAppearanceSettings);});
+settingsForm.addEventListener('input',event=>{if(event.target?.name&&event.target.name!=='appearanceTheme')settingsDirty=true;});
+settingsForm.addEventListener('change',event=>{if(event.target?.name&&event.target.name!=='appearanceTheme')settingsDirty=true;});
 settingsForm.onsubmit=async event=>{
   event.preventDefault();const payload=runtimeSettingsPayload();
   if(payload.defaultApprovalMode==='yolo'&&settingsSnapshot?.global?.defaultApprovalMode!=='yolo'&&!window.confirm(__('settings_yolo_confirm')))return;
@@ -4379,7 +4442,7 @@ settingsForm.onsubmit=async event=>{
 };
 $('#settings-retry').onclick=async()=>{try{const response=await post('/settings/apply',{});if(!response.ok&&response.status!==202)throw new Error((await response.text()).trim()||('HTTP '+response.status));await loadSettings();}catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}};
 settingsButton.onclick=openSettings;$('#settings-close').onclick=()=>closeSettings({restoreFocus:true});settingsBackdrop.onclick=()=>closeSettings({restoreFocus:true});
-if(window.matchMedia){window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(storageValue('baize-theme-preference','dark')==='auto')applyAppearanceSettings();});}
+if(window.matchMedia){window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(storedThemePreference()==='auto')applyAppearanceSettings();});}
 applyAppearanceSettings();
 
 // One Escape closes only the highest-priority ordinary surface. Approval and
