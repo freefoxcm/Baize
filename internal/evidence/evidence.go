@@ -1103,16 +1103,21 @@ func (l *Ledger) HasSuccessfulWorkReceipt() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, r := range l.receipts {
-		if !r.Success {
-			continue
-		}
-		switch r.ToolName {
-		case "ask", "todo_write", "complete_step":
+		if !r.Success || workflowBookkeepingTool(r.ToolName) {
 			continue
 		}
 		return true
 	}
 	return false
+}
+
+func workflowBookkeepingTool(name string) bool {
+	switch name {
+	case "ask", "todo_write", "complete_step", "update_goal":
+		return true
+	default:
+		return false
+	}
 }
 
 // HasSuccessfulVerificationCommand reports whether the turn ran at least one
@@ -2578,6 +2583,7 @@ func completeStepHasProof(fields map[string]json.RawMessage) bool {
 		Kind    string   `json:"kind"`
 		Summary string   `json:"summary"`
 		Command string   `json:"command"`
+		Tool    string   `json:"tool"`
 		Paths   []string `json:"paths"`
 	}
 	if err := json.Unmarshal(raw, &items); err != nil || len(items) == 0 {
@@ -2597,8 +2603,12 @@ func completeStepHasProof(fields map[string]json.RawMessage) bool {
 			if len(normalizePaths(item.Paths)) == 0 {
 				return false
 			}
-		case "manual":
-			// Summary is enough for manual evidence.
+		case "tool":
+			if strings.TrimSpace(item.Tool) == "" {
+				return false
+			}
+		case "review", "manual":
+			// Summary is enough for review and manual evidence.
 		default:
 			return false
 		}

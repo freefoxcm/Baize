@@ -30,7 +30,9 @@ func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution 
 			a.advanceCanonicalTodo(rec.Step)
 		}
 	case plan.evidenceName != call.Name:
-		a.task.ledger.Record(evidence.ReceiptFromToolCall(call.Name, args, err == nil, true))
+		visible := evidence.ReceiptFromToolCall(call.Name, args, err == nil, plan.readOnly)
+		decorateExecutionReceipt(&visible, result, execution)
+		a.task.ledger.Record(visible)
 		rec := evidence.ReceiptFromToolCall(plan.evidenceName, plan.evidenceArgs, err == nil, plan.readOnly)
 		rec.Mutation = plan.effects.ContentMutation
 		decorateExecutionReceipt(&rec, result, execution)

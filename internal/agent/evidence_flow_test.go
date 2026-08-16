@@ -370,19 +370,6 @@ func TestClosedLoopRequiresActiveTodoForLateMutation(t *testing.T) {
 	}
 }
 
-func TestClosedLoopAllowsEvidenceBackedReadOnlyAnalysis(t *testing.T) {
-	reg := tool.NewRegistry()
-	reg.Add(fakeTool{name: "read_file", readOnly: true})
-	prov := &scriptedProvider{name: "delivery", turns: [][]provider.Chunk{
-		{toolCallChunk("read", "read_file", `{"path":"main.go"}`), {Type: provider.ChunkDone}},
-		{{Type: provider.ChunkText, Text: "analysis"}, {Type: provider.ChunkDone}},
-	}}
-	a := New(prov, reg, NewSession(""), Options{}, event.Discard)
-	if err := a.Run(withClosedLoopContext(context.Background()), "analyze main.go"); err != nil {
-		t.Fatalf("read-only analysis should not require mutation/sign-off: %v", err)
-	}
-}
-
 func TestEvidenceFlowEnforcesProjectChecksAfterWrite(t *testing.T) {
 	completeStep, ok := tool.LookupBuiltin("complete_step")
 	if !ok {

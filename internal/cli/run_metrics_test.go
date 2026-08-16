@@ -46,6 +46,7 @@ func TestMetricsSinkAccumulatesReadinessAudit(t *testing.T) {
 		CommandMismatchMissing:    2,
 		MissingAcceptanceCriteria: 1,
 		MissingVerification:       1,
+		MissingObservation:        1,
 		MissingReview:             1,
 		MissingSignoff:            1,
 		MissingActionEvidence:     1,
@@ -83,9 +84,9 @@ func TestMetricsSinkAccumulatesReadinessAudit(t *testing.T) {
 	if s.m.ReadinessCommandMismatches != 2 {
 		t.Fatalf("command mismatches = %d, want 2", s.m.ReadinessCommandMismatches)
 	}
-	if s.m.ReadinessMissingAcceptance != 1 || s.m.ReadinessMissingVerification != 1 || s.m.ReadinessMissingReview != 1 || s.m.ReadinessMissingSignoff != 1 {
-		t.Fatalf("delivery readiness misses = acceptance %d verification %d review %d signoff %d, want 1/1/1/1",
-			s.m.ReadinessMissingAcceptance, s.m.ReadinessMissingVerification, s.m.ReadinessMissingReview, s.m.ReadinessMissingSignoff)
+	if s.m.ReadinessMissingAcceptance != 1 || s.m.ReadinessMissingVerification != 1 || s.m.ReadinessMissingObservation != 1 || s.m.ReadinessMissingReview != 1 || s.m.ReadinessMissingSignoff != 1 {
+		t.Fatalf("delivery readiness misses = acceptance %d verification %d observation %d review %d signoff %d, want 1/1/1/1/1",
+			s.m.ReadinessMissingAcceptance, s.m.ReadinessMissingVerification, s.m.ReadinessMissingObservation, s.m.ReadinessMissingReview, s.m.ReadinessMissingSignoff)
 	}
 	if s.m.ReadinessMissingActionEvidence != 1 || s.m.ReadinessMissingMutation != 1 {
 		t.Fatalf("delivery work misses = action evidence %d mutation %d, want 1/1", s.m.ReadinessMissingActionEvidence, s.m.ReadinessMissingMutation)
@@ -163,6 +164,7 @@ func TestWriteMetricsIncludesReadinessFields(t *testing.T) {
 		ReadinessCommandMismatches:     0,
 		ReadinessMissingAcceptance:     0,
 		ReadinessMissingVerification:   0,
+		ReadinessMissingObservation:    0,
 		ReadinessMissingReview:         0,
 		ReadinessMissingSignoff:        0,
 		ReadinessMissingActionEvidence: 0,
@@ -190,6 +192,7 @@ func TestWriteMetricsIncludesReadinessFields(t *testing.T) {
 		"readiness_command_mismatches",
 		"readiness_missing_acceptance_criteria",
 		"readiness_missing_verification",
+		"readiness_missing_observation",
 		"readiness_missing_review",
 		"readiness_missing_signoff",
 		"readiness_missing_action_evidence",

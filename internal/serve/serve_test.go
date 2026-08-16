@@ -903,6 +903,9 @@ func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
 		"'delivery_incomplete_title': 'Delivery checks are not complete'",
 		"'delivery_incomplete_title': '交付检查尚未完成'",
 		"project_check:'delivery_requirement_project_check'",
+		"observation:'delivery_requirement_observation'",
+		"'delivery_requirement_observation': 'query evidence'",
+		"'delivery_requirement_observation': '查询证据'",
 		"clearDeliveryCards()",
 	} {
 		if !strings.Contains(html, want) {

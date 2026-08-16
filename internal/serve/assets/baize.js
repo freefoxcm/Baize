@@ -58,7 +58,7 @@ const __T = {
     'effort_title': 'Reasoning effort',
     'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
     'delivery_incomplete_title': 'Delivery checks are not complete',
-    'delivery_incomplete_body': 'The response was generated, but verification and review still need to be completed.',
+    'delivery_incomplete_body': 'The response was generated, but required delivery evidence is still incomplete.',
     'delivery_continue': 'Continue checks',
     'delivery_continue_prompt': 'Continue and complete the remaining delivery checks.',
     'delivery_missing': 'Still needed: {items}',
@@ -66,6 +66,7 @@ const __T = {
     'delivery_requirement_todo': 'unfinished task items',
     'delivery_requirement_criteria': 'acceptance criteria',
     'delivery_requirement_verification': 'verification',
+    'delivery_requirement_observation': 'query evidence',
     'delivery_requirement_review': 'change review',
     'delivery_requirement_signoff': 'step sign-off',
     'delivery_requirement_action': 'host-observable work',
@@ -418,7 +419,7 @@ const __T = {
     'effort_title': '思考长度',
     'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
     'delivery_incomplete_title': '交付检查尚未完成',
-    'delivery_incomplete_body': '内容已经生成，但验证和复审步骤尚未完成。',
+    'delivery_incomplete_body': '内容已经生成，但所需的交付证据尚未完成。',
     'delivery_continue': '继续检查',
     'delivery_continue_prompt': '继续完成剩余的交付检查。',
     'delivery_missing': '仍需完成：{items}',
@@ -426,6 +427,7 @@ const __T = {
     'delivery_requirement_todo': '未完成待办',
     'delivery_requirement_criteria': '验收标准',
     'delivery_requirement_verification': '验证',
+    'delivery_requirement_observation': '查询证据',
     'delivery_requirement_review': '变更复审',
     'delivery_requirement_signoff': '步骤签收',
     'delivery_requirement_action': '可观察的实际工作',
@@ -1025,7 +1027,7 @@ function hiddenTranscriptTool(name){
 }
 const DELIVERY_REQUIREMENTS={
   project_check:'delivery_requirement_project_check',todo:'delivery_requirement_todo',criteria:'delivery_requirement_criteria',
-  verification:'delivery_requirement_verification',review:'delivery_requirement_review',signoff:'delivery_requirement_signoff',
+  verification:'delivery_requirement_verification',observation:'delivery_requirement_observation',review:'delivery_requirement_review',signoff:'delivery_requirement_signoff',
   action:'delivery_requirement_action',mutation:'delivery_requirement_mutation',capability:'delivery_requirement_capability'
 };
 function disableDeliveryCards(){

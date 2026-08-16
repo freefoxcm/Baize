@@ -121,7 +121,7 @@
   },
   {
     "Name": "complete_step",
-    "Description": "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Prefer `step` with the verbatim current todo title; `step_id` (when present) is the most stable citation. Use `step_index` only when the host has explicitly reported the canonical index; if both a title and an index are supplied they MUST identify the same todo or the call is rejected. Never skip ahead: after the last sub-step the next signable todo can be its parent phase. Fields: `step`, optional `step_id`/`step_index`, `result`, `evidence` (≥1 item, each with `kind` = verification|review|diff|files|manual and a `summary`, plus optional `command`/`paths`, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`.",
+    "Description": "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a successful read/query tool result from the current step, a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Prefer `step` with the verbatim current todo title; `step_id` (when present) is the most stable citation. Use `step_index` only when the host has explicitly reported the canonical index; if both a title and an index are supplied they MUST identify the same todo or the call is rejected. Never skip ahead: after the last sub-step the next signable todo can be its parent phase. Fields: `step`, optional `step_id`/`step_index`, `result`, `evidence` (≥1 item, each with `kind` = verification|tool|review|diff|files|manual and a `summary`, plus the required `command`, `tool`, or `paths` for that kind, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`.",
     "ReadOnly": true,
     "Schema": {
       "properties": {
@@ -138,9 +138,10 @@
                 "type": "string"
               },
               "kind": {
-                "description": "verification = a command/test was run (command REQUIRED); review = a built-in review run completed and, after changes, inspected the latest changed result (the verdict/findings still apply separately); diff = a concrete code change (paths REQUIRED); files = files created/edited/inspected (paths REQUIRED); manual = a manual check.",
+                "description": "verification = a command/test was run (command REQUIRED); tool = a successful output-producing read/query tool ran during the current step (tool REQUIRED); review = a built-in review run completed and, after changes, inspected the latest changed result (the verdict/findings still apply separately); diff = a concrete code change (paths REQUIRED); files = files created/edited/inspected (paths REQUIRED); manual = a manual check.",
                 "enum": [
                   "verification",
+                  "tool",
                   "review",
                   "diff",
                   "files",
@@ -157,6 +158,10 @@
               },
               "summary": {
                 "description": "The evidence itself: the test result, what the diff does, or what was confirmed.",
+                "type": "string"
+              },
+              "tool": {
+                "description": "REQUIRED for tool evidence: the exact read/query tool name, or its unique MCP raw-name suffix (e.g. \"aggregate_cases\"). The host verifies a successful call with non-empty output after the current step began.",
                 "type": "string"
               }
             },

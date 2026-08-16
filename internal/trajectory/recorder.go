@@ -121,6 +121,7 @@ type ReadinessAudit struct {
 	CommandMismatchMissing    int    `json:"command_mismatch_missing,omitempty"`
 	MissingAcceptanceCriteria int    `json:"missing_acceptance_criteria,omitempty"`
 	MissingVerification       int    `json:"missing_verification,omitempty"`
+	MissingObservation        int    `json:"missing_observation,omitempty"`
 	MissingReview             int    `json:"missing_review,omitempty"`
 	MissingSignoff            int    `json:"missing_signoff,omitempty"`
 	MissingActionEvidence     int    `json:"missing_action_evidence,omitempty"`
@@ -200,6 +201,7 @@ func (r *Recorder) RecordReadinessAudit(a evidence.ReadinessAudit) {
 		CommandMismatchMissing:    a.CommandMismatchMissing,
 		MissingAcceptanceCriteria: a.MissingAcceptanceCriteria,
 		MissingVerification:       a.MissingVerification,
+		MissingObservation:        a.MissingObservation,
 		MissingReview:             a.MissingReview,
 		MissingSignoff:            a.MissingSignoff,
 		MissingActionEvidence:     a.MissingActionEvidence,
