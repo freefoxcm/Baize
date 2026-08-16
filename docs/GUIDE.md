@@ -798,6 +798,21 @@ $tmpFile = Join-Path $env:TEMP "result.json"
 | macOS Seatbelt | Host path of the private dir (allowed by policy) | Host macOS temporary directory; scripts should use `$TMPDIR` |
 | Windows (no OS Bash sandbox) | Host path of the private dir | Not promised to match (e.g. Git Bash `/tmp`) |
 
+For read-only analysis, prefer the built-in `analyze_data` tool. It evaluates a
+deterministic Starlark program over JSON in process, with no file, environment,
+clock, random, network, module-loading, or subprocess access. When Python is
+needed, Bash supports `execution_scope: "scratch"`: the workspace is read-only,
+the session-private temporary directory is its only writable root, networking,
+background processes, extra write directories, and sandbox escape are disabled,
+and Linux maps that directory to `/tmp`. Scratch execution requires a proven OS
+sandbox and fails closed when one is unavailable; use `analyze_data` in that
+case. Writing a script to ordinary `/tmp` from normal Bash is still treated as a
+durable or unknown mutation and retains the normal verification and review
+requirements.
+
+`reasonix doctor` reports this capability as `scratch available` or includes
+the backend failure reason when scratch analysis cannot be isolated.
+
 Independent sandboxes such as MCP servers keep their own isolation and do not
 inherit the chat session's temporary directory. An approved sandbox-escape
 command still receives the private temp environment variables, but on Linux its

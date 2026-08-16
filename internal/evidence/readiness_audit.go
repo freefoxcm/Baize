@@ -21,6 +21,7 @@ type ReadinessAudit struct {
 	MissingAcceptanceCriteria int
 	MissingVerification       int
 	MissingObservation        int
+	MissingComputation        int
 	MissingReview             int
 	MissingSignoff            int
 	MissingActionEvidence     int

@@ -63,3 +63,43 @@ func TestClosedLoopReadOnlyGapRequestsObservationNotReview(t *testing.T) {
 		t.Fatalf("read-only readiness leaked mutation review guidance: %s", readiness.Reason)
 	}
 }
+
+func TestClosedLoopAllowsHostBackedComputation(t *testing.T) {
+	todoWrite, _ := tool.LookupBuiltin("todo_write")
+	completeStep, _ := tool.LookupBuiltin("complete_step")
+	reg := tool.NewRegistry()
+	reg.Add(fakeTool{name: "analyze_data", readOnly: true})
+	reg.Add(todoWrite)
+	reg.Add(completeStep)
+	prov := &scriptedProvider{name: "delivery", turns: [][]provider.Chunk{
+		{toolCallChunk("todo", "todo_write", `{"todos":[{"content":"Calculate overlap","status":"in_progress","step_id":"analysis_01"}]}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("compute", "analyze_data", `{}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("signoff", "complete_step", `{"step_id":"analysis_01","result":"calculation complete","evidence":[{"kind":"computation","tool":"analyze_data","summary":"overlap calculated"}]}`), {Type: provider.ChunkDone}},
+		{{Type: provider.ChunkText, Text: "analysis"}, {Type: provider.ChunkDone}},
+	}}
+	a := New(prov, reg, NewSession(""), Options{}, event.Discard)
+	if err := a.Run(withClosedLoopContext(context.Background()), "calculate overlap"); err != nil {
+		t.Fatalf("computation should close with host-backed evidence: %v", err)
+	}
+}
+
+func TestClosedLoopComputationGapRequestsComputationNotReview(t *testing.T) {
+	todoWrite, _ := tool.LookupBuiltin("todo_write")
+	reg := tool.NewRegistry()
+	reg.Add(fakeTool{name: "analyze_data", readOnly: true})
+	reg.Add(todoWrite)
+	prov := &scriptedProvider{name: "delivery", turns: [][]provider.Chunk{
+		{toolCallChunk("todo", "todo_write", `{"todos":[{"content":"Calculate overlap","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("compute", "analyze_data", `{}`), {Type: provider.ChunkDone}},
+		{{Type: provider.ChunkText, Text: "analysis"}, {Type: provider.ChunkDone}},
+	}}
+	a := New(prov, reg, NewSession(""), Options{}, event.Discard)
+	err := a.Run(withClosedLoopContext(context.Background()), "calculate overlap")
+	var readiness *FinalReadinessError
+	if !errors.As(err, &readiness) {
+		t.Fatalf("Run error = %v, want FinalReadinessError", err)
+	}
+	if !slices.Contains(readiness.Missing, "computation") || slices.Contains(readiness.Missing, "review") {
+		t.Fatalf("missing = %v, want computation without review", readiness.Missing)
+	}
+}

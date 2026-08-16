@@ -17,6 +17,7 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
+	"reasonix/internal/effectscope"
 	"reasonix/internal/i18n"
 	"reasonix/internal/jobs"
 	"reasonix/internal/proc"
@@ -96,6 +97,7 @@ type bash struct {
 
 type bashParams struct {
 	Command                     string   `json:"command"`
+	ExecutionScope              string   `json:"execution_scope,omitempty"`
 	RunInBackground             bool     `json:"run_in_background"`
 	PreserveBackgroundProcesses bool     `json:"preserve_background_processes"`
 	AdditionalWriteDirs         []string `json:"additional_write_dirs,omitempty"`
@@ -183,6 +185,7 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 	if err := json.Unmarshal(args, &p); err != nil {
 		return bashPreflightFailure(ex, start, fmt.Errorf("invalid args: %w", err))
 	}
+	p.ExecutionScope = strings.ToLower(strings.TrimSpace(p.ExecutionScope))
 	if err := validateBashParams(p); err != nil {
 		return bashPreflightFailure(ex, start, err)
 	}
@@ -201,7 +204,7 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 	// Pin the session-private temporary generation before any launch path so
 	// foreground, background, and host-terminal runs share one directory, and
 	// so a failed start still releases the lease.
-	prepared, lease, err := b.prepareLaunch(ctx, sh, p.Command, args)
+	prepared, lease, err := b.prepareLaunch(ctx, sh, p, args)
 	if err != nil {
 		ex.State = tool.ShellStateNotRun
 		ex.FailurePhase = tool.ShellPhaseAuthorization
@@ -227,7 +230,7 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 	// (the host terminal spawns with its own unfiltered environment, which
 	// would leak the credentials the user asked to strip), and never for
 	// background jobs. ok=false falls back to local execution unchanged.
-	if b.terminal != nil && !p.RunInBackground && !b.sb.Enforce() && !secrets.FilterSubprocessEnv() {
+	if b.terminal != nil && !p.RunInBackground && !prepared.Wrapped && !secrets.FilterSubprocessEnv() {
 		envMap := sandbox.SessionTempEnvMap(prepared.SessionTemp, prepared.LinuxSandboxed)
 		if out, ok, termErr := b.terminal.RunCommand(ctx, p.Command, b.workDir, b.timeout, envMap); ok {
 			out = appendSessionDataHint(out, b.guard.CommandHint(b.workDir, p.Command))
@@ -286,6 +289,9 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 
 	out, runEx, err := b.runForegroundDetailed(ctx, p, sh, argv, wrapped, cmdEnv)
 	mergeRunInto(ex, runEx)
+	if p.ExecutionScope == "scratch" && prepared.Wrapped {
+		ex.EffectScope = effectscope.Scratch
+	}
 	ex.DurationMs = time.Since(start).Milliseconds()
 	return tool.DetailedResult{
 		Output:    b.appendWriteHints(ctx, out, err, p, wrapped),
@@ -342,74 +348,6 @@ func mergeRunInto(dst *tool.ShellExecution, src *tool.ShellExecution) {
 	if src.MutationRisk != "" {
 		dst.MutationRisk = src.MutationRisk
 	}
-}
-
-// prepareLaunch acquires a session-temp lease (when a Manager is available),
-// builds the sandboxed argv, and applies sandbox-escape approval. The caller
-// owns the returned lease and must Release it after the process exits.
-func (b bash) prepareLaunch(ctx context.Context, sh sandbox.Shell, command string, rawArgs json.RawMessage) (sandbox.Prepared, *sessiontemp.Lease, error) {
-	var lease *sessiontemp.Lease
-	sessionDir := ""
-	if m := b.sessionTempManager(ctx); m != nil {
-		l, err := m.Acquire()
-		if err != nil {
-			return sandbox.Prepared{}, nil, fmt.Errorf("session temporary directory: %w", err)
-		}
-		lease = l
-		sessionDir = l.Dir()
-	}
-
-	// bashSandboxCommand is injectable for tests; production points at
-	// sandbox.Command. Attach SessionTemp so Linux bwrap binds the private dir.
-	spec := b.specForCall(ctx)
-	spec.SessionTemp = sessionDir
-	argv, wrapped := bashSandboxCommand(spec, sh, command)
-	linuxSB := wrapped && sessionDir != "" && runtime.GOOS == "linux"
-	prepared := sandbox.Prepared{
-		Argv:           argv,
-		Wrapped:        wrapped,
-		SessionTemp:    sessionDir,
-		EnvOverrides:   sandbox.SessionTempEnv(sessionDir, linuxSB),
-		LinuxSandboxed: linuxSB,
-	}
-
-	if b.sb.Enforce() && bashSandboxEscapeSessionAllowed(ctx, command, rawArgs) {
-		prepared.Argv = unconfinedShellArgv(sh, command)
-		prepared.Wrapped = false
-		// Escaped commands still inherit private temp env vars pointing at the
-		// host private directory (no virtual /tmp mapping).
-		prepared.LinuxSandboxed = false
-		prepared.EnvOverrides = sandbox.SessionTempEnv(sessionDir, false)
-	} else if b.sb.Enforce() && !prepared.Wrapped {
-		allow, reason, err := approveBashSandboxEscape(ctx, command, rawArgs, i18n.M.SandboxEscapeWrapReason)
-		if err != nil {
-			if lease != nil {
-				lease.Release()
-			}
-			return sandbox.Prepared{}, nil, err
-		}
-		if !allow {
-			if lease != nil {
-				lease.Release()
-			}
-			if reason != "" {
-				return sandbox.Prepared{}, nil, fmt.Errorf("%s", reason)
-			}
-			return sandbox.Prepared{}, nil, fmt.Errorf("%s", sandbox.UnavailableMessage())
-		}
-		prepared.Argv = unconfinedShellArgv(sh, command)
-		prepared.Wrapped = false
-		prepared.LinuxSandboxed = false
-		prepared.EnvOverrides = sandbox.SessionTempEnv(sessionDir, false)
-	}
-	return prepared, lease, nil
-}
-
-func (b bash) sessionTempManager(ctx context.Context) *sessiontemp.Manager {
-	if m := sessiontemp.FromContext(ctx); m != nil {
-		return m
-	}
-	return b.sessionTemp
 }
 
 func applyEnvOverrides(env, overrides []string) []string {

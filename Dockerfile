@@ -40,7 +40,7 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
       > /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-      bash build-essential ca-certificates chromium curl fonts-noto-cjk git jq make \
+      bash bubblewrap build-essential ca-certificates chromium curl fonts-noto-cjk git jq make \
       openssh-client pkg-config python-is-python3 python3 python3-pip python3-venv \
       ripgrep tar unzip wget zip \
     && rm -rf /var/lib/apt/lists/*

@@ -21,6 +21,7 @@ type finalReadinessCheck struct {
 	missingAcceptanceCriteria int
 	missingVerification       int
 	missingObservation        int
+	missingComputation        int
 	missingReview             int
 	missingSignoff            int
 	missingActionEvidence     int
@@ -29,12 +30,13 @@ type finalReadinessCheck struct {
 }
 
 func (c finalReadinessCheck) progressSignature() string {
-	return fmt.Sprintf("%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d\x00%s",
+	return fmt.Sprintf("%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d\x00%s",
 		c.missingProjectChecks,
 		c.incompleteTodos,
 		c.missingAcceptanceCriteria,
 		c.missingVerification,
 		c.missingObservation,
+		c.missingComputation,
 		c.missingReview,
 		c.missingSignoff,
 		c.missingActionEvidence,
@@ -57,6 +59,7 @@ func (c finalReadinessCheck) missingIDs() []string {
 	add("criteria", c.missingAcceptanceCriteria)
 	add("verification", c.missingVerification)
 	add("observation", c.missingObservation)
+	add("computation", c.missingComputation)
 	add("review", c.missingReview)
 	add("signoff", c.missingSignoff)
 	add("action", c.missingActionEvidence)
@@ -75,6 +78,7 @@ func (c finalReadinessCheck) audit(result evidence.ReadinessAuditResult, recover
 		MissingAcceptanceCriteria: c.missingAcceptanceCriteria,
 		MissingVerification:       c.missingVerification,
 		MissingObservation:        c.missingObservation,
+		MissingComputation:        c.missingComputation,
 		MissingReview:             c.missingReview,
 		MissingSignoff:            c.missingSignoff,
 		MissingActionEvidence:     c.missingActionEvidence,
@@ -263,9 +267,16 @@ func (a *Agent) appendClosedLoopReadiness(out *finalReadinessCheck, missing []st
 		out.missingVerification++
 		missing = append(missing, "run relevant verification after the latest mutation and cite that successful command in complete_step")
 	}
-	if !deliveryMutation && !a.task.ledger.HasSuccessfulObservationSignoffAfter(writer) {
-		out.missingObservation++
-		missing = append(missing, "cite a successful read/query tool result from the current step as kind tool evidence in complete_step")
+	if !deliveryMutation {
+		if computation, ok := a.task.ledger.LatestSuccessfulComputationIndex(); ok && computation >= writer {
+			if !a.task.ledger.HasSuccessfulComputationSignoffAfter(computation) {
+				out.missingComputation++
+				missing = append(missing, "cite the successful analysis calculation as kind computation evidence in complete_step")
+			}
+		} else if !a.task.ledger.HasSuccessfulObservationSignoffAfter(writer) {
+			out.missingObservation++
+			missing = append(missing, "cite a successful read/query tool result from the current step as kind tool evidence in complete_step")
+		}
 	}
 	if deliveryMutation && !a.task.ledger.HasSuccessfulReviewAfter(writer) {
 		out.missingReview++

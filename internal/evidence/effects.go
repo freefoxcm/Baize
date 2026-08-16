@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"reasonix/internal/effectscope"
 	"reasonix/internal/shellsafe"
 )
 
@@ -11,6 +12,7 @@ import (
 type ToolEffects struct {
 	StateMutation, WorkspaceMutation, ContentMutation, RepositoryMutation bool
 	Known                                                                 bool
+	Scope                                                                 effectscope.Scope
 	Reason                                                                string
 }
 
@@ -21,14 +23,17 @@ func ClassifyToolCall(toolName string, args json.RawMessage, readOnly bool) Tool
 		effects, _ := ClassifyBashToolCall(args)
 		return effects
 	}
+	if name == "analyze_data" {
+		return ToolEffects{Known: true, Scope: effectscope.Scratch, Reason: "host-confined deterministic computation"}
+	}
 	if readOnly || IsNonMutationMetaTool(toolName) {
-		return ToolEffects{Known: true}
+		return ToolEffects{Known: true, Scope: effectscope.Observation}
 	}
 	switch name {
 	case "ask", "todo_write", "complete_step", "bash_output", "wait":
-		return ToolEffects{Known: true}
+		return ToolEffects{Known: true, Scope: effectscope.Observation}
 	default:
-		return ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Known: true, Reason: "workspace content write by a writer-capable tool"}
+		return ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Known: true, Scope: effectscope.Durable, Reason: "workspace content write by a writer-capable tool"}
 	}
 }
 
@@ -38,21 +43,40 @@ func ClassifyBashToolCall(args json.RawMessage) (ToolEffects, bool) {
 	if err := json.Unmarshal(args, &fields); err != nil {
 		return unknownToolEffects("invalid shell arguments"), false
 	}
+	scope := strings.ToLower(strings.TrimSpace(stringField(fields, "execution_scope")))
+	if scope == "scratch" {
+		// The request alone is not proof that the OS sandbox wrapped the
+		// process. Successful Bash execution metadata upgrades this to Scratch.
+		return ToolEffects{Known: true, Scope: effectscope.Unknown, Reason: "scratch execution pending host sandbox proof"}, false
+	}
+	if scope != "" && scope != "normal" {
+		return unknownToolEffects("invalid shell execution scope"), false
+	}
 	command := stringField(fields, "command")
 	effect := shellsafe.ClassifyBash(command)
 	if effect.Certainty == shellsafe.EffectKnown {
 		return ToolEffects{
 			StateMutation: effect.AnyMutation(), WorkspaceMutation: effect.WorkspaceMutation(),
 			ContentMutation: effect.ContentMutation(), RepositoryMutation: effect.RepositoryMutation(),
-			Known: true, Reason: commandEffectReason(effect),
+			Known: true, Scope: commandEffectScope(effect), Reason: commandEffectReason(effect),
 		}, effect.IsPermissionReader()
 	}
 	// Unknown syntax stays fail-closed unless the host recognized a verifier
 	// such as `go test` that ClassifyBash does not model as a known reader.
 	if bashCommandIsVerification(command) {
-		return ToolEffects{Known: true}, false
+		return ToolEffects{Known: true, Scope: effectscope.Observation}, false
 	}
 	return unknownToolEffects(effect.Reason), false
+}
+
+func commandEffectScope(effect shellsafe.CommandEffect) effectscope.Scope {
+	if effect.Certainty != shellsafe.EffectKnown {
+		return effectscope.Unknown
+	}
+	if effect.AnyMutation() {
+		return effectscope.Durable
+	}
+	return effectscope.Observation
 }
 
 func commandEffectReason(effect shellsafe.CommandEffect) string {
@@ -80,7 +104,7 @@ func unknownToolEffects(reason string) ToolEffects {
 	if strings.TrimSpace(reason) == "" {
 		reason = "tool effects are not statically known"
 	}
-	return ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Reason: reason}
+	return ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Scope: effectscope.Unknown, Reason: reason}
 }
 
 // ToolCallMutates is the compatibility projection for durable state changes.

@@ -3,6 +3,8 @@ package tool
 import (
 	"context"
 	"encoding/json"
+
+	"reasonix/internal/effectscope"
 )
 
 // ShellExecution is local host metadata for one shell invocation. It is never
@@ -28,10 +30,11 @@ type ShellExecution struct {
 	// run that did not succeed. Both streams share one pipe so model-visible
 	// interleaving stays in child-write order, which rules out a stderr-only
 	// tail. At most 16 KiB; never a shell executable absolute path.
-	OutputTail   string `json:"outputTail,omitempty"`
-	MutationRisk string `json:"mutationRisk,omitempty"` // none | not_started | may_have_completed | may_be_partial | unknown
-	Verification string `json:"verification,omitempty"` // not_verification | not_run | passed | failed
-	DurationMs   int64  `json:"durationMs,omitempty"`
+	OutputTail   string            `json:"outputTail,omitempty"`
+	MutationRisk string            `json:"mutationRisk,omitempty"` // none | not_started | may_have_completed | may_be_partial | unknown
+	Verification string            `json:"verification,omitempty"` // not_verification | not_run | passed | failed
+	EffectScope  effectscope.Scope `json:"effectScope,omitempty"`
+	DurationMs   int64             `json:"durationMs,omitempty"`
 }
 
 // Shell execution state values.

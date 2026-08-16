@@ -6,10 +6,11 @@
 
 | 工具 | Read-only | 说明 |
 | --- | --- | --- |
+| `analyze_data` | true | 在进程内对 JSON 执行确定、无副作用的 Starlark 分组、聚合、交集和趋势计算，不创建临时文件，也不提供文件、环境、时间、随机、网络、模块或子进程能力。 |
 | `bash` | false | 执行 shell 命令并返回 stdout/stderr。构建、测试、git、包管理器等使用它；读写查找文件优先使用专用工具。 |
 | `bash_output` | true | 读取后台 `bash` 或 `task` job 自上次读取后的新增输出和状态。 |
 | `code_index` | true | 轻量内置代码符号索引；优先使用 `lsp_*` 或代码图 MCP，缺失时用它兜底。 |
-| `complete_step` | true | 用证据记录已批准计划中一个步骤的完成情况。 |
+| `complete_step` | true | 用宿主验证的命令、查询工具、受限计算、复审或文件证据记录已批准计划中一个步骤的完成情况。 |
 | `compress` | true | 压缩当前模型可见对话中选定的范围，不删除可见历史。仅在用户明确要求压缩上下文时使用；锚点必须是某条真实用户消息中唯一、精确的原文片段。 |
 | `delete_range` | false | 用精确 start/end 文本锚点删除文件中的连续范围。 |
 | `delete_symbol` | false | 用 Go AST 删除 Go 源文件中的命名符号。 |

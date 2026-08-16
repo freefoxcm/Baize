@@ -1523,7 +1523,8 @@ func ReceiptFromToolCall(toolName string, args json.RawMessage, success bool, re
 		// Receipt.Mutation is delivery content debt. Repository-only state
 		// transitions such as a pure commit remain guarded writers, but do not
 		// force another content review pass by themselves.
-		Mutation: effects.ContentMutation,
+		Mutation:    effects.ContentMutation,
+		EffectScope: effects.Scope,
 	}
 
 	var fields map[string]json.RawMessage
@@ -2603,7 +2604,7 @@ func completeStepHasProof(fields map[string]json.RawMessage) bool {
 			if len(normalizePaths(item.Paths)) == 0 {
 				return false
 			}
-		case "tool":
+		case "tool", "computation":
 			if strings.TrimSpace(item.Tool) == "" {
 				return false
 			}

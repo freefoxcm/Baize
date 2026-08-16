@@ -67,6 +67,7 @@ const __T = {
     'delivery_requirement_criteria': 'acceptance criteria',
     'delivery_requirement_verification': 'verification',
     'delivery_requirement_observation': 'query evidence',
+    'delivery_requirement_computation': 'computation evidence',
     'delivery_requirement_review': 'change review',
     'delivery_requirement_signoff': 'step sign-off',
     'delivery_requirement_action': 'host-observable work',
@@ -428,6 +429,7 @@ const __T = {
     'delivery_requirement_criteria': '验收标准',
     'delivery_requirement_verification': '验证',
     'delivery_requirement_observation': '查询证据',
+    'delivery_requirement_computation': '分析计算证据',
     'delivery_requirement_review': '变更复审',
     'delivery_requirement_signoff': '步骤签收',
     'delivery_requirement_action': '可观察的实际工作',
@@ -1027,7 +1029,7 @@ function hiddenTranscriptTool(name){
 }
 const DELIVERY_REQUIREMENTS={
   project_check:'delivery_requirement_project_check',todo:'delivery_requirement_todo',criteria:'delivery_requirement_criteria',
-  verification:'delivery_requirement_verification',observation:'delivery_requirement_observation',review:'delivery_requirement_review',signoff:'delivery_requirement_signoff',
+  verification:'delivery_requirement_verification',observation:'delivery_requirement_observation',computation:'delivery_requirement_computation',review:'delivery_requirement_review',signoff:'delivery_requirement_signoff',
   action:'delivery_requirement_action',mutation:'delivery_requirement_mutation',capability:'delivery_requirement_capability'
 };
 function disableDeliveryCards(){

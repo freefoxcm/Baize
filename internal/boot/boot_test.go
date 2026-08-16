@@ -2286,6 +2286,7 @@ func contractEntryNames(entries []tool.ContractEntry) []string {
 // role setting under identical configuration (core tools + host-control tools).
 func unifiedBootToolNames() []string {
 	return []string{
+		"analyze_data",
 		"ask",
 		"bash",
 		"bash_output",

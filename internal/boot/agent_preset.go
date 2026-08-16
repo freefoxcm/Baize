@@ -48,6 +48,7 @@ func TokenModeFromAgentPreset(preset string) string {
 // (ask, update_goal, todo_write, complete_step) are appended when enabled.
 func CoreProviderToolNames() []string {
 	return []string{
+		"analyze_data",
 		"bash",
 		"bash_output",
 		"kill_shell",
