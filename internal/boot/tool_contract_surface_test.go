@@ -64,6 +64,7 @@ model = "x"
 				readOnly[e.Name] = e.ReadOnly
 			}
 			for name, want := range map[string]bool{
+				"analyze_data":   true,
 				"bash":           false,
 				"read_file":      true,
 				"use_capability": true,

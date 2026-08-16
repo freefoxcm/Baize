@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/effectscope"
 	"reasonix/internal/evidence"
 )
 
@@ -22,6 +23,26 @@ func criterionCitationArgs(t *testing.T, criterionID string) json.RawMessage {
 		t.Fatalf("marshal: %v", err)
 	}
 	return args
+}
+
+func TestCompleteStepComputationCanBindMultipleCriteria(t *testing.T) {
+	ledger := evidence.NewLedger()
+	ledger.Record(evidence.Receipt{ToolName: "todo_write", Success: true})
+	calculation := evidence.Receipt{ToolName: "analyze_data", Success: true, EffectScope: effectscope.Scratch}
+	calculation.ObserveOutput(`{"overlap":7}`)
+	ledger.Record(calculation)
+	ctx := evidence.WithLedger(context.Background(), ledger)
+	ctx = evidence.WithAcceptanceCriteria(ctx, []string{"c1", "c2"})
+
+	_, err := (completeStep{}).Execute(ctx, json.RawMessage(`{
+		"step":"calculate overlap","result":"overlap calculated",
+		"evidence":[
+			{"kind":"computation","tool":"analyze_data","summary":"count calculated","criterion_id":"c1"},
+			{"kind":"computation","tool":"analyze_data","summary":"trend calculated","criterion_id":"c2"}
+		]}`))
+	if err != nil {
+		t.Fatalf("current-step computation should bind both criteria: %v", err)
+	}
 }
 
 // A citation the plan does not contain would resolve into nothing and only

@@ -131,6 +131,17 @@ func TestRenderTextFlagsUnavailableSandboxAsFailClosed(t *testing.T) {
 	}
 }
 
+func TestRenderTextReportsScratchAnalysisAvailability(t *testing.T) {
+	available := RenderText(Report{Sandbox: SandboxReport{ScratchAnalysisAvailable: true}})
+	if !strings.Contains(available, "scratch      available") {
+		t.Fatalf("scratch availability missing:\n%s", available)
+	}
+	unavailable := RenderText(Report{Sandbox: SandboxReport{ScratchAnalysisReason: "bubblewrap unavailable"}})
+	if !strings.Contains(unavailable, "scratch      unavailable: bubblewrap unavailable") {
+		t.Fatalf("scratch failure reason missing:\n%s", unavailable)
+	}
+}
+
 // TestCollectFlagsIgnoredEnforceConfig pins the visibility contract for the
 // platform force-off: when the config file says enforce but the effective mode
 // resolves to off (Windows), doctor must say so in both the warnings list and

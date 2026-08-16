@@ -94,7 +94,9 @@ type SandboxReport struct {
 	// but the platform force-resolves it to "off" (Windows, where the native
 	// backend is unsupported) — the one case where Bash silently disagrees with
 	// what the user wrote.
-	BashConfigIgnored bool `json:"bash_config_ignored,omitempty"`
+	BashConfigIgnored        bool   `json:"bash_config_ignored,omitempty"`
+	ScratchAnalysisAvailable bool   `json:"scratch_analysis_available"`
+	ScratchAnalysisReason    string `json:"scratch_analysis_reason,omitempty"`
 }
 
 type NetworkReport struct {
@@ -170,14 +172,7 @@ func Collect(opts Options) Report {
 			Servers: len(cfg.LSP.Servers),
 		},
 		Sessions: collectSessions(config.SessionDir()),
-		Sandbox: SandboxReport{
-			Bash:              cfg.BashMode(),
-			Network:           cfg.Sandbox.Network,
-			WriteRoots:        redactHomeAll(cfg.WriteRoots()),
-			Available:         sandbox.Available(),
-			Shell:             resolvedShellSummary(cfg),
-			BashConfigIgnored: bashConfigIgnored,
-		},
+		Sandbox:  collectSandboxReport(cfg, bashConfigIgnored),
 		Network: NetworkReport{
 			ProxyMode: cfg.NetworkProxyMode(),
 			Proxy:     netclient.Summary(cfg.NetworkProxySpec()),
@@ -225,6 +220,20 @@ func Collect(opts Options) Report {
 			AutoStart: p.ShouldAutoStart(),
 			Target:    pluginTarget(p),
 		})
+	}
+	return report
+}
+
+func collectSandboxReport(cfg *config.Config, bashConfigIgnored bool) SandboxReport {
+	available := sandbox.Available()
+	report := SandboxReport{
+		Bash: cfg.BashMode(), Network: cfg.Sandbox.Network,
+		WriteRoots: redactHomeAll(cfg.WriteRoots()), Available: available,
+		Shell: resolvedShellSummary(cfg), BashConfigIgnored: bashConfigIgnored,
+		ScratchAnalysisAvailable: available,
+	}
+	if !available {
+		report.ScratchAnalysisReason = sandbox.BackendUnavailableReason()
 	}
 	return report
 }
@@ -294,6 +303,14 @@ func RenderText(r Report) string {
 	}
 	fmt.Fprintf(&b, "  network      %v\n", r.Sandbox.Network)
 	fmt.Fprintf(&b, "  write_roots  %s\n", strings.Join(r.Sandbox.WriteRoots, ", "))
+	scratch := "available"
+	if !r.Sandbox.ScratchAnalysisAvailable {
+		scratch = "unavailable"
+		if r.Sandbox.ScratchAnalysisReason != "" {
+			scratch += ": " + r.Sandbox.ScratchAnalysisReason
+		}
+	}
+	fmt.Fprintf(&b, "  scratch      %s\n", scratch)
 
 	fmt.Fprintf(&b, "\nnetwork\n")
 	fmt.Fprintf(&b, "  proxy_mode   %s\n", r.Network.ProxyMode)

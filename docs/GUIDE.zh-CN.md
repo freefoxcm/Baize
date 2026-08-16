@@ -632,6 +632,17 @@ $tmpFile = Join-Path $env:TEMP "result.json"
 | macOS Seatbelt | 私有宿主目录路径（Seatbelt 允许写入） | 仍是 macOS 宿主临时目录；脚本应使用 `$TMPDIR` |
 | Windows（无 OS 级 Bash 沙箱） | 私有宿主目录路径 | 不保证与该目录等价（例如 Git Bash 的 `/tmp`） |
 
+只读分析应优先使用内置 `analyze_data` 工具。它在进程内对 JSON 执行确定性的
+Starlark 程序，不提供文件、环境变量、时钟、随机数、网络、模块加载或子进程能力。
+确实需要 Python 时，Bash 可传 `execution_scope: "scratch"`：工作区只读，会话私有
+临时目录是唯一写入根，网络、后台进程、额外写目录和沙箱逃逸均被禁用；Linux 下该
+目录映射为 `/tmp`。Scratch 仅在宿主能证明 OS 沙箱可用时执行，沙箱不可用会直接
+拒绝而不会退化为无隔离执行，此时应改用 `analyze_data`。普通 Bash 在 normal 作用域
+写入 `/tmp` 仍按持久或未知修改处理，继续要求正常的修改后验证和复审。
+
+`reasonix doctor` 会将该能力显示为 `scratch available`；无法隔离临时分析时则同时
+给出沙箱后端失败原因。
+
 MCP 等独立沙盒继续使用自己的隔离规范，不继承父会话临时目录。获得批准后绕过沙盒的
 命令仍继承私有临时变量，但在 Linux 上其字面 `/tmp` 不再由 bwrap 映射。
 

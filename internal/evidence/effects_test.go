@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"reasonix/internal/effectscope"
 )
 
 func TestEvidenceConsumesSharedCommandEffectMatrix(t *testing.T) {
@@ -36,17 +38,17 @@ func TestClassifyToolCallSeparatesMutationDomains(t *testing.T) {
 		readOnly         bool
 		want             ToolEffects
 	}{
-		{"branch listing", "bash", `{"command":"git branch -a"}`, false, ToolEffects{Known: true}},
-		{"tag creation", "bash", `{"command":"git tag v1.2.3"}`, true, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, RepositoryMutation: true}},
-		{"pure commit", "bash", `{"command":"git commit -q -m checkpoint"}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, RepositoryMutation: true}},
-		{"commit all", "bash", `{"command":"git commit -am checkpoint"}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true, RepositoryMutation: true}},
-		{"host clock", "bash", `{"command":"date --set tomorrow"}`, false, ToolEffects{Known: true, StateMutation: true}},
-		{"audit fix", "bash", `{"command":"npm audit fix"}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true}},
-		{"verification", "bash", `{"command":"go test ./..."}`, false, ToolEffects{Known: true}},
-		{"env prefixed test", "bash", `{"command":"GOROOT=/x go test ./..."}`, false, ToolEffects{Known: true}},
-		{"unknown shell", "bash", `{"command":"custom-tool --run"}`, false, ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true}},
-		{"trusted reader", "read_file", `{}`, true, ToolEffects{Known: true}},
-		{"generic writer", "edit_file", `{}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true}},
+		{"branch listing", "bash", `{"command":"git branch -a"}`, false, ToolEffects{Known: true, Scope: effectscope.Observation}},
+		{"tag creation", "bash", `{"command":"git tag v1.2.3"}`, true, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, RepositoryMutation: true, Scope: effectscope.Durable}},
+		{"pure commit", "bash", `{"command":"git commit -q -m checkpoint"}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, RepositoryMutation: true, Scope: effectscope.Durable}},
+		{"commit all", "bash", `{"command":"git commit -am checkpoint"}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true, RepositoryMutation: true, Scope: effectscope.Durable}},
+		{"host clock", "bash", `{"command":"date --set tomorrow"}`, false, ToolEffects{Known: true, StateMutation: true, Scope: effectscope.Durable}},
+		{"audit fix", "bash", `{"command":"npm audit fix"}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Scope: effectscope.Durable}},
+		{"verification", "bash", `{"command":"go test ./..."}`, false, ToolEffects{Known: true, Scope: effectscope.Observation}},
+		{"env prefixed test", "bash", `{"command":"GOROOT=/x go test ./..."}`, false, ToolEffects{Known: true, Scope: effectscope.Observation}},
+		{"unknown shell", "bash", `{"command":"custom-tool --run"}`, false, ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Scope: effectscope.Unknown}},
+		{"trusted reader", "read_file", `{}`, true, ToolEffects{Known: true, Scope: effectscope.Observation}},
+		{"generic writer", "edit_file", `{}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Scope: effectscope.Durable}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -57,6 +57,7 @@ func boolString(v bool) string {
 // which is the guard against a context-maintenance strategy silently desyncing
 // from the tool surface.
 var acceptsDefaultSnip = map[string]bool{
+	"analyze_data":  true, // canonical JSON; ordinary results are compact and the global cap still bounds large output
 	"bash_output":   true, // streamed job output; tailing handled by the job, not the snip pass
 	"code_index":    true,
 	"complete_step": true,

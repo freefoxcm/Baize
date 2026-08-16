@@ -906,6 +906,9 @@ func TestServeIndexPresentsFinalReadinessAsRecoverableNotice(t *testing.T) {
 		"observation:'delivery_requirement_observation'",
 		"'delivery_requirement_observation': 'query evidence'",
 		"'delivery_requirement_observation': '查询证据'",
+		"computation:'delivery_requirement_computation'",
+		"'delivery_requirement_computation': 'computation evidence'",
+		"'delivery_requirement_computation': '分析计算证据'",
 		"clearDeliveryCards()",
 	} {
 		if !strings.Contains(html, want) {

@@ -1,5 +1,27 @@
 [
   {
+    "Name": "analyze_data",
+    "Description": "Run deterministic, side-effect-free data calculations over JSON. Use MCP/read tools to obtain facts first, then pass their JSON here for grouping, aggregation, intersections, rankings, or trends without creating temporary files. The Starlark program receives `input` and must assign its JSON-compatible answer to global `result`; put loops inside a function and call it when assigning result. It has no file, environment, clock, random, network, module-loading, or subprocess access. Prefer this tool over writing analysis scripts with bash.",
+    "ReadOnly": true,
+    "Schema": {
+      "properties": {
+        "input": {
+          "description": "JSON data to analyze (maximum encoded size 2 MiB)."
+        },
+        "program": {
+          "description": "Starlark source. It receives global input and must assign a JSON-compatible value to global result.",
+          "maxLength": 32768,
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "program"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "Name": "ask",
     "Description": "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply.",
     "ReadOnly": true,
@@ -79,6 +101,14 @@
           "description": "Shell command to execute",
           "type": "string"
         },
+        "execution_scope": {
+          "description": "Optional execution boundary. scratch requires a proven OS sandbox, disables network/background/extra write roots, makes the workspace read-only, and permits writes only in the session-private temporary directory. Use analyze_data first for JSON calculations.",
+          "enum": [
+            "normal",
+            "scratch"
+          ],
+          "type": "string"
+        },
         "justification": {
           "description": "Required when additional_write_dirs is non-empty. Explain why those directories must be writable.",
           "type": "string"
@@ -121,7 +151,7 @@
   },
   {
     "Name": "complete_step",
-    "Description": "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran (command + result), a successful read/query tool result from the current step, a completed built-in review that is fresh for any later changes, the diff/files you changed, or a manual check. A completion with no evidence is REJECTED, so don't claim a step is done until you can show why. The host advances the task list for you when you sign off — it marks this step completed and moves the next to in_progress, so you don't need a separate todo_write to mark completions. Prefer `step` with the verbatim current todo title; `step_id` (when present) is the most stable citation. Use `step_index` only when the host has explicitly reported the canonical index; if both a title and an index are supplied they MUST identify the same todo or the call is rejected. Never skip ahead: after the last sub-step the next signable todo can be its parent phase. Fields: `step`, optional `step_id`/`step_index`, `result`, `evidence` (≥1 item, each with `kind` = verification|tool|review|diff|files|manual and a `summary`, plus the required `command`, `tool`, or `paths` for that kind, and `criterion_id` naming the acceptance criterion the proof satisfies), and optional `notes`.",
+    "Description": "Record the evidence-backed completion of ONE step of an approved plan. Call it as you finish each step instead of silently moving on: it signs the step off with PROOF it is done — the verification you ran, a successful read/query result, a host-confined computation, a fresh review, changed files, or a manual check. A completion with no evidence is REJECTED. The host advances the task list after sign-off. Prefer step_id, then the verbatim current todo title; use step_index only when the host reported it. Fields: step, optional step_id/step_index, result, evidence (kind verification|tool|computation|review|diff|files|manual plus summary and the required command, tool, or paths), and optional notes. Computation evidence must cite analyze_data or a successful bash execution_scope=scratch call from the current step.",
     "ReadOnly": true,
     "Schema": {
       "properties": {
@@ -138,10 +168,11 @@
                 "type": "string"
               },
               "kind": {
-                "description": "verification = a command/test was run (command REQUIRED); tool = a successful output-producing read/query tool ran during the current step (tool REQUIRED); review = a built-in review run completed and, after changes, inspected the latest changed result (the verdict/findings still apply separately); diff = a concrete code change (paths REQUIRED); files = files created/edited/inspected (paths REQUIRED); manual = a manual check.",
+                "description": "verification = a command/test was run (command REQUIRED); tool = a successful output-producing read/query tool ran during the current step (tool REQUIRED); computation = analyze_data or proven bash scratch execution produced output in the current step (tool REQUIRED); review = a built-in review run completed and, after changes, inspected the latest changed result; diff = a concrete code change (paths REQUIRED); files = files created/edited/inspected (paths REQUIRED); manual = a manual check.",
                 "enum": [
                   "verification",
                   "tool",
+                  "computation",
                   "review",
                   "diff",
                   "files",
@@ -161,7 +192,7 @@
                 "type": "string"
               },
               "tool": {
-                "description": "REQUIRED for tool evidence: the exact read/query tool name, or its unique MCP raw-name suffix (e.g. \"aggregate_cases\"). The host verifies a successful call with non-empty output after the current step began.",
+                "description": "REQUIRED for tool or computation evidence: the exact read/query/computation tool name, or its unique MCP raw-name suffix (e.g. \"aggregate_cases\"). The host verifies a successful call with non-empty output after the current step began.",
                 "type": "string"
               }
             },
