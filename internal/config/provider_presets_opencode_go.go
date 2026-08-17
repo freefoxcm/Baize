@@ -56,7 +56,7 @@ var opencodeGoDeepSeekAnthropicPreset = ProviderPreset{
 		Thinking:         "adaptive",
 		WebSearch:        boolPointer(true),
 		ContextWindow:    1_000_000,
-		SupportedEfforts: []string{"disabled", "high", "max"},
+		SupportedEfforts: []string{"disabled", "low", "high", "max"},
 		DefaultEffort:    "high",
 	}},
 }

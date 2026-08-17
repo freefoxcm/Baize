@@ -71,6 +71,16 @@ provider（包括旧的 `deepseek-anthropic` 条目）保留其原协议。Reaso
 `low`、`high` 和 `max`。Anthropic-compatible 端点在线上接受 `low|high|max`；
 遗留的 `medium`、`xhigh` 均归一化为 `high`。
 
+## OpenCode Go DeepSeek V4 验证
+
+OpenCode Go 是独立中转站，不继承 DeepSeek 官方能力表。2026-08-17 对
+`deepseek-v4-flash` 和 `deepseek-v4-pro` 分别从本机发送的最小
+Anthropic-compatible `low` 请求首轮均返回 HTTP 200。因此精选 OpenCode Go 的逐模型
+覆盖会为两个模型暴露 `auto`、`disabled`、`low`、`high`、`max`。仅含 Flash 的
+OpenCode Go DeepSeek Anthropic 预设使用同一档位；由于本次探测没有验证 Pro 的网页
+搜索转换，所以不会把 Pro 加入该服务端工具预设。选择 DeepSeek 协议后，兼容性输入
+`medium`、`xhigh` 会归一化为 `high`。
+
 ## 其他所有后端（标准 `reasoning_effort`）
 
 任何其他 OpenAI-compatible 后端都会回退到标准的 `reasoning_effort` 档位

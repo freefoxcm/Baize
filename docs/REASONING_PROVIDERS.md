@@ -75,6 +75,18 @@ The preset exposes the same model-specific effort scale for Flash and Pro:
 accepts `low|high|max` on the wire. Legacy `medium` and `xhigh` both normalize
 to `high`.
 
+## OpenCode Go DeepSeek V4 validation
+
+OpenCode Go is a separate relay and does not inherit the official DeepSeek
+capability table. On 2026-08-17, local minimal Anthropic-compatible `low`
+requests for both `deepseek-v4-flash` and `deepseek-v4-pro` succeeded with HTTP
+200 on the first attempt. The curated OpenCode Go per-model overrides therefore
+expose `auto`, `disabled`, `low`, `high`, and `max` for both models. The
+Flash-only OpenCode Go DeepSeek Anthropic preset exposes the same scale; Pro is
+not added to that server-tool preset because the probe did not validate its web
+search conversion. Compatibility inputs `medium` and `xhigh` normalize to
+`high` after the DeepSeek protocol is selected.
+
 ## Everything else (standard `reasoning_effort`)
 
 Any other OpenAI-compatible backend falls through to the standard
