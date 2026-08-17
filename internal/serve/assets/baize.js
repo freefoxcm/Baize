@@ -3127,7 +3127,21 @@ function acceptSlash(){if(!slashOpen)return;
 // ── slash argument completion helpers ──
 function ensureModelsLoaded() {
   if(modelsCache.length>0)return Promise.resolve();
-  return fetch('/models').then(r=>r.json()).then(d=>{modelsCache=Array.isArray(d?.models)?d.models:[];}).catch(()=>{modelsCache=[];});
+  return fetchModelsState().catch(()=>{modelsCache=[];});
+}
+function fetchModelsState() {
+  return fetch('/models').then(r=>r.json()).then(data=>{
+    modelsCache=Array.isArray(data?.models)?data.models:[];
+    updateModelTrigger();
+    return data;
+  });
+}
+function refreshModelSelection(){fetchModelsState().catch(()=>{});fetchStatus();fetchEffort();}
+function submitModelSwitch(ref){
+  return post('/submit',{input:'/model '+ref}).then(response=>{
+    if(response.ok)refreshModelSelection();
+    return response;
+  });
 }
 // Effort levels are small and can change with the active model, so the /effort
 // menu always fetches fresh state (also keeps effortState/button in sync). One
@@ -3460,7 +3474,7 @@ function openModels() {
   if(!modal)return;
   $('#models-list').innerHTML='<div class="empty-note">'+escHtml(__('loading'))+'</div>';
   modal.style.display='flex';
-  fetch('/models').then(r=>r.json()).then(renderModelsPanel).catch(()=>{
+  fetchModelsState().then(renderModelsPanel).catch(()=>{
     $('#models-list').innerHTML='<div class="empty-note">'+escHtml(__('error_loading'))+'</div>';
   });
 }
@@ -3724,7 +3738,8 @@ async function send(){
     updateGoalUI();
   }
   appendUserMsg(v);
-  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&(r.status===202||r.status===204)){fetchStatus();loadSessions();fetchEffort();}});
+  const isModelSwitch=submitInput.startsWith('/model ');
+  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&(r.status===202||r.status===204)){if(isModelSwitch)refreshModelSelection();else{fetchStatus();fetchEffort();}loadSessions();}});
   input.value='';input.style.height='';closeSlashMenu();
 }
 
@@ -3930,7 +3945,7 @@ function renderModelGroups(data) {
       b.type = 'button';
       b.appendChild(el('span', 'modelsw__copy', m.model || m.ref || ''));
       if (m.active) b.appendChild(el('span', 'modelsw__check', '✓'));
-      b.onclick = () => { closeModelsw(); post('/submit', { input: '/model ' + (m.ref || '') }).then(() => setTimeout(()=>{fetchStatus();fetchEffort();}, 300)); };
+      b.onclick = () => { closeModelsw(); submitModelSwitch(m.ref || ''); };
       g.appendChild(b);
     });
     modelswList.appendChild(g);
@@ -3946,7 +3961,7 @@ function openModelsw() {
   modelswMenu.style.display = '';
   modelswSearch.value = '';
   modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('loading'))+'</div>';
-  fetch('/models').then(r => r.json()).then(d => { renderModelGroups(d); updateModelTrigger(); }).catch(() => { modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('error_loading'))+'</div>'; });
+  fetchModelsState().then(renderModelGroups).catch(() => { modelswList.innerHTML = '<div class="modelsw__empty">'+escHtml(__('error_loading'))+'</div>'; });
   modelswSearch.focus();
 }
 function closeModelsw() { modelswMenu.style.display = 'none'; }
@@ -4006,7 +4021,7 @@ $('#models-list').onclick=e=>{
   const ref=btn.dataset.modelRef;
   if(!ref)return;
   closeModels();
-  post('/submit',{input:'/model '+ref}).then(()=>setTimeout(()=>{fetchStatus();fetchEffort();},300));
+  submitModelSwitch(ref);
 };
 $('#session-search').addEventListener('input',e=>{sessionFilter=e.target.value;renderSessions();});
 

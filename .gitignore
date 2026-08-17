@@ -69,6 +69,7 @@ benchmarks/context-maintenance-e2e/run/
 
 # Local scratch
 temp/
+/.windows-focused/
 
 # Official theme art intermediate outputs / caches
 scripts/official-theme-art/out/
