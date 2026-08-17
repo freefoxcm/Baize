@@ -13,6 +13,13 @@ const { chromium } = await import("playwright");
 const port = Number(process.env.REASONIX_APPROVAL_BROWSER_PORT ?? 4620);
 const url = `http://127.0.0.1:${port}/`;
 
+function spawnPnpm(args, options) {
+  if (process.platform === "win32") {
+    return spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "pnpm.cmd", ...args], options);
+  }
+  return spawn("pnpm", args, options);
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
   process.stdout.write(`  PASS  ${message}\n`);
@@ -34,7 +41,7 @@ async function waitForServer() {
   throw new Error("approval browser preview did not become ready");
 }
 
-const preview = spawn("pnpm", ["exec", "vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], {
+const preview = spawnPnpm(["exec", "vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], {
   cwd: frontendDir,
   stdio: "ignore",
 });

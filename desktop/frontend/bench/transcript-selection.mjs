@@ -14,6 +14,13 @@ const port = Number(process.env.REASONIX_TRANSCRIPT_BROWSER_PORT ?? 4618);
 const url = `http://127.0.0.1:${port}/?mock=bench&bench=1`;
 const bottomTimeout = Number(process.env.REASONIX_TRANSCRIPT_BOTTOM_TIMEOUT ?? 30_000);
 
+function spawnPnpm(args, options) {
+  if (process.platform === "win32") {
+    return spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "pnpm.cmd", ...args], options);
+  }
+  return spawn("pnpm", args, options);
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
   process.stdout.write(`  PASS  ${message}\n`);
@@ -125,7 +132,7 @@ async function waitForServer() {
   throw new Error("transcript browser preview did not become ready");
 }
 
-const preview = spawn("pnpm", ["exec", "vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], {
+const preview = spawnPnpm(["exec", "vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], {
   cwd: frontendDir,
   stdio: "ignore",
 });
@@ -202,8 +209,8 @@ try {
 
   await page.evaluate(() => {
     window.__transcriptProgrammaticWrites = [];
-    window.__REASONIX_TRANSCRIPT_SCROLL_WRITE__ = (owner, top) => {
-      window.__transcriptProgrammaticWrites.push({ owner, top });
+    window.__REASONIX_TRANSCRIPT_SCROLL_WRITE__ = (write) => {
+      window.__transcriptProgrammaticWrites.push(write);
     };
   });
 
@@ -424,8 +431,8 @@ try {
   await page.evaluate(() => {
     window.__transcriptProgrammaticWrites = [];
     window.__logicalClipboardText = null;
-    window.__REASONIX_TRANSCRIPT_SCROLL_WRITE__ = (owner, top) => {
-      window.__transcriptProgrammaticWrites.push({ owner, top });
+    window.__REASONIX_TRANSCRIPT_SCROLL_WRITE__ = (write) => {
+      window.__transcriptProgrammaticWrites.push(write);
     };
   });
   await page.mouse.move(forwardPoints.start.x, forwardPoints.start.y);

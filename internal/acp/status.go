@@ -16,7 +16,6 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
-	"reasonix/internal/secrets"
 )
 
 const (
@@ -210,21 +209,6 @@ func (a *usageAccumulator) addQuoted(u *provider.Usage, pricing *provider.Pricin
 		}
 		return
 	}
-	if pricing != nil {
-		currency := billing.NormalizeCurrency(pricing.Currency)
-		if currency == "" {
-			currency = pricing.Symbol()
-		}
-		if a.pricedEvents == 0 {
-			a.currency = currency
-			a.costComplete = true
-		} else if a.currency != currency {
-			a.currency = ""
-			a.costComplete = false
-		}
-		a.estimatedCost += pricing.Cost(u)
-		a.pricedEvents++
-	}
 }
 
 func (a usageAccumulator) wire() ReasonixUsage {
@@ -374,19 +358,24 @@ func (t *statusTelemetry) finishTurn(runErr error, cancelled bool, goalStatus, s
 		default:
 			var readinessErr *agent.FinalReadinessError
 			var recoveryPause *agent.RecoveryPauseError
+			_, runPause := agent.InspectRunPause(runErr)
 			switch {
 			case errors.As(runErr, &readinessErr):
 				t.phase = "readiness_paused"
-				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: clipStatusText(readinessErr.Error(), 2_048)}
+				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: clipStatusError(readinessErr, 2_048)}
 				t.finalReadiness.Risks = redactStatusTexts(readinessErr.Missing, 2_048)
 				eventName = "pause"
 			case errors.As(runErr, &recoveryPause):
 				t.phase = "recovery_paused"
 				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: clipStatusText(recoveryPause.Error(), 2_048)}
 				eventName = "pause"
+			case runPause:
+				t.phase = "paused"
+				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: clipStatusError(runErr, 2_048)}
+				eventName = "pause"
 			case runErr != nil:
 				t.phase = "error"
-				t.turnOutcome = ReasonixTurnOutcome{Kind: "error", Reason: clipStatusText(runErr.Error(), 2_048)}
+				t.turnOutcome = ReasonixTurnOutcome{Kind: "error", Reason: clipStatusError(runErr, 2_048)}
 				t.goalOverride = "failed"
 				eventName = "error"
 			default:
@@ -473,7 +462,7 @@ func (t *statusTelemetry) persisted() *persistedStatusTelemetry {
 	defer t.mu.Unlock()
 	return &persistedStatusTelemetry{
 		Sequence: t.sequence, State: t.state, Phase: t.phase,
-		TurnOutcome: t.turnOutcome,
+		TurnOutcome: redactTurnOutcome(t.turnOutcome),
 		FinalReadiness: ReasonixFinalReadiness{
 			ReadyForReview: t.finalReadiness.ReadyForReview,
 			Summary:        clipStatusText(t.finalReadiness.Summary, 16_384),
@@ -496,7 +485,7 @@ func restoreStatusTelemetry(saved *persistedStatusTelemetry) *statusTelemetry {
 	// waiting on work that no longer exists in this runtime.
 	t.state = "idle"
 	t.phase = normalizePersistedStatusPhase(saved.Phase)
-	t.turnOutcome = saved.TurnOutcome
+	t.turnOutcome = redactTurnOutcome(saved.TurnOutcome)
 	if t.turnOutcome.Kind == "" {
 		t.turnOutcome.Kind = "none"
 	}
@@ -525,7 +514,7 @@ func (t *statusTelemetry) snapshot() statusTelemetrySnapshot {
 		state:    t.state,
 		phase:    t.phase,
 		turnOutcome: ReasonixTurnOutcome{
-			Kind: t.turnOutcome.Kind, Reason: clipStatusText(t.turnOutcome.Reason, 2_048),
+			Kind: t.turnOutcome.Kind, Reason: clipStatusCredentialText(t.turnOutcome.Reason, 2_048),
 		},
 		finalReadiness: ReasonixFinalReadiness{
 			ReadyForReview: t.finalReadiness.ReadyForReview,
@@ -536,6 +525,11 @@ func (t *statusTelemetry) snapshot() statusTelemetrySnapshot {
 		cumulative:   t.cumulative.wire(),
 		goalOverride: t.goalOverride,
 	}
+}
+
+func redactTurnOutcome(outcome ReasonixTurnOutcome) ReasonixTurnOutcome {
+	outcome.Reason = clipStatusCredentialText(outcome.Reason, 2_048)
+	return outcome
 }
 
 func defaultSessionRuntimeState(cwd string) SessionRuntimeState {
@@ -569,14 +563,6 @@ func normalizeGoalStatus(value string) string {
 	default:
 		return "none"
 	}
-}
-
-func clipStatusText(value string, limit int) string {
-	value = strings.TrimSpace(secrets.Redact(value))
-	if len(value) <= limit {
-		return value
-	}
-	return value[:limit]
 }
 
 func redactStatusTexts(values []string, limit int) []string {

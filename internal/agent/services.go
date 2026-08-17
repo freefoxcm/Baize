@@ -24,7 +24,8 @@ type agentServices struct {
 	prov  provider.Provider
 	tools *tool.Registry
 	// pricing turns provider usage into money for the task budget.
-	pricing *provider.Pricing
+	pricing      *provider.Pricing
+	quoteContext *event.QuoteContext
 	// sink receives the turn's typed event stream. Frontends decide how to
 	// render it; never nil because New defaults it to event.Discard.
 	sink event.Sink
@@ -116,6 +117,7 @@ func newAgentServices(
 		prov:                  prov,
 		tools:                 tools,
 		pricing:               opts.Pricing,
+		quoteContext:          opts.QuoteContext,
 		sink:                  sink,
 		gate:                  gate,
 		extensions:            opts.Extensions,

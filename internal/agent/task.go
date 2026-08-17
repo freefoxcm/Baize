@@ -23,9 +23,9 @@ import (
 	"reasonix/internal/permission"
 	"reasonix/internal/planmode"
 	"reasonix/internal/provider"
+	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/sessiontemp"
-	"reasonix/internal/taskpolicy"
 	"reasonix/internal/tool"
 	"reasonix/internal/workspacelease"
 )
@@ -83,6 +83,7 @@ var subagentAlwaysHiddenTools = []string{
 	"parallel_tasks",
 	"fleet",
 	"read_subagent_result",
+	"set_session_title",
 	"install_skill",
 	"install_source",
 }
@@ -247,6 +248,7 @@ func (readOnlyBash) ReadOnly() bool { return true }
 type TaskTool struct {
 	prov                          provider.Provider
 	pricing                       *provider.Pricing
+	quoteContext                  *event.QuoteContext
 	parentReg                     *tool.Registry
 	maxSteps                      int
 	contextWindow                 int
@@ -298,6 +300,7 @@ type TaskTool struct {
 type TaskToolOptions struct {
 	Provider                              provider.Provider
 	Pricing                               *provider.Pricing
+	QuoteContext                          *event.QuoteContext
 	ParentRegistry                        *tool.Registry
 	MaxSteps                              int
 	ContextWindow                         int
@@ -327,6 +330,7 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 	return &TaskTool{
 		prov:             opts.Provider,
 		pricing:          opts.Pricing,
+		quoteContext:     opts.QuoteContext,
 		parentReg:        opts.ParentRegistry,
 		maxSteps:         opts.MaxSteps,
 		contextWindow:    opts.ContextWindow,
@@ -1595,6 +1599,7 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 		MaxSteps:                 maxSteps,
 		Temperature:              t.temperature,
 		Pricing:                  pricing,
+		QuoteContext:             t.quoteContext,
 		UsageSource:              event.UsageSourceSubagent,
 		Gate:                     t.gate,
 		ContextWindow:            ctxWin,
@@ -1619,9 +1624,11 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 	// Writer children inherit the parent turn's frozen risk and closure floors.
 	// The parent publishes its policy into the run context; a child that never
 	// received it (direct unit construction) keeps its own derived policy.
-	if parent, ok := taskpolicy.FromContext(ctx); ok {
-		p := parent
-		opts.InheritedTaskPolicy = &p
+	if inherited, ok := runtimepolicy.InheritedFromContext(ctx); ok {
+		copy := inherited
+		opts.InheritedExecution = &copy
+	} else if constraints, ok := runtimepolicy.FromContext(ctx); ok {
+		opts.InheritedExecution = &runtimepolicy.InheritedExecutionContext{Constraints: constraints}
 	}
 	return opts
 }
