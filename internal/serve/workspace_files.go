@@ -238,14 +238,36 @@ func (s *Server) workspaceContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+	setWorkspaceMediaHeaders(w, contentType, info.Name(), "no-store")
+	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+}
+
+func setWorkspaceMediaHeaders(w http.ResponseWriter, contentType, filename, cacheControl string) {
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": info.Name()}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filename}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Cache-Control", cacheControl)
 	if contentType == "image/svg+xml" {
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'none'")
 	}
-	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+}
+
+func imageContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".svg":
+		return "image/svg+xml"
+	}
+	return ""
 }
 
 const timeLayout = "2006-01-02T15:04:05Z"

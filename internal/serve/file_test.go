@@ -75,6 +75,45 @@ func TestServeFileServesWorkspaceImages(t *testing.T) {
 	}
 }
 
+func TestServeFileServesSVGWithSandboxedHeaders(t *testing.T) {
+	ctrl, ws := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="10" height="10"/></svg>`)
+	if err := os.WriteFile(filepath.Join(ws, "chart.svg"), svg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Get(srv.URL + "/file?path=chart.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if resp.StatusCode != http.StatusOK || string(body) != string(svg) {
+		t.Fatalf("SVG response status=%d body=%q", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/svg+xml" {
+		t.Errorf("Content-Type = %q, want image/svg+xml", got)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.Contains(got, "inline") || !strings.Contains(got, "chart.svg") {
+		t.Errorf("Content-Disposition = %q, want inline chart.svg", got)
+	}
+	csp := resp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "script-src 'none'") {
+		t.Errorf("unsafe SVG Content-Security-Policy = %q", csp)
+	}
+}
+
 func TestServeFileRejectsEscapes(t *testing.T) {
 	ctrl, ws := testCtrlWithWorkspace(t)
 	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())

@@ -954,7 +954,7 @@ func (s *Server) edit(w http.ResponseWriter, r *http.Request) {
 // file serves workspace images referenced from markdown (agent output or
 // pasted attachments). Access is confined to the workspace root: absolute
 // paths must resolve inside it, and symlinks that escape it are refused.
-// Only raster image types are served; SVG is excluded (script-in-SVG risk).
+// Raster images and sandboxed SVG files are served inline.
 func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 	root := s.ctl().WorkspaceRoot()
 	if root == "" {
@@ -985,8 +985,11 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported type", http.StatusUnsupportedMediaType)
 		return
 	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Cache-Control", "private, max-age=300")
+	cacheControl := "private, max-age=300"
+	if ct == "image/svg+xml" {
+		cacheControl = "no-store"
+	}
+	setWorkspaceMediaHeaders(w, ct, fi.Name(), cacheControl)
 	http.ServeFile(w, r, clean)
 }
 
@@ -1074,22 +1077,6 @@ func securePathJoin(root, raw string) (string, error) {
 		return "", errors.New("symlink escape")
 	}
 	return eval, nil
-}
-
-func imageContentType(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".gif":
-		return "image/gif"
-	case ".webp":
-		return "image/webp"
-	case ".bmp":
-		return "image/bmp"
-	}
-	return ""
 }
 
 func sanitizeFilename(name string) string {
