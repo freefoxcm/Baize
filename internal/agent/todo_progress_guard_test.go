@@ -35,6 +35,7 @@ func stalledTodoAgent(t *testing.T, turns []testutil.Turn) (*Agent, *testutil.Mo
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "inspect", readOnly: true})
 	reg.Add(mustBuiltinTool(t, "todo_write"))
+	reg.Add(mustBuiltinTool(t, "complete_step"))
 	mp := testutil.NewMock("m", turns...)
 	return New(mp, reg, NewSession(""), Options{}, event.Discard), mp
 }
@@ -53,7 +54,13 @@ func TestTodoProgressGuardNeverPausesARun(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			turns := append(stalledTodoTurns(4), testutil.Turn{Text: "Done."})
+			turns := append(stalledTodoTurns(4),
+				testutil.Turn{ToolCalls: []provider.ToolCall{{
+					ID: "todo-done", Name: "complete_step",
+					Arguments: `{"step":"finish the task","result":"inspected","evidence":[{"kind":"tool","summary":"inspected the requested state","tool":"inspect"}]}`,
+				}}},
+				testutil.Turn{Text: "Done."},
+			)
 			a, mp := stalledTodoAgent(t, turns)
 
 			err := a.Run(tc.ctx(), "work until the todo is complete")
@@ -90,11 +97,18 @@ func TestGoalTodoProgressGuardReplansWithoutPausing(t *testing.T) {
 			ID: fmt.Sprintf("read-%d", i), Name: "inspect", Arguments: `{"path":"same"}`,
 		}}})
 	}
-	turns = append(turns, testutil.Turn{Text: "Replanned; a real blocker would be reported through update_goal."})
+	turns = append(turns,
+		testutil.Turn{ToolCalls: []provider.ToolCall{{
+			ID: "todo-done", Name: "complete_step",
+			Arguments: `{"step":"finish the task","result":"inspected","evidence":[{"kind":"tool","summary":"inspected the requested state","tool":"inspect"}]}`,
+		}}},
+		testutil.Turn{Text: "Replanned; a real blocker would be reported through update_goal."},
+	)
 
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "inspect", readOnly: true})
 	reg.Add(mustBuiltinTool(t, "todo_write"))
+	reg.Add(mustBuiltinTool(t, "complete_step"))
 	mp := testutil.NewMock("m", turns...)
 	a := New(mp, reg, NewSession(""), Options{}, event.Discard)
 	ctx := WithDeliveryExecutionScope(context.Background(), DeliveryExecutionScope{ID: "goal-1", TaskText: "finish the task"})
