@@ -28,18 +28,20 @@ import (
 	"reasonix/internal/plancontract"
 	"reasonix/internal/planmode"
 	"reasonix/internal/provider"
+	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/shellparse"
-	"reasonix/internal/taskpolicy"
+	"reasonix/internal/taskcontract"
 	"reasonix/internal/tool"
 	"reasonix/internal/workspacelease"
 )
 
-// maxToolOutputBytes caps a single tool result before it goes into the model's
-// context. ~32KB is roughly 8K tokens — enough for a full file read or a busy
-// grep, while preventing one accidental "read this 5 MB log" from blowing the
-// window before the next compaction runs.
+// maxToolOutputBytes keeps Content readable by older Reasonix versions.
+// RawContent retains the complete result and new request projections promote it
+// until pressure-time pruning installs a durable bounded view.
 const maxToolOutputBytes = 32 * 1024
+
+var deprecatedContextRetentionWarning sync.Once
 
 const maxEmptyFinalBlocks = 3
 
@@ -52,10 +54,6 @@ const maxExecutorHandoffNudges = 1
 // defaultReasoningByteLimit caps stored hidden reasoning for one stream.
 // It does not cancel generation; official DeepSeek may emit up to 384K tokens.
 const defaultReasoningByteLimit = 8 << 20
-
-const finishReasonClientReasoningLimit = "client_reasoning_limit"
-
-var errReasoningByteLimitExceeded = errors.New("reasoning output exceeded client byte limit")
 
 // DeliveryRuntimeMarker is the delivery-mode contract block appended to user
 // turns (withTurnPreferences). Exported as the single source of truth for the
@@ -333,9 +331,10 @@ type Agent struct {
 	// Entries keep a durable inbox item ID plus a loader so full bodies are not
 	// retained in the agent heap beyond need. Cache miss for the next API call
 	// is unavoidable but limited to one call — the prefix stays stable otherwise.
-	steerMu       sync.Mutex
-	steerQueue    []steerEntry
-	steerConsumed bool
+	steerMu        sync.Mutex
+	steerQueue     []steerEntry
+	steerConsumed  bool
+	steerUnapplied bool
 	// steerRunActive is true while Run is executing. Steer only queues while
 	// it is set; once the turn's exit flush has drained the queue, later
 	// steers are rejected so the caller can deliver them as a regular turn
@@ -359,15 +358,11 @@ type Agent struct {
 	// verify against same-turn bash receipts after a write-backed completion.
 	projectChecks []instruction.VerifyCheck
 
-	// closedLoop gates come from the frozen per-turn TaskPolicy (see turn.policy
-	// and closedLoopActive). Host state only; never enters the provider-cached
-	// prefix. The scope ID and checkpoint it works against live in task; the
-	// per-turn expectations live in turn.
+	// closedLoop gates come from Goal/Plan scope and strict contract
+	// obligations. Host state only; never enters the provider-cached prefix.
 
-	// inheritedPolicy is the writer parent's frozen TaskPolicy. Writer
-	// sub-agents merge its risk and closure floors into their own policy;
-	// read-only sub-agents leave it nil.
-	inheritedPolicy *taskpolicy.TaskPolicy
+	// inheritedExec is the writer parent's host execution context.
+	inheritedExec *runtimepolicy.InheritedExecutionContext
 
 	// turn is the state of the Run currently executing; beginRunTurn replaces
 	// it wholesale. See turnruntime.go.
@@ -540,8 +535,6 @@ func (a *Agent) withTurnPreferences(input string) string {
 		}
 	}
 	input = WithReasoningLanguage(input, lang)
-	// Role settings no longer inject a stable delivery-runtime system-like
-	// marker. Per-turn <execution-policy> carries the frozen role setting.
 	return input
 }
 
@@ -692,6 +685,11 @@ type steerEntry struct {
 	text string
 }
 
+// ErrSteerWithdrawn tells the agent that a durable steer was intentionally
+// removed by a concurrent user cancellation. It must not be recorded as an
+// unapplied failure in the transcript.
+var ErrSteerWithdrawn = errors.New("steer withdrawn")
+
 // Steer queues a message for mid-turn injection. It reports whether an active
 // turn accepted the text; on false nothing was queued and the caller must
 // deliver it another way (typically as a new turn). Without the active check,
@@ -722,6 +720,15 @@ func (a *Agent) SteerConsumed() bool {
 	return a.steerConsumed
 }
 
+// HasUnappliedSteer reports whether the last Run ended with user guidance that
+// arrived too late to be consumed. Hosts use it to yield before starting an
+// automatic synthetic continuation.
+func (a *Agent) HasUnappliedSteer() bool {
+	a.steerMu.Lock()
+	defer a.steerMu.Unlock()
+	return a.steerUnapplied
+}
+
 // SetSink replaces the agent's event sink. Controllers use this to wrap the
 // sink after construction (e.g. durable inbox observation) without rebuilding
 // the agent.
@@ -747,6 +754,9 @@ func (a *Agent) consumeSteer() (text, itemID string, ok bool) {
 	if e.load != nil {
 		t, err := e.load()
 		if err != nil {
+			if errors.Is(err, ErrSteerWithdrawn) {
+				return "", "", false
+			}
 			return "", e.itemID, false
 		}
 		return t, e.itemID, true
@@ -777,20 +787,28 @@ func (a *Agent) flushSteerQueue() {
 	a.steerMu.Lock()
 	pending := a.steerQueue
 	a.steerQueue = nil
+	a.steerUnapplied = false
 	if len(pending) > 0 {
 		a.steerConsumed = true
 	}
 	a.steerRunActive = false
 	a.steerMu.Unlock()
+	unapplied := false
 	for _, e := range pending {
 		text := e.text
 		if e.load != nil {
-			if t, err := e.load(); err == nil {
+			if t, err := e.load(); errors.Is(err, ErrSteerWithdrawn) {
+				continue
+			} else if err == nil {
 				text = t
 			}
 		}
 		a.RecordUnappliedSteer(text, e.itemID)
+		unapplied = true
 	}
+	a.steerMu.Lock()
+	a.steerUnapplied = unapplied
+	a.steerMu.Unlock()
 }
 
 // UnappliedSteerNotice returns the durable warning shown for guidance that was
@@ -860,9 +878,12 @@ type Options struct {
 	MaxOutputTokens int
 	Temperature     float64
 	// TaskBudget bounds a task's spend; zero uses DefaultTaskBudget.
-	TaskBudget  TaskBudget
-	Pricing     *provider.Pricing // optional, for per-turn cost display
-	UsageSource string            // optional billable usage source; default executor
+	TaskBudget TaskBudget
+	Pricing    *provider.Pricing // optional, for per-turn cost display
+	// QuoteContext is shared with the host CostQuote sink so budget accounting
+	// and emitted usage consume the exact same occurrence-time quote.
+	QuoteContext *event.QuoteContext
+	UsageSource  string // optional billable usage source; default executor
 	// ModelRef names the canonical "provider/model" ref backing this agent's
 	// provider instance. It is attached to emitted Usage events so downstream
 	// usage accounting can attribute tokens to the exact model.
@@ -953,9 +974,8 @@ type Options struct {
 	// ProjectChecks are host-observable structured checks extracted during boot.
 	ProjectChecks []instruction.VerifyCheck
 
-	// InheritedTaskPolicy is the writer parent's frozen TaskPolicy. Writer
-	// sub-agents merge its risk/closure floors; read-only sub-agents ignore it.
-	InheritedTaskPolicy *taskpolicy.TaskPolicy
+	// InheritedExecution is the writer parent's host execution context.
+	InheritedExecution *runtimepolicy.InheritedExecutionContext
 
 	// Ablation switches subsystems off for a benchmark arm. The zero value runs
 	// everything, so ordinary callers leave it unset.
@@ -1026,6 +1046,7 @@ type Options struct {
 // provider errors (compaction keeps the context bounded). A nil sink is replaced
 // with event.Discard so the agent can always emit unconditionally.
 func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Options, sink event.Sink) *Agent {
+	warnDeprecatedRetention := deprecatedContextRetentionConfigured(opts)
 	if opts.CompactRatio <= 0 {
 		opts.CompactRatio = defaultCompactRatio
 	}
@@ -1108,7 +1129,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		readOnlyExecution:      opts.ReadOnlyExecution,
 		plannerMCPExecution:    opts.PlannerMCPExecution,
 		projectChecks:          append([]instruction.VerifyCheck(nil), opts.ProjectChecks...),
-		inheritedPolicy:        opts.InheritedTaskPolicy,
+		inheritedExec:          opts.InheritedExecution,
 		ablation:               opts.Ablation,
 		capabilityLedger:       opts.CapabilityLedger,
 		capabilityAudit:        opts.CapabilityAudit,
@@ -1123,7 +1144,21 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	a.SetReasoningLanguage(opts.ReasoningLanguage)
 	a.maybeArmForkFromEnv()
 	a.maybeWrapForkCaptureProvider()
+	if warnDeprecatedRetention {
+		deprecatedContextRetentionWarning.Do(func() {
+			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+				Text:   "agent.keep and agent.recent_keep are deprecated.",
+				Detail: "Harness-style compaction now retains only the newest 16% of the context window; legacy retention fields are preserved in configuration but ignored at runtime."})
+		})
+	}
 	return a
+}
+
+func deprecatedContextRetentionConfigured(opts Options) bool {
+	recentNonDefault := opts.RecentKeep > 0 && opts.RecentKeep != minRecentKeep
+	defaultKeepPolicy := KeepErrors | KeepUserMarked
+	keepNonDefault := opts.KeepPolicy != 0 && opts.KeepPolicy != KeepErrors && opts.KeepPolicy != defaultKeepPolicy
+	return recentNonDefault || keepNonDefault
 }
 
 // closedLoopActive reports whether the current (or most recent) turn must
@@ -1135,15 +1170,21 @@ func (a *Agent) closedLoopActive() bool {
 	if a == nil {
 		return false
 	}
-	return a.turn.policySet && a.turn.policy.ClosedLoop()
-}
-
-// TurnPolicy returns the frozen TaskPolicy for the active turn, if any.
-func (a *Agent) TurnPolicy() (taskpolicy.TaskPolicy, bool) {
-	if a == nil || !a.turn.policySet {
-		return taskpolicy.TaskPolicy{}, false
+	if a.turn.deliveryScopeActive {
+		return true
 	}
-	return a.turn.policy, true
+	if a.planContractSnapshot() != nil {
+		return true
+	}
+	if a.turn.engine == nil {
+		return false
+	}
+	for _, o := range a.turn.engine.Snapshot().Obligations {
+		if o.Enforcement == taskcontract.EnforcementStrict {
+			return true
+		}
+	}
+	return false
 }
 
 func usageSourceOrDefault(source, fallback string) string {
@@ -1207,6 +1248,7 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	defer a.flushSteerQueue()
 	a.steerMu.Lock()
 	a.steerConsumed = false
+	a.steerUnapplied = false
 	a.steerRunActive = true
 	a.steerMu.Unlock()
 
@@ -1235,7 +1277,7 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 		// Explicit readiness recovery is consumed only once beginRunTurn starts.
 		// If an extension blocks earlier, release the in-memory reservation so
 		// the still-pending durable marker can authorize a later retry.
-		a.pending.finalReadinessRecoveryPrepared = false
+		a.RestoreFinalReadinessRecoveryPreparation()
 		return err
 	}
 
@@ -1246,11 +1288,12 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	state.runMaxSteps = runMaxSteps
 	state.runMaxStepsKey = runMaxStepsKey
 	state.workDurationMs = workDurationMs
-	// Publish the frozen policy so writer sub-agents spawned this turn inherit
-	// its risk and closure floors instead of re-deriving a weaker contract.
-	if a.turn.policySet {
-		ctx = taskpolicy.WithContext(ctx, a.turn.policy)
-	}
+	ctx = runtimepolicy.WithContext(ctx, a.turn.constraints)
+	ctx = runtimepolicy.WithInherited(ctx, runtimepolicy.InheritedExecutionContext{
+		Constraints:  a.turn.constraints,
+		PlanReadOnly: a.planMode.Load() || a.readOnlyExecution,
+		GoalScopeID:  a.task.scopeID,
+	})
 	return a.runToolLoop(ctx, state)
 }
 
@@ -1320,13 +1363,11 @@ func (a *Agent) updateDeliveryCheckpoint(runErr error) {
 	}
 	cp.CriteriaEstablished = cp.CriteriaEstablished || a.turn.deliveryCriteriaEstablished || a.task.ledger.HasSuccessfulTodoWrite()
 	cp.WorkObserved = cp.WorkObserved || a.task.ledger.HasSuccessfulWorkReceipt()
-	persistentOnlyReady := a.turn.deliveryPersistentExpected && !a.turn.deliveryMutationExpected &&
-		a.task.ledger.HasSuccessfulToolReceipt("remember") && !a.task.ledger.HasSuccessfulMutationOtherThan("remember")
-	if _, ok := a.task.ledger.LatestSuccessfulMutationIndex(); ok && !persistentOnlyReady {
+	if _, ok := a.task.ledger.LatestSuccessfulMutationIndex(); ok {
 		cp.MutationObserved = true
 		cp.PendingMutation = true
 	}
-	if persistentOnlyReady {
+	if a.task.ledger.HasSuccessfulToolReceipt("remember") && !a.task.ledger.HasSuccessfulMutationOtherThan("remember") {
 		cp.MutationObserved = true
 	}
 	if runErr == nil && cp.PendingMutation && a.deliveryMutationCheckpointReady() {
@@ -1478,6 +1519,7 @@ func (a *Agent) rebuildTodoState(msgs []provider.Message) {
 		}
 	}
 	a.setTodoState(todos)
+	a.consumeTodoOnlyReadinessMarkerIfResolved()
 }
 
 func successfulToolCallIDs(msgs []provider.Message) map[string]bool {
@@ -1711,6 +1753,7 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	// Reuse a parent attempt counter when present so stream retries accumulate
 	// into one RequestCount; otherwise install a fresh counter for this call.
 	ctx = provider.WithRequestAttemptCounter(ctx)
+	ctx = a.withMissingReasoningFallback(ctx)
 	// A stream can terminate locally before the provider channel closes (for
 	// example when the client-side reasoning guard fires). Own a child context
 	// here so every return path aborts the HTTP request and releases the provider
@@ -1750,6 +1793,7 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	search := newSearchTurn()
 	var partialCalls []provider.ToolCall
 	var usage *provider.Usage
+	reasoningComplete := true
 	var partialToolStarted bool
 	var maxArgChars int
 	var lastArgProgress time.Time
@@ -1758,7 +1802,7 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	collect := func(stored string, err error) streamedTurn {
 		return streamedTurn{
 			text: text.String(), reasoning: stored, signature: signature,
-			reasoningID: reasoningID, reasoningStatus: reasoningStatus,
+			reasoningID: reasoningID, reasoningStatus: reasoningStatus, reasoningComplete: reasoningComplete,
 			calls: calls, responsesItems: responsesItems, serverSearch: search.calls, usage: usage,
 			partialToolStarted: partialToolStarted, partialCalls: partialCalls,
 			maxArgChars: maxArgChars, err: err,
@@ -1774,8 +1818,7 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			}
 		}
 		stored = display
-		providerBound := signature != "" || reasoningID != "" || reasoningStatus != ""
-		if providerBound || provider.RequiresReasoningRoundTrip(a.svc.prov) || (len(calls) > 0 && provider.RequiresToolCallReasoning(a.svc.prov)) {
+		if a.preserveRawReasoning(signature, reasoningID, reasoningStatus, calls, search.calls) {
 			stored = original
 		}
 		return stored, display
@@ -1831,7 +1874,8 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 				return streamedTurn{
 					text: finalText, reasoning: finalReasoning, signature: signature,
 					reasoningID: reasoningID, reasoningStatus: reasoningStatus,
-					calls: calls, responsesItems: responsesItems, serverSearch: search.calls, usage: usage,
+					reasoningComplete: reasoningComplete,
+					calls:             calls, responsesItems: responsesItems, serverSearch: search.calls, usage: usage,
 					partialCalls: partialCalls, maxArgChars: maxArgChars,
 				}
 			}
@@ -1857,10 +1901,7 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			// Bound stored hidden reasoning only. Do not cancel the provider
 			// stream: official DeepSeek bills this output and still needs to
 			// emit the visible answer or tool calls.
-			if a.reasoningByteLimit > 0 && reasoning.Len() > a.reasoningByteLimit {
-				reasoning.Reset()
-				reasoning.WriteString(snapToRuneBoundary(chunk.Text, 0, min(len(chunk.Text), a.reasoningByteLimit)))
-			}
+			reasoningComplete = boundReasoningReplay(&reasoning, chunk.Text, a.reasoningByteLimit, reasoningComplete)
 		case provider.ChunkText:
 			text.WriteString(chunk.Text)
 			sink.Emit(event.Event{Kind: event.Text, Text: chunk.Text})
@@ -1929,6 +1970,15 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			return collect(stored, chunk.Err)
 		}
 	}
+}
+
+func boundReasoningReplay(reasoning *strings.Builder, latest string, byteLimit int, complete bool) bool {
+	if byteLimit <= 0 || reasoning.Len() <= byteLimit {
+		return complete
+	}
+	reasoning.Reset()
+	reasoning.WriteString(snapToRuneBoundary(latest, 0, min(len(latest), byteLimit)))
+	return false
 }
 
 func bestEffortStreamUsage(current *provider.Usage, textBytes, reasoningBytes int, finishReason string) *provider.Usage {
@@ -2712,17 +2762,16 @@ func firstLine(s string) string {
 	return s
 }
 
-// truncateToolOutput is the first-visible hard cap for a tool result. Under-cap
-// bodies are returned byte-identical. Over-cap bodies keep a tool-aware head and
-// tail under maxToolOutputBytes; the full original is stored separately as
-// RawContent by the session writer. The bounded form is stable for the message
-// lifetime and is never re-truncated by later maintenance.
+// truncateToolOutput builds the compatibility Content form for a tool result.
+// Under-cap bodies are byte-identical; over-cap bodies keep a tool-aware head
+// and tail while RawContent stores the full original. New request projections
+// promote RawContent until pressure pruning, while older readers remain bounded.
 func truncateToolOutput(s string) (string, string) {
 	return truncateToolOutputFor(s, "", "")
 }
 
-// truncateToolOutputFor is the tool-aware first-visible limiter. toolName and
-// toolCallID populate the truncation marker so the model can re-fetch.
+// truncateToolOutputFor is the tool-aware compatibility-storage limiter.
+// toolName and toolCallID populate the marker used by older readers.
 func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 	if len(s) <= maxToolOutputBytes {
 		return s, ""
@@ -2808,8 +2857,6 @@ func finishReasonMessage(u *provider.Usage) (string, bool) {
 	switch u.FinishReason {
 	case "length":
 		return "response truncated: hit max output tokens", true
-	case finishReasonClientReasoningLimit:
-		return "response stopped: hit the client reasoning safety limit", true
 	case "content_filter":
 		return "response blocked by content filter", true
 	case "repetition_truncation":

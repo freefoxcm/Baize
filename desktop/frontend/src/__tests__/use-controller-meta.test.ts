@@ -453,7 +453,7 @@ eq(sameMeta(meta({ collaborationMode: "normal" }), meta({ collaborationMode: "pl
   });
   liveState = reducer(liveState, {
     type: "event",
-    e: { kind: "tool_result", tool: { id: "todo-live", name: "todo_write", readOnly: true, output: "Todos updated" } },
+    e: { kind: "tool_result_preview", tool: { id: "todo-live", name: "todo_write", readOnly: true, output: "Todos updated" } },
   });
   const liveTodo = liveState.items.find(
     (item): item is Extract<Item, { kind: "tool" }> => item.kind === "tool" && item.name === "todo_write",
@@ -461,7 +461,16 @@ eq(sameMeta(meta({ collaborationMode: "normal" }), meta({ collaborationMode: "pl
   eq(
     JSON.stringify(resolveTodoPanelTodos(liveState.meta?.canonicalTodos, liveTodo ? parseTodos(liveTodo.args) : undefined)),
     JSON.stringify(JSON.parse(liveArgs).todos),
-    "panel switches to the live todo_write snapshot after it arrives",
+    "panel switches to the live todo_write snapshot when its result preview arrives",
+  );
+  liveState = reducer(liveState, {
+    type: "event",
+    e: { kind: "tool_result", tool: { id: "todo-live", name: "todo_write", readOnly: true, output: "Todos updated", durationMs: 4 } },
+  });
+  eq(
+    liveState.items.filter((item) => item.kind === "tool" && item.id === "todo-live").length,
+    1,
+    "provider-ordered terminal result upserts the preview instead of duplicating the card",
   );
 }
 
@@ -476,6 +485,38 @@ eq(sameMeta(meta({ collaborationMode: "normal" }), meta({ collaborationMode: "pl
   const optimistic = reducer(initialState, { type: "user", text: "hello", seq: 0, submissionId: "watchdog-submit" });
   eq(optimistic.turnActive, false, "optimistic send starts before turn_started arrives");
   eq(shouldReconcileStaleTurn(optimistic, 0, optimistic.turnStartAt + 30_000), true, "optimistic send reconciles even when turn_started is missed");
+}
+
+{
+  const originalNow = Date.now;
+  let now = 1_000;
+  Date.now = () => now;
+  try {
+    let s = reducer(initialState, { type: "user", text: "keep timing", seq: 0, submissionId: "timing-submit" });
+    now = 8_000;
+    s = reducer(s, {
+      type: "event",
+      e: { kind: "turn_started", submissionId: "timing-submit", turnStartedAt: 1_200 },
+    });
+    eq(s.turnStartAt, 1_200, "a delayed turn_started event keeps the backend turn start instead of restarting the timer");
+
+    now = 12_000;
+    s = reducer(initialState, {
+      type: "backend_status",
+      running: true,
+      cancellable: true,
+      turnStartedAt: 1_200,
+    });
+    eq(s.turnStartAt, 1_200, "a rehydrated running tab restores the backend turn start instead of restarting the timer");
+
+    now = 13_000;
+    s = reducer(s, { type: "event", e: { kind: "turn_done" } });
+    now = 20_000;
+    s = reducer(s, { type: "event", e: { kind: "turn_started" } });
+    eq(s.turnStartAt, 20_000, "a legacy turn_started event begins a new remote turn instead of reusing completed-turn timing");
+  } finally {
+    Date.now = originalNow;
+  }
 }
 
 {
@@ -704,6 +745,33 @@ eq(sameMeta(meta({ collaborationMode: "normal" }), meta({ collaborationMode: "pl
   eq(users[1]?.kind === "user" && users[1].text, "recent prompt", "older history keeps the current window");
   eq(s.historyHasOlder, false, "older history clears hasOlder when all pages are loaded");
   eq(s.historyOlderLoading, false, "older history clears loading");
+}
+
+// ── Todo-only readiness cards retract once the list shows all complete ──────
+{
+  const args = JSON.stringify({ todos: [{ content: "Write verification notes", status: "completed" }] });
+  let s = reducer(initialState, { type: "event", e: { kind: "turn_done", outcome: "final_readiness", readiness: { missing: ["todo"], attempts: 1 } } });
+  ok(s.items.some((item) => item.kind === "notice" && item.variant === "delivery"), "todo-only readiness card shows at the gated turn");
+  s = reducer(s, { type: "event", e: { kind: "tool_dispatch", tool: { id: "tw1", name: "todo_write", args, readOnly: true } } });
+  s = reducer(s, { type: "event", e: { kind: "tool_result", tool: { id: "tw1", name: "todo_write", args, readOnly: true, output: "task list updated" } } });
+  s = reducer(s, { type: "event", e: { kind: "turn_done" } });
+  ok(!s.items.some((item) => item.kind === "notice" && item.variant === "delivery"), "an all-complete todo list retracts the stale todo-only card");
+}
+{
+  const args = JSON.stringify({ todos: [{ content: "Write verification notes", status: "completed" }] });
+  let s = reducer(initialState, { type: "event", e: { kind: "turn_done", outcome: "final_readiness", readiness: { missing: ["todo", "verification"], attempts: 1 } } });
+  s = reducer(s, { type: "event", e: { kind: "tool_dispatch", tool: { id: "tw2", name: "todo_write", args, readOnly: true } } });
+  s = reducer(s, { type: "event", e: { kind: "tool_result", tool: { id: "tw2", name: "todo_write", args, readOnly: true, output: "task list updated" } } });
+  s = reducer(s, { type: "event", e: { kind: "turn_done" } });
+  ok(s.items.some((item) => item.kind === "notice" && item.variant === "delivery"), "a card listing non-todo gaps survives todo completion");
+}
+{
+  const args = JSON.stringify({ todos: [{ content: "Write verification notes", status: "in_progress" }] });
+  let s = reducer(initialState, { type: "event", e: { kind: "turn_done", outcome: "final_readiness", readiness: { missing: ["todo"], attempts: 1 } } });
+  s = reducer(s, { type: "event", e: { kind: "tool_dispatch", tool: { id: "tw3", name: "todo_write", args, readOnly: true } } });
+  s = reducer(s, { type: "event", e: { kind: "tool_result", tool: { id: "tw3", name: "todo_write", args, readOnly: true, output: "task list updated" } } });
+  s = reducer(s, { type: "event", e: { kind: "turn_done" } });
+  ok(s.items.some((item) => item.kind === "notice" && item.variant === "delivery"), "an incomplete todo list keeps the todo-only card");
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

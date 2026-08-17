@@ -36,6 +36,7 @@ type Messages struct {
 	TurnCancelled          string // shown when Ctrl-C aborts the in-flight turn but the chat keeps running
 	InterruptedRecovery    string // replay notice for a durable interrupted turn
 	FinalReadinessRecovery string // replay hint for a durable final-readiness pause
+	ReadinessContinuing    string // host is automatically finishing known readiness gaps
 	RecoveryPaused         string // controlled Auto retry pause; user can continue in the next message
 	ReceiptVerified        string // end-of-turn receipt, nothing unproven
 	ReceiptGapsHeader      string // end-of-turn receipt, header above the unproven list
@@ -90,6 +91,9 @@ type Messages struct {
 	ChatStatusCycleHint                    string // plan-toggle shortcut hint shown when no modal prompt owns the status row
 	ChatStatusCycleHintCompact             string // readable shortcut hint used by the persistent footer
 	ChatTurnReceiptLabel                   string // compact per-turn usage receipt attached to the completed assistant response
+	RateBandPeak                           string
+	RateBandOffPeak                        string
+	RateBandMixed                          string
 	ChatStatusModelLabel                   string
 	ChatStatusEffortLabel                  string
 	ChatStatusCacheLabel                   string
@@ -97,6 +101,7 @@ type Messages struct {
 	ChatStatusCompactLabel                 string
 	ChatStatusJobsLabel                    string
 	ChatStatusBalanceLabel                 string
+	ChatStatusCostLabel                    string
 	ChatStatusCacheNowFmt                  string // cache status tag, "%s" = latest-turn hit rate with percent sign
 	ChatStatusCacheAvgFmt                  string // cache status tag, "%s" = session-average hit rate with percent sign
 	ChatStatusPlanApproval                 string // shortcuts hint while a plan is pending
@@ -520,6 +525,7 @@ type Messages struct {
 
 	// provider HTTP error explanations — actionable, reason + fix per status code
 	ProviderErrBadRequest          string // 400
+	ProviderErrContextOverflowFmt  string // 400/413/422 shared-window overflow with numbers
 	ProviderErrAuth                string // 401 — no key configured / sent
 	ProviderErrAuthRejected        string // 401 — a key was sent but the server rejected it
 	ProviderErrInsufficientBalance string // 402

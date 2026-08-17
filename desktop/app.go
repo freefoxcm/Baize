@@ -137,6 +137,18 @@ type App struct {
 	catalogDone        chan struct{}
 	catalogRebuilding  atomic.Bool
 	shuttingDown       atomic.Bool
+	// catalogReconcileJobs coalesces both the legacy pre-scan and catalog scan.
+	// Catalog deduplicates its worker; this also prevents callers from
+	// stampeding the otherwise-unbounded pre-scan goroutines.
+	catalogReconcileMu   sync.Mutex
+	catalogReconcileJobs map[string]*desktopCatalogReconcileJob
+	// Test-only deterministic boundary, set before concurrent requests.
+	catalogReconcileHook     func(sessioncatalog.DirectoryTarget)
+	catalogReconcileDoneHook func(sessioncatalog.DirectoryTarget)
+	// catalogRegisteredProjectRoots bounds activation-triggered discovery to
+	// once per project per process. Failed pre-catalog attempts are removed so
+	// a later activation retries after the asynchronous catalog opens.
+	catalogRegisteredProjectRoots sync.Map
 
 	// taskCtrl is the process-wide task-monitor control service (lazy; see
 	// taskControl). One instance serializes control operations in-process.
@@ -389,15 +401,16 @@ func (a *App) jsProfilingMiddleware() func(http.Handler) http.Handler {
 // last session's desktop-tabs.json.
 func NewApp() *App {
 	a := &App{
-		tabs:                map[string]*WorkspaceTab{},
-		runtimeByID:         map[string]*desktopSessionRuntime{},
-		runtimeBySessionKey: map[string]*desktopSessionRuntime{},
-		detachedSessions:    map[string]*WorkspaceTab{},
-		mediaTokens:         newMediaTokenStore(),
-		botInstalls:         map[string]*botInstallSession{},
-		botRuntime:          newDesktopBotRuntime(),
-		remoteWindows:       newRemoteWindowRegistry(),
-		remoteWindowOwnerID: newRemoteWindowOwnerID(),
+		tabs:                 map[string]*WorkspaceTab{},
+		runtimeByID:          map[string]*desktopSessionRuntime{},
+		runtimeBySessionKey:  map[string]*desktopSessionRuntime{},
+		catalogReconcileJobs: map[string]*desktopCatalogReconcileJob{},
+		detachedSessions:     map[string]*WorkspaceTab{},
+		mediaTokens:          newMediaTokenStore(),
+		botInstalls:          map[string]*botInstallSession{},
+		botRuntime:           newDesktopBotRuntime(),
+		remoteWindows:        newRemoteWindowRegistry(),
+		remoteWindowOwnerID:  newRemoteWindowOwnerID(),
 	}
 	a.webView2Recovery = newWebView2RecoveryCoordinator(a)
 	a.workspaceHub = newWorkspaceChangeHub(a)
@@ -965,6 +978,19 @@ func (a *App) SubmitToTab(tabID, input string) error {
 // reclaim remote control first — typing locally is the grab-back gesture.
 func (a *App) submitToTab(tabID, input string, fromBridge bool, submissionID ...string) error {
 	trimmed := strings.TrimSpace(input)
+	if trimmed == "/reload" {
+		tab, _ := a.tabAndCtrlByID(tabID)
+		if a.tabIsReadOnly(tab) {
+			return readOnlyChannelErr()
+		}
+		if tab == nil {
+			return a.workspaceNotReadyErr(tab)
+		}
+		if !fromBridge && a.botBridge != nil {
+			a.botBridge.reclaimFromDesktop(tab.ID)
+		}
+		return a.ReloadRuntime(tab.ID)
+	}
 	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") {
 		tab, _ := a.tabAndCtrlByID(tabID)
 		if a.tabIsReadOnly(tab) {
@@ -2069,6 +2095,7 @@ func (a *App) clearActiveSessionRuntime(tab *WorkspaceTab, oldCtrl control.Sessi
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	})
 	if err != nil {
 		if teardownTimedOut {
@@ -3469,7 +3496,10 @@ func (a *App) purgeTrashedSession(path string, requireRedundantRecovery bool) er
 // the branch meta sidecar, with the legacy .titles.json map kept as a
 // compatibility write-through for older desktop data paths.
 func (a *App) RenameSession(path, title string) error {
-	dir := a.activeSessionDir()
+	return a.renameSessionInDir(a.activeSessionDir(), path, title)
+}
+
+func (a *App) renameSessionInDir(dir, path, title string) error {
 	sessionPath, _, err := validateSessionPath(dir, path)
 	if err != nil {
 		return err
@@ -3477,10 +3507,33 @@ func (a *App) RenameSession(path, title string) error {
 	if err := agent.RenameSession(sessionPath, title); err != nil {
 		return err
 	}
-	if err := setSessionTitle(dir, sessionPath, title); err != nil {
+	return a.onSessionTitleChanged(dir, sessionPath, title)
+}
+
+func (a *App) renameSessionInDirIfTitleUnchanged(dir, path, expectedTitle, title string) error {
+	sessionPath, _, err := validateSessionPath(dir, path)
+	if err != nil {
 		return err
 	}
-	a.requestSessionCatalogPath("", "", sessionPath)
+	if err := agent.RenameSessionIfTitleUnchanged(sessionPath, expectedTitle, title); err != nil {
+		return err
+	}
+	return a.onSessionTitleChanged(dir, sessionPath, title)
+}
+
+// onSessionTitleChanged projects the canonical BranchMeta custom title into
+// the legacy desktop map and live catalog/UI indexes. The session directory is
+// supplied by the owning boot so background tabs never route through whichever
+// tab happens to be active when the tool finishes.
+func (a *App) onSessionTitleChanged(dir, sessionPath, _ string) error {
+	validated, _, err := validateSessionPath(dir, sessionPath)
+	if err != nil {
+		return err
+	}
+	if err := syncSessionTitleFromBranchMeta(dir, validated); err != nil {
+		return err
+	}
+	a.requestSessionCatalogPath("", "", validated)
 	a.invalidatePromptHistoryCache()
 	a.emitProjectTreeChangedForSessionDirs(dir)
 	return nil
@@ -4077,6 +4130,7 @@ func (a *App) buildSessionRebindCandidate(
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	})
 	if err != nil {
 		sink.clearContext()
@@ -6242,7 +6296,11 @@ func (a *App) ContextUsageForTab(tabID string) ContextInfo {
 	info.Used = used
 	info.Window = window
 	info.CompactRatio = ctrl.CompactRatio()
-	info.Maintenance = contextMaintenanceInfo(ctrl.ContextMaintenanceSnapshot())
+	snapshot := ctrl.ContextMaintenanceSnapshot()
+	info.Maintenance = contextMaintenanceInfo(snapshot)
+	if snapshot.ContextBudget != nil {
+		info.ContextBudget = contextBudgetInfo(snapshot.ContextBudget)
+	}
 	return info
 }
 
@@ -6765,6 +6823,7 @@ func (a *App) Commands() []CommandInfo {
 		{Name: "theme", Description: i18n.M.CmdTheme, Kind: "builtin", Group: "management"},
 		{Name: "skill", Description: i18n.M.CmdSkill, Kind: "builtin", Group: "skills"},
 		{Name: "reload-cmd", Description: i18n.M.CmdReloadCmd, Kind: "builtin", Group: "management"},
+		{Name: "reload", Description: i18n.M.CmdReload, Kind: "builtin", Group: "management"},
 	}
 	a.mu.RLock()
 	ctrl := a.activeCtrlLocked()
@@ -9700,6 +9759,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})
@@ -9886,6 +9946,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		// Keep the private temporary directory across effort switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})

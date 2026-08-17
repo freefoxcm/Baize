@@ -197,7 +197,7 @@ import { useViewportHeightVar, useWindowStatePersistence } from "./lib/windowSta
 import { resolveLiveWorkspacePanelWidth, resolveWorkspacePanelPlacement, workspacePanelAriaMinWidth } from "./lib/workspaceLayout";
 import { createRafResizeUpdater } from "./lib/resizeDrag";
 import { useGlobalShortcut } from "./lib/keyboardShortcuts";
-import { useMountTransition } from "./lib/useMountTransition";
+import { useWarmTerminalPanel } from "./lib/useWarmTerminalPanel";
 import { topicShortcutIndexFromEvent, useTopicShortcuts, type TopicShortcutEntry } from "./lib/topicShortcuts";
 import { composerDraftKeyForTab } from "./lib/composerDraftKey";
 import { continueDelivery } from "./lib/deliveryContinue";
@@ -206,7 +206,6 @@ import logoWordmark from "./assets/logo-wordmark.svg";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
-const TERMINAL_CLOSE_TRANSITION_MS = 250;
 function noticePreviewMockEnabled(): boolean {
   const value = browserMockScenarioParam();
   return value === "notice" || value === "notices" || value === "notice-preview";
@@ -1242,10 +1241,7 @@ export default function App() {
   const setRightDockMode = useLayoutStore((s) => s.setRightDockMode);
   const terminalPanelOpen = useLayoutStore((s) => s.terminalPanelOpen);
   const setTerminalPanelOpen = useLayoutStore((s) => s.setTerminalPanelOpen);
-  const { mounted: terminalContentVisible } = useMountTransition(
-    terminalPanelOpen,
-    TERMINAL_CLOSE_TRANSITION_MS,
-  );
+  const { mounted: terminalContentVisible, fitEnabled: terminalFitEnabled, prefetch: prefetchTerminalPanel } = useWarmTerminalPanel(terminalPanelOpen, terminalResizing);
   const terminalHeight = useLayoutStore((s) => s.terminalHeight);
   const setTerminalHeight = useLayoutStore((s) => s.setTerminalHeight);
   const [dockRefreshKey, setDockRefreshKey] = useState(0);
@@ -3069,16 +3065,17 @@ export default function App() {
     }
   }, [activeTabId, addWorkspaceTextToComposer, showToast, t]);
 
-  const addSelectedTextToComposer = useCallback((text: string) => {
+  const addSelectedTextToComposer = useCallback((text: string, source?: SelectedTextInsertRequest["source"]) => {
     const selected = text.trim();
     if (!activeTabId || !selected) return;
     selectedTextRequestIdRef.current += 1;
     setSelectedTextRequestsByTab((current) => ({
       ...current,
-      [activeTabId]: { id: selectedTextRequestIdRef.current, text: selected },
+      [activeTabId]: { id: selectedTextRequestIdRef.current, text: selected, ...(source ? { source } : {}) },
     }));
   }, [activeTabId]);
 
+  const addTerminalSelectionToComposer = useCallback((text: string) => addSelectedTextToComposer(text, "terminal"), [addSelectedTextToComposer]);
   const addWorkspaceCodeToComposer = useCallback((path: string, code: string) => {
     if (!activeTabId || !code.trim()) return;
     if (workspaceInsertTarget === "planRevision" && state.approval?.tool === "exit_plan_mode") {
@@ -3335,7 +3332,7 @@ export default function App() {
     for (let i = state.items.length - 1; i >= 0; i--) {
       const item = state.items[i];
       if (item.kind === "notice" && item.text.startsWith("↪ ")) {
-        return { key: item.id, text: item.text.slice(2) };
+        return { key: item.id, itemId: item.inboxItemId, text: item.text.slice(2) };
       }
     }
     return null;
@@ -4613,6 +4610,7 @@ export default function App() {
                     type="button"
                     aria-label={t("rightDock.terminal")}
                     aria-pressed={terminalPanelOpen}
+                    onPointerEnter={prefetchTerminalPanel} onFocus={prefetchTerminalPanel}
                     onClick={toggleTerminalPanel}
                   >
                     <TerminalSquare size={14} />
@@ -4762,7 +4760,6 @@ export default function App() {
                   actionHoverMenus={sidebarCreation && !hydratePlaceholderActive}
                   rewindSignal={rewindSignal}
                   revealSignal={transcriptRevealSignal}
-                  historyLayoutRevision={state.historyLayoutRevision}
                   hydrating={transcriptHydrating}
                   hasOlderHistory={state.historyHasOlder && !rewindState}
                   olderHistoryCount={state.historyStartTurn}
@@ -5005,12 +5002,14 @@ export default function App() {
               workspaceScopeKey={workspaceScopeKey}
               fileRefRefreshKey={composerFileRefRefreshKey}
               guidanceConsumedKey={latestGuidanceConsumed?.key}
+              guidanceConsumedItemId={latestGuidanceConsumed?.itemId}
               guidanceConsumedText={latestGuidanceConsumed?.text}
               guidanceQueuePreviewItems={guidanceQueueMockItems}
               showContextWindowRing={sidebarCreation}
               heroMode={creationEmptyHero}
               context={state.context}
               turnCost={state.turnCost}
+              turnRateBand={state.turnRateBand}
               currency={state.sessionCurrency}
               cacheHitTokens={state.usage?.cacheHitTokens}
               cacheMissTokens={state.usage?.cacheMissTokens}
@@ -5112,6 +5111,7 @@ export default function App() {
                     sessionTurns={sessionTurns}
                     turnTokens={state.turnTotalTokens}
                     turnCost={state.turnCost}
+                    turnRateBand={state.turnRateBand}
                     balance={state.balance}
                     sessionGen={state.sessionGen}
                     refreshKey={dockRefreshKey + state.contextPanelSeq}
@@ -5157,6 +5157,7 @@ export default function App() {
           <aside
             className="terminal-drawer"
             aria-label={t("terminal.title")}
+            aria-hidden={!terminalPanelOpen} inert={!terminalPanelOpen ? true : undefined}
           >
             {terminalContentVisible && (
               <Suspense fallback={<div className="terminal-empty"><span className="terminal-empty__spinner" />{t("terminal.loading")}</div>}>
@@ -5164,11 +5165,13 @@ export default function App() {
                   tabId={activeTabId ?? ""}
                   cwd={state.meta?.cwd}
                   readOnly={Boolean(activeTab?.readOnly)}
+                  open={terminalPanelOpen} fitEnabled={terminalFitEnabled}
                   onClose={() => {
                     setTerminalPanelOpen(false);
                     saveTerminalPanelOpen(false);
                   }}
                   onAddOutput={(sessionId) => void addTerminalOutputToComposer(sessionId)}
+                  onAddToChat={addTerminalSelectionToComposer}
                 />
               </Suspense>
             )}
@@ -5211,6 +5214,7 @@ export default function App() {
             lastTurnOutputEstimated={state.lastTurnOutputEstimated}
             lastRequestTps={state.lastRequestTps}
             turnCost={state.turnCost}
+            turnRateBand={state.turnRateBand}
             cost={state.sessionCost}
             currency={state.sessionCurrency}
             modelLabel={state.meta?.label}

@@ -73,7 +73,7 @@ runtime: turns 57 · requests 143 · tokens 2800000 · work time 42m
 新 API 将其解释为 `0`。新的 `budget_spend`（用户显式预算）不会被自动迁移；manual pause、evaluator
 failure、legacy archive block 和真实 blocker 同样不自动解锁。
 
-上下文压缩继续使用全局既有策略：仅由 `compact_ratio`（默认 85%）触发一次内容驱动摘要 checkpoint，不另设 soft/snip/force 多阈值。Goal 开启本身不额外触发 summarizer，也不改变工具 Schema 或稳定 prompt 前缀。
+上下文压缩继续使用全局既有策略：仅由 `compact_ratio`（默认 80%）触发 Harness 风格的 prune/摘要维护，不另设 soft/snip/force 多阈值。Goal 开启本身不额外触发 summarizer，也不改变工具 Schema 或稳定 prompt 前缀。
 
 ### 任务合约
 

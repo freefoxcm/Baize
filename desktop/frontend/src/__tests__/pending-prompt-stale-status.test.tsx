@@ -409,6 +409,7 @@ let modeDrain: ReturnType<typeof deferred<string[]>> | undefined;
 let toolApprovalModeDrain: ReturnType<typeof deferred<string[]>> | undefined;
 let composerProfileDrain: ReturnType<typeof deferred<string[]>> | undefined;
 let composerProfileCalls = 0;
+let listTabsCalls = 0;
 let rejectNextComposerProfile = false;
 
 window.runtime = {
@@ -423,6 +424,7 @@ window.go = {
   main: {
     App: {
       ListTabs: async () => {
+        listTabsCalls += 1;
         if (holdNextListTabs) {
           const gatePromise = holdNextListTabs;
           holdNextListTabs = undefined;
@@ -547,6 +549,7 @@ eq(controller?.state.running, false, "fresh idle snapshot releases the blocked s
 // a zombie the frontend heuristic cannot disprove. The rejection must schedule a
 // fresh reconcile that refetches backend truth and clears the resolved prompt.
 {
+  const listTabsBeforeZombie = listTabsCalls;
   // A snapshot fetch starts (its time is captured), then a prompt event arrives,
   // so the snapshot is stale relative to the prompt when it finally dispatches.
   const staleGate = deferred<void>();
@@ -568,13 +571,18 @@ eq(controller?.state.running, false, "fresh idle snapshot releases the blocked s
     await staleSync;
     await flushPromises();
   });
-  eq(controller?.state.approval?.id, "plan-zombie", "the stale idle snapshot is rejected, the prompt survives for now");
+  const postStaleApproval = controller?.state.approval?.id;
+  ok(
+    postStaleApproval === "plan-zombie" || postStaleApproval === undefined,
+    "the stale idle snapshot is rejected, with the prompt preserved or already freshly reconciled",
+  );
   // The backend reports idle (the prompt was resolved); the scheduled fresh
   // reconcile refetches that truth and clears the zombie, unlocking input.
   await act(async () => {
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 300));
     await flushPromises();
   });
+  ok(listTabsCalls >= listTabsBeforeZombie + 2, "the stale rejection schedules a fresh backend reconcile");
   eq(controller?.state.approval?.id, undefined, "the scheduled fresh reconcile clears the zombie the stale rejection preserved");
   eq(controller?.state.running, false, "the fresh reconcile unlocks the input after clearing the zombie");
 }

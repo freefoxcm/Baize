@@ -19,9 +19,9 @@ reasonix --effort high
 reasonix --dir /path/to/project
 ```
 
-Reasonix runs a single adaptive standard execution: planning depth,
-verification breadth, and independent review follow the task's risk
-automatically — there is no execution mode to pick.
+Ordinary requests always enter the executor. There is no automatic simple /
+light / full task mode to pick. The dedicated planner runs only for an
+explicit Plan, an approval boundary, or Goal start.
 
 Running `reasonix` without a subcommand starts the interactive terminal UI. Use
 `reasonix setup` first when no provider is configured.
@@ -120,9 +120,11 @@ reasonix config compact-ratio 75           # set the user-global default
 reasonix config compact-ratio --local 75   # override in ./reasonix.toml
 ```
 
-The editable range is 65–85%, with 85% as the built-in default. Lower values
+The editable range is 65–85%, with 80% as the built-in default. Lower values
 compact earlier and may reduce prompt-prefix cache reuse; higher values retain
-more context before compaction. Project `reasonix.toml` takes precedence over
+more context before compaction. Below the threshold, complete tool results may
+increase ordinary request cost; at pressure they are durably pruned before the
+cache-aligned summary runs. Project `reasonix.toml` takes precedence over
 the user config. Changes apply to new CLI sessions; an already-running session
 keeps the threshold it loaded at startup.
 

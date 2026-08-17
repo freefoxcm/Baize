@@ -1959,6 +1959,7 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	}
 	if reload && oldCtrl != nil {
 		old, ok := oldCtrl.(*control.Controller)
@@ -2337,7 +2338,7 @@ func officialProviderTemplate(kind, pricingLanguage string) ([]config.ProviderEn
 			Prices:          config.DeepSeekV4PricesForCurrency("USD"),
 			ModelOverrides: map[string]config.ProviderModelOverride{
 				"deepseek-v4-flash": {SupportedEfforts: []string{"disabled", "low", "high", "max"}, DefaultEffort: "high"},
-				"deepseek-v4-pro":   {SupportedEfforts: []string{"disabled", "high", "max"}, DefaultEffort: "high"},
+				"deepseek-v4-pro":   {SupportedEfforts: []string{"disabled", "low", "high", "max"}, DefaultEffort: "high"},
 			},
 		}}, "DEEPSEEK_API_KEY", nil
 	default:

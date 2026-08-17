@@ -38,6 +38,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
 
+function spawnPnpm(args, options) {
+  if (process.platform === "win32") {
+    return spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "pnpm.cmd", ...args], options);
+  }
+  return spawn("pnpm", args, options);
+}
+
 const frontendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Keep the browser download inside the repo when the caller did not pin one.
 process.env.PLAYWRIGHT_BROWSERS_PATH = !process.env.PLAYWRIGHT_BROWSERS_PATH || process.env.PLAYWRIGHT_BROWSERS_PATH === ".pw-browsers"
@@ -129,13 +136,13 @@ async function ensureBuild() {
   if (existsSync(distIndex) && !force) return;
   console.log("[bench] building frontend (vite build)…");
   await new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["build"], { cwd: frontendDir, stdio: "inherit" });
+    const child = spawnPnpm(["build"], { cwd: frontendDir, stdio: "inherit" });
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`pnpm build exited ${code}`))));
   });
 }
 
 async function startPreview() {
-  const child = spawn("pnpm", ["exec", "vite", "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], {
+  const child = spawnPnpm(["exec", "vite", "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], {
     cwd: frontendDir,
     stdio: ["ignore", "pipe", "pipe"],
   });

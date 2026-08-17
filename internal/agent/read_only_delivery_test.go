@@ -40,7 +40,7 @@ func TestClosedLoopAllowsHostBackedReadOnlyAnalysis(t *testing.T) {
 	}
 }
 
-func TestClosedLoopReadOnlyGapRequestsObservationNotReview(t *testing.T) {
+func TestClosedLoopReadOnlyGapRequestsSignoffNotReview(t *testing.T) {
 	todoWrite, _ := tool.LookupBuiltin("todo_write")
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "aggregate_cases", readOnly: true})
@@ -56,8 +56,8 @@ func TestClosedLoopReadOnlyGapRequestsObservationNotReview(t *testing.T) {
 	if !errors.As(err, &readiness) {
 		t.Fatalf("Run error = %v, want FinalReadinessError", err)
 	}
-	if !slices.Contains(readiness.Missing, "observation") || slices.Contains(readiness.Missing, "review") {
-		t.Fatalf("missing = %v, want observation without review", readiness.Missing)
+	if !slices.Contains(readiness.Missing, "todo") || slices.Contains(readiness.Missing, "review") {
+		t.Fatalf("missing = %v, want todo sign-off without review", readiness.Missing)
 	}
 	if strings.Contains(readiness.Reason, "git diff") || strings.Contains(readiness.Reason, "reviewed_paths") {
 		t.Fatalf("read-only readiness leaked mutation review guidance: %s", readiness.Reason)
@@ -83,7 +83,7 @@ func TestClosedLoopAllowsHostBackedComputation(t *testing.T) {
 	}
 }
 
-func TestClosedLoopComputationGapRequestsComputationNotReview(t *testing.T) {
+func TestClosedLoopComputationGapRequestsSignoffNotReview(t *testing.T) {
 	todoWrite, _ := tool.LookupBuiltin("todo_write")
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "analyze_data", readOnly: true})
@@ -99,7 +99,7 @@ func TestClosedLoopComputationGapRequestsComputationNotReview(t *testing.T) {
 	if !errors.As(err, &readiness) {
 		t.Fatalf("Run error = %v, want FinalReadinessError", err)
 	}
-	if !slices.Contains(readiness.Missing, "computation") || slices.Contains(readiness.Missing, "review") {
-		t.Fatalf("missing = %v, want computation without review", readiness.Missing)
+	if !slices.Contains(readiness.Missing, "todo") || slices.Contains(readiness.Missing, "review") {
+		t.Fatalf("missing = %v, want todo sign-off without review", readiness.Missing)
 	}
 }

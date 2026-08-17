@@ -945,14 +945,6 @@ func (t *WorkspaceTab) recordReadFile(rec readFileRecord) {
 	t.telemMu.Unlock()
 }
 
-func (t *WorkspaceTab) recordTurnStarted(now int64) {
-	t.telemMu.Lock()
-	if t.usageTelemetry.activeTurnStartedAt == 0 {
-		t.usageTelemetry.activeTurnStartedAt = now
-	}
-	t.telemMu.Unlock()
-}
-
 func (t *WorkspaceTab) recordTurnDone(now int64) {
 	t.telemMu.Lock()
 	if started := t.usageTelemetry.activeTurnStartedAt; started > 0 && now >= started {
@@ -1541,6 +1533,7 @@ func (s *tabEventSink) Emit(e event.Event) {
 		s.mu.Unlock()
 	}
 	tabID, app := s.binding()
+	var turnStartedAt int64
 	if app != nil {
 		if e.Kind == event.TurnDone {
 			// Keep the legacy completion as a cheap missed-event safety net. The
@@ -1550,7 +1543,7 @@ func (s *tabEventSink) Emit(e event.Event) {
 		switch e.Kind {
 		case event.TurnStarted:
 			s.resetDisplayTurn()
-			s.recordTurnStarted()
+			turnStartedAt = s.recordTurnStarted()
 		case event.Usage:
 			s.recordUsageTelemetry(e)
 		case event.TurnDone:
@@ -1570,7 +1563,7 @@ func (s *tabEventSink) Emit(e event.Event) {
 			s.flushDisplay(e.Cancelled)
 		}
 	}
-	s.emitRuntimeEvent(eventChannel, toWireTabWithSubmission(e, tabID, s.runtimeEpochSnapshot(), s.submissionIDSnapshot()))
+	s.emitRuntimeEvent(eventChannel, toWireTabWithSubmission(e, tabID, s.runtimeEpochSnapshot(), s.submissionIDSnapshot(), turnStartedAt))
 	if app != nil {
 		if status, update := topicActivityStatusFromEvent(e); update {
 			changed := app.setTabActivityStatus(tabID, status)
@@ -1785,7 +1778,7 @@ func (e *asyncRuntimeEmitter) run() {
 
 func topicActivityStatusFromEvent(e event.Event) (string, bool) {
 	switch e.Kind {
-	case event.TurnStarted, event.Reasoning, event.ToolDispatch, event.ToolProgress, event.ToolResult, event.CompactionStarted, event.CompactionDone, event.Retrying:
+	case event.TurnStarted, event.Reasoning, event.ToolDispatch, event.ToolProgress, event.ToolResultPreview, event.ToolResult, event.CompactionStarted, event.CompactionDone, event.Retrying:
 		return topicStatusThinking, true
 	case event.Text, event.Message:
 		return topicStatusStreaming, true
@@ -1957,18 +1950,19 @@ func (s *tabEventSink) recordReadTelemetry(e event.Event) {
 	}
 }
 
-func (s *tabEventSink) recordTurnStarted() {
+func (s *tabEventSink) recordTurnStarted() int64 {
 	tab, sp := s.telemetryTab()
 	if tab == nil {
-		return
+		return 0
 	}
 	if sp != "" {
 		tab.syncTelemetryToSession(sp)
 	}
-	tab.recordTurnStarted(time.Now().UnixMilli())
+	startedAt := tab.recordTurnStarted(time.Now().UnixMilli())
 	if sp != "" {
 		_ = saveTelemetry(sp+".telemetry.json", tab.telemetrySnapshot())
 	}
+	return startedAt
 }
 
 func (s *tabEventSink) recordTurnDone() {
@@ -2130,8 +2124,9 @@ func toWireTab(e event.Event, tabID string, runtimeEpoch ...string) wireEventTab
 // uses tabId to dispatch to the correct per-tab state.
 type wireEventTab struct {
 	eventwire.Event
-	TabID        string `json:"tabId"`
-	RuntimeEpoch string `json:"runtimeEpoch,omitempty"`
+	TabID         string `json:"tabId"`
+	RuntimeEpoch  string `json:"runtimeEpoch,omitempty"`
+	TurnStartedAt int64  `json:"turnStartedAt,omitempty"`
 	// Session-cumulative tokens per tab.
 	SessionHitTokens  int `json:"sessionHitTokens,omitempty"`
 	SessionMissTokens int `json:"sessionMissTokens,omitempty"`
@@ -2166,6 +2161,7 @@ type TabMeta struct {
 	Ready             bool               `json:"ready"`
 	Runtime           SessionRuntimeView `json:"runtime"`
 	Running           bool               `json:"running"`
+	TurnStartedAt     int64              `json:"turnStartedAt,omitempty"`
 	PendingPrompt     bool               `json:"pendingPrompt,omitempty"`
 	RemoteControlled  bool               `json:"remoteControlled,omitempty"`
 	BackgroundJobs    int                `json:"backgroundJobs,omitempty"`
@@ -2228,6 +2224,7 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 		Label:             tab.Label,
 		Ready:             runtimeView.Phase == sessionRuntimeReady && tab.Ctrl != nil,
 		Runtime:           runtimeView,
+		TurnStartedAt:     tab.turnStartedAt(),
 		Mode:              currentTabMode(tab),
 		CollaborationMode: currentTabCollaborationMode(tab),
 		ToolApprovalMode:  currentTabToolApprovalMode(tab),
@@ -2313,13 +2310,6 @@ func (a *App) syncTabWorkspaceRootSpellings() {
 	if changed {
 		a.emitProjectTreeMetadataChanged()
 	}
-}
-
-// registerProjectRoot indexes workspaceRoot in the project registry and
-// realigns open tabs when the registry adopted a new spelling of the root.
-func (a *App) registerProjectRoot(workspaceRoot string) {
-	_ = addProject(workspaceRoot, "")
-	a.syncTabWorkspaceRootSpellings()
 }
 
 // OpenProjectTab builds a controller scoped to workspaceRoot and opens the
@@ -2458,7 +2448,7 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 
 	a.startTabControllerBuild(tab)
 	if scope == "project" {
-		a.emitProjectTreeChangedForSessionDirs(sessionDirectoryForPath(sessionPath))
+		a.emitProjectTreeRuntimeChangedWithLegacy()
 	}
 	return enrichTabMeta(meta), nil
 }
@@ -3368,7 +3358,7 @@ func (a *App) keepOnlyVisibleTab(tabID string) (TabMeta, error) {
 	if err != nil {
 		return TabMeta{}, err
 	}
-	a.emitProjectTreeChanged()
+	a.emitProjectTreeRuntimeChangedWithCatalogRefresh()
 	return enrichTabMeta(meta), nil
 }
 
@@ -3893,6 +3883,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
 		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
 		OnSessionTransition:      a.handleTabSessionTransition(tab),
+		OnSessionTitleChanged:    a.onSessionTitleChanged,
 	})
 	if a.handleTabControllerBootError(tab, registration, rootKey, buildGeneration, wailsCtx, err) {
 		return
@@ -4862,25 +4853,6 @@ const legacyProjectSidebarRecoveryMarker = "desktop-projects-legacy-recovered"
 
 var desktopProjectsFileMu sync.Mutex
 
-type desktopProject struct {
-	Root         string   `json:"root"`
-	Title        string   `json:"title,omitempty"`
-	Color        string   `json:"color,omitempty"`
-	Topics       []string `json:"topics"` // ordered topic IDs
-	PinnedTopics []string `json:"pinnedTopics,omitempty"`
-}
-
-type desktopProjectFile struct {
-	GlobalTitle        string           `json:"globalTitle,omitempty"`
-	GlobalColor        string           `json:"globalColor,omitempty"`
-	GlobalTopics       []string         `json:"globalTopics,omitempty"`
-	GlobalPinnedTopics []string         `json:"globalPinnedTopics,omitempty"`
-	DeletedTopics      []string         `json:"deletedTopics,omitempty"`
-	PinnedProjects     []string         `json:"pinnedProjects,omitempty"`
-	SidebarOrder       []string         `json:"sidebarOrder,omitempty"`
-	Projects           []desktopProject `json:"projects"`
-}
-
 type desktopTabEntry struct {
 	ID               string  `json:"id"`
 	Scope            string  `json:"scope"`
@@ -5138,7 +5110,16 @@ func loadProjectsFile() desktopProjectFile {
 	}
 	var f desktopProjectFile
 	_ = json.Unmarshal(b, &f)
-	return normalizeProjectsFile(f)
+	f = normalizeProjectsFile(f)
+	if organization, ok := loadProjectOrganizationFile(); ok {
+		return applyProjectOrganization(f, organization)
+	}
+	// Upgrade existing inline organization state immediately. The sidecar is
+	// what makes a later old-version save non-destructive.
+	if projectsFileHasOrganization(f) {
+		_ = saveProjectOrganizationFile(f)
+	}
+	return f
 }
 
 func saveProjectsFile(f desktopProjectFile) error {
@@ -5147,6 +5128,9 @@ func saveProjectsFile(f desktopProjectFile) error {
 		return err
 	}
 	f = normalizeProjectsFile(f)
+	if err := saveProjectOrganizationFile(f); err != nil {
+		return err
+	}
 	b, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err
@@ -5261,6 +5245,11 @@ func removeTopicFromProjectsFile(topicID string) error {
 			f.GlobalPinnedTopics = next
 			changed = true
 		}
+		if next, removed := groupsWithoutTopic(f.GlobalGroups, topicID); removed {
+			f.GlobalGroups = next
+			f.GlobalGroupsRevision++
+			changed = true
+		}
 		if next := prependUniqueString(f.DeletedTopics, topicID); !sameStringList(next, f.DeletedTopics) {
 			f.DeletedTopics = next
 			changed = true
@@ -5272,6 +5261,11 @@ func removeTopicFromProjectsFile(topicID string) error {
 			}
 			if next := removeString(p.PinnedTopics, topicID); !sameStringList(next, p.PinnedTopics) {
 				f.Projects[i].PinnedTopics = next
+				changed = true
+			}
+			if next, removed := groupsWithoutTopic(p.Groups, topicID); removed {
+				f.Projects[i].Groups = next
+				f.Projects[i].GroupsRevision++
 				changed = true
 			}
 		}
@@ -5322,11 +5316,14 @@ func projectRootInList(roots []string, root string) bool {
 
 func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 	out := desktopProjectFile{
-		GlobalTitle:        strings.TrimSpace(f.GlobalTitle),
-		GlobalColor:        normalizeProjectColor(f.GlobalColor),
-		GlobalTopics:       uniqueStrings(f.GlobalTopics),
-		GlobalPinnedTopics: uniqueStrings(f.GlobalPinnedTopics),
-		DeletedTopics:      uniqueStrings(f.DeletedTopics),
+		GlobalTitle:            strings.TrimSpace(f.GlobalTitle),
+		GlobalColor:            normalizeProjectColor(f.GlobalColor),
+		GlobalTopics:           uniqueStrings(f.GlobalTopics),
+		GlobalPinnedTopics:     uniqueStrings(f.GlobalPinnedTopics),
+		GlobalManualTopicOrder: f.GlobalManualTopicOrder,
+		GlobalGroups:           normalizeGroups(f.GlobalGroups),
+		GlobalGroupsRevision:   f.GlobalGroupsRevision,
+		DeletedTopics:          uniqueStrings(f.DeletedTopics),
 	}
 	for _, p := range f.Projects {
 		root := normalizeProjectRoot(p.Root)
@@ -5338,6 +5335,7 @@ func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 		p.Color = normalizeProjectColor(p.Color)
 		p.Topics = uniqueStrings(p.Topics)
 		p.PinnedTopics = uniqueStrings(p.PinnedTopics)
+		p.Groups = normalizeGroups(p.Groups)
 		if i := projectIndexByRoot(out.Projects, root); i >= 0 {
 			if out.Projects[i].Title == "" && p.Title != "" {
 				out.Projects[i].Title = p.Title
@@ -5347,6 +5345,9 @@ func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 			}
 			out.Projects[i].Topics = uniqueStrings(append(out.Projects[i].Topics, p.Topics...))
 			out.Projects[i].PinnedTopics = uniqueStrings(append(out.Projects[i].PinnedTopics, p.PinnedTopics...))
+			out.Projects[i].ManualTopicOrder = out.Projects[i].ManualTopicOrder || p.ManualTopicOrder
+			out.Projects[i].Groups = mergeDesktopGroups(out.Projects[i].Groups, p.Groups)
+			out.Projects[i].GroupsRevision = max(out.Projects[i].GroupsRevision, p.GroupsRevision)
 			continue
 		}
 		out.Projects = append(out.Projects, p)
@@ -6452,6 +6453,7 @@ type ProjectNode struct {
 	Root                         string        `json:"root,omitempty"` // project workspace root
 	TopicID                      string        `json:"topicId,omitempty"`
 	SessionPath                  string        `json:"sessionPath,omitempty"`
+	Preview                      string        `json:"preview,omitempty"`
 	ProjectColor                 string        `json:"projectColor,omitempty"`
 	Turns                        int           `json:"turns,omitempty"`
 	TurnsState                   string        `json:"turnsState,omitempty"`
@@ -6462,6 +6464,7 @@ type ProjectNode struct {
 	Running                      bool          `json:"running,omitempty"`
 	Status                       string        `json:"status,omitempty"`
 	Pinned                       bool          `json:"pinned,omitempty"`
+	SortOrder                    int           `json:"sortOrder"` // manual topic order index (0-based); -1 when unknown
 	Recovered                    bool          `json:"recovered,omitempty"`
 	RecoveryReason               string        `json:"recoveryReason,omitempty"`
 	RecoveryDigest               string        `json:"recoveryDigest,omitempty"`
@@ -6973,11 +6976,15 @@ func (a *App) setTabActivityStatus(tabID, status string) bool {
 }
 
 func (a *App) emitProjectTreeChanged() {
+	a.requestProjectTreeCatalogRefresh()
+	a.emitProjectTreeChangedEvent()
+}
+
+func (a *App) requestProjectTreeCatalogRefresh() {
 	a.requestSessionCatalogMetadataSync()
 	for _, target := range a.sessionCatalogTargets() {
 		a.requestSessionCatalogReconcile(target.Path)
 	}
-	a.emitProjectTreeChangedEvent()
 }
 
 // emitProjectTreeChangedForSessionDirs schedules only the affected catalog
@@ -7206,6 +7213,7 @@ type ContextPanelInfo struct {
 	Mock                    bool                        `json:"mock,omitempty"`
 	ReadFiles               []readFileRecord            `json:"readFiles"`
 	ChangedFiles            []ChangedFileInfo           `json:"changedFiles"`
+	ContextBudget           *ContextBudgetInfo          `json:"contextBudget,omitempty"`
 }
 
 type ChangedFileInfo struct {
@@ -7297,6 +7305,11 @@ func (a *App) ContextPanel(tabID string) ContextPanelInfo {
 	info.SessionCacheMissTokens = usage.CacheMissTokens
 	info.SessionCompletionTokens = usage.CompletionTokens
 	info.SessionEstimated = usage.Estimated
+	if ctrl != nil {
+		if snap := ctrl.ContextMaintenanceSnapshot(); snap.ContextBudget != nil {
+			info.ContextBudget = contextBudgetInfo(snap.ContextBudget)
+		}
+	}
 
 	// Gather workspace changes for this tab's root.
 	if ctrl != nil && tab.WorkspaceRoot != "" {

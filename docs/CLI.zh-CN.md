@@ -106,8 +106,9 @@ reasonix config compact-ratio 75           # 设置用户全局默认值
 reasonix config compact-ratio --local 75   # 写入 ./reasonix.toml 项目覆盖
 ```
 
-可设置范围为 65–85%，内置默认值为 85%。数值越低越早压缩，可能降低 prompt prefix
-缓存复用率；数值越高则会在压缩前保留更多上下文。项目 `reasonix.toml` 的优先级高于
+可设置范围为 65–85%，内置默认值为 80%。数值越低越早压缩，可能降低 prompt prefix
+缓存复用率；数值越高则会在压缩前保留更多上下文。阈值以下完整工具结果可能增加普通请求成本；
+达到压力后会先持久剪枝，再运行 cache-aligned 摘要。项目 `reasonix.toml` 的优先级高于
 用户全局配置。修改会应用于新启动的 CLI 会话；已经运行的会话继续使用启动时加载的阈值。
 
 ## 一次性运行与自动化
@@ -401,8 +402,8 @@ SSH 下远端进程无法读取本机剪贴板，请使用终端粘贴快捷键�
 
 切换模型或 effort 会重建运行时，同时保留当前对话、会话级权限覆盖、附加目录
 访问权限和 session ownership。`/reload` 使用同一套失败原子重建语义。
-Reasonix 只有一种自适应标准执行：规划、验证与复查强度随任务风险自动调整，
-不再存在执行模式。
+普通请求一律进入 executor，没有自动简单 / 轻量 / 完整任务模式。
+独立 Planner 只响应显式 Plan、批准边界和 Goal 启动。
 
 用量统计使用独立的可丢弃 rollup 投影：
 reasonix catalogs reindex usage [--json]

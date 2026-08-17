@@ -3261,6 +3261,9 @@ func (c *Controller) forkNamedReady(turn int, name string, switchToFork bool) (s
 	if err := sess.SaveIfAbsent(newPath); err != nil {
 		return "", c.rewindFail(err)
 	}
+	if _, err := sess.CopyValidContextProjection(parentPath, newPath); err != nil {
+		slog.Warn("controller: fork did not inherit context projection", "err", err)
+	}
 	forkPreview, forkTurns := agent.SessionPreviewFromMessages(forked)
 	if err := agent.SaveBranchMeta(newPath, agent.BranchMeta{
 		Name:             strings.TrimSpace(name),
@@ -3284,9 +3287,9 @@ func (c *Controller) forkNamedReady(turn int, name string, switchToFork bool) (s
 		c.sessionPath = newPath
 		c.guardianPath = guardian.PathFor(newPath)
 		c.mu.Unlock()
-		// New lineage: rebind sidecar path and clear any in-memory projection
-		// without deleting the parent session's .context.json.
-		c.bindExecutorProjection(newPath, false)
+		// Load the child sidecar when the covered prefix survived the fork. The
+		// loader rebinds its lineage key without touching the parent's sidecar.
+		c.bindExecutorProjection(newPath, true)
 		c.ResetPlannerSession()
 		c.setActiveJobSession(newPath)
 		c.rebindCheckpoints(newPath)
@@ -3352,6 +3355,9 @@ func (c *Controller) Branch(name string) (string, error) {
 	if err := sess.SaveIfAbsent(newPath); err != nil {
 		return "", c.rewindFail(err)
 	}
+	if _, err := sess.CopyValidContextProjection(parentPath, newPath); err != nil {
+		slog.Warn("controller: branch did not inherit context projection", "err", err)
+	}
 	branchPreview, branchTurns := agent.SessionPreviewFromMessages(branched)
 	if err := agent.SaveBranchMeta(newPath, agent.BranchMeta{
 		Name:             strings.TrimSpace(name),
@@ -3374,7 +3380,7 @@ func (c *Controller) Branch(name string) (string, error) {
 	c.sessionPath = newPath
 	c.guardianPath = guardian.PathFor(newPath)
 	c.mu.Unlock()
-	c.bindExecutorProjection(newPath, false)
+	c.bindExecutorProjection(newPath, true)
 	c.ResetPlannerSession()
 	c.setActiveJobSession(newPath)
 	c.rebindCheckpoints(newPath)
@@ -4377,7 +4383,7 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 			i++
 			continue
 		}
-		if end, ok := completeToolTurnEnd(msgs, i); ok {
+		if end, ok := completeToolTurnEnd(msgs, i); ok && c.executor.CanReplayAssistantMessage(m) {
 			next = append(next, msgs[i:end]...)
 			for k, call := range m.ToolCalls {
 				if toolResultWasInterrupted(msgs[i+1+k].Content) {

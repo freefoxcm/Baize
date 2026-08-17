@@ -118,6 +118,11 @@ const (
 	// CompletionSummary reports a content-free end-of-turn quality summary for
 	// role-setting strategies (preset, verdict, check counts, review status).
 	CompletionSummary
+	// ToolResultPreview reports that a tool has finished locally before its
+	// provider-ordered ToolResult can be emitted. Upsert-capable frontends may
+	// render the successful state early; append-only consumers should ignore it.
+	// The later ToolResult remains the call's only terminal event.
+	ToolResultPreview
 	// KindCount is a sentinel one past the last real Kind. New event kinds must
 	// be inserted above it so completeness tests cover them automatically.
 	KindCount
@@ -157,13 +162,15 @@ const (
 	StreamAttemptCommit  StreamAttemptAction = "commit"
 )
 
-// RetryScope distinguishes connection+header retries from body-phase stream
-// retries. Older clients ignore the empty/unknown value.
+// RetryScope distinguishes connection+header retries, body-phase stream
+// retries, and host-classified protocol recovery. Older clients ignore an
+// unknown value and still render the generic retry state.
 type RetryScope string
 
 const (
-	RetryScopeHeaders RetryScope = "headers"
-	RetryScopeStream  RetryScope = "stream"
+	RetryScopeHeaders  RetryScope = "headers"
+	RetryScopeStream   RetryScope = "stream"
+	RetryScopeProtocol RetryScope = "protocol"
 )
 
 // StreamAttemptInfo carries host-local bookkeeping for one sampling attempt.
@@ -643,6 +650,10 @@ const (
 	ProtocolRecoveryMissingReasoningRetryReplaced   ProtocolRecoveryKind = "missing_reasoning_retry_replaced_response"
 	ProtocolRecoveryMissingReasoningRetrySuppressed ProtocolRecoveryKind = "missing_reasoning_retry_suppressed"
 	ProtocolRecoveryMissingReasoningFallback        ProtocolRecoveryKind = "missing_reasoning_fallback_used"
+	ProtocolRecoveryReasoningOverflowDetected       ProtocolRecoveryKind = "reasoning_overflow_detected"
+	ProtocolRecoveryClientToolRejected              ProtocolRecoveryKind = "client_tool_rejected_unreplayable_reasoning"
+	ProtocolRecoveryServerSearchSalvaged            ProtocolRecoveryKind = "server_search_history_salvaged"
+	ProtocolRecoveryHistoryRepaired                 ProtocolRecoveryKind = "unreplayable_history_repaired"
 )
 
 type ProtocolRecoveryAudit struct {
@@ -764,7 +775,7 @@ type DelegationAdmissionAudit struct {
 	Tool    string
 	Verdict string // "allow" | "deny"
 	Reason  string // e.g. "local_fix_no_external_need"
-	Intent  string // taskintent class of the turn
+	Intent  string // compatibility field; no longer classified from prompt text
 }
 
 // DelegationAdmissionSink is an optional sink capability; implementations

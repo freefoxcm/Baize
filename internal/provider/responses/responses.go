@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultStreamIdleTimeout     = 120 * time.Second
+	defaultStreamIdleTimeout     = 300 * time.Second
 	maxReplayableSearchItemBytes = 512 * 1024
 )
 
@@ -144,10 +144,10 @@ func New(cfg Config) provider.Provider {
 	// provider-boundary guard so stale config or extension metadata cannot emit
 	// unsupported input_image items.
 	vision = vision && vendor != "deepseek"
-	httpClient := &http.Client{Timeout: 300 * time.Second}
+	httpClient := &http.Client{}
 	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
 		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,
-		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 120 * time.Second,
+		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 300 * time.Second,
 	}); err == nil {
 		httpClient = built
 	}
@@ -297,6 +297,11 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
 	body := map[string]any{"model": c.model, "stream": true}
 
 	effort := strings.ToLower(strings.TrimSpace(c.effort))
+	if c.vendor == "deepseek" && (strings.EqualFold(strings.TrimSpace(c.model), "deepseek-v4-flash") || strings.EqualFold(strings.TrimSpace(c.model), "deepseek-v4-pro")) {
+		if effort == "medium" || effort == "xhigh" {
+			effort = "high"
+		}
+	}
 	switch effort {
 	case "auto":
 		effort = ""

@@ -134,9 +134,8 @@ type Options struct {
 	// controller but are not persisted to reasonix.toml.
 	ExtraPlugins []plugin.Spec
 	// AgentPreset and TokenMode are deprecated no-op compatibility inputs.
-	// Reasonix derives one adaptive standard execution policy per turn from
-	// task risk (internal/taskpolicy); these fields are accepted so old
-	// frontends keep compiling, and ignored.
+	// Host obligations are fact-driven from real tool actions; these fields are
+	// accepted so old frontends keep compiling, and ignored.
 	AgentPreset string
 	TokenMode   string
 	// SessionDir overrides where persisted chat transcripts are written. When
@@ -169,6 +168,10 @@ type Options struct {
 	SessionRecoveryMeta func(control.SessionRecoveryRequest) agent.BranchMeta
 	OnSessionRecovered  func(control.SessionRecoveryInfo) error
 	OnSessionTransition func(control.SessionTransitionInfo) error
+	// OnSessionTitleChanged lets a host project the canonical BranchMeta title
+	// into compatibility indexes and refresh notifications after the current
+	// conversation renames itself through set_session_title.
+	OnSessionTitleChanged sessiontool.TitleChangedFunc
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -264,6 +267,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 				return ""
 			}
 			return entry.ProviderBillingMode()
+		},
+		PricingContextForModel: func(modelRef string) billing.PricingContext {
+			entry, ok := cfg.ResolveModel(modelRef)
+			if !ok {
+				return billing.PricingContext{}
+			}
+			return entry.PricingContextForModel(entry.Model)
 		},
 	}
 	// Innermost: frontend sink (CLI metrics/ACP/Desktop bridge live here).
@@ -503,7 +513,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if multiThresholdMigrated || multiThresholdMigErr != nil {
 		level := event.LevelInfo
 		text := "上下文维护已简化为单一自动压缩阈值。"
-		detail := "Context maintenance now uses a single automatic compact_ratio (default 0.85). soft_compact_ratio, tool_result_snip_ratio, compact_force_ratio, cold_resume_prune, and context_editing were removed from config."
+		detail := "Context maintenance now uses a single automatic compact_ratio (default 0.80). soft_compact_ratio, tool_result_snip_ratio, compact_force_ratio, cold_resume_prune, and context_editing were removed from config."
 		if multiThresholdMigErr != nil {
 			level = event.LevelWarn
 			text = "Deprecated multi-threshold compaction keys were ignored."
@@ -592,9 +602,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if workspaceLine := currentWorkspacePromptLine(root); workspaceLine != "" {
 		sysPrompt += "\n\n" + workspaceLine
 	}
-	// Execution modes no longer exist. Planning, verification, review, and
-	// evidence-closure intensity travel in the per-turn transient
-	// <execution-policy> user block so the cache-stable prefix stays shared.
+	// Execution modes no longer exist. Host obligations are fact-driven and
+	// never rewrite the cache-stable system prefix or tool schemas.
 	if cfg.EnvironmentEnabled() {
 		shellLabel := shell.Kind.String()
 		if strings.TrimSpace(cfg.Tools.Shell.Path) != "" {
@@ -1058,6 +1067,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return agent.NewTaskToolWithOptions(agent.TaskToolOptions{
 			Provider:            execProv,
 			Pricing:             entry.Price,
+			QuoteContext:        quoteCtx,
 			ParentRegistry:      reg,
 			MaxSteps:            maxSteps,
 			ContextWindow:       entry.ContextWindow,
@@ -1189,7 +1199,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// read_only_task, so they cannot write, install, mutate memory, resume/fork
 	// transcripts, or delegate further.
 	//
-	subagentSkillOptions := newSubagentSkillOptionsFactory(cfg.Agent, headlessGate, keepPolicy, maxSubagentDepth, opts.Ablation, workspaceLease, writeRootSet)
+	subagentSkillOptions := newSubagentSkillOptionsFactory(cfg.Agent, quoteCtx, headlessGate, keepPolicy, maxSubagentDepth, opts.Ablation, workspaceLease, writeRootSet)
 	readOnlySkillRunner := func(sctx context.Context, sk skill.Skill, task string, runOpts skill.SubagentRunOptions) (string, error) {
 		if strings.TrimSpace(runOpts.ContinueFrom) != "" || strings.TrimSpace(runOpts.ForkFrom) != "" {
 			return "", fmt.Errorf("read_only_skill does not support continue_from/fork_from")
@@ -1615,15 +1625,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 
 	execSess := newObservedSession(sysPrompt)
 	executor := agent.New(execProv, reg, execSess, agent.Options{
-		MaxSteps:    maxSteps,
-		MaxStepsKey: opts.MaxStepsKey,
-		Temperature: cfg.Agent.Temperature,
-		TaskBudget:  taskBudgetFromConfig(cfg),
-		Pricing:     entry.Price,
-		ModelRef:    modelRef,
-		Gate:        headlessGate,
-		Hooks:       hookRunner,
-		Jobs:        jm,
+		MaxSteps:     maxSteps,
+		MaxStepsKey:  opts.MaxStepsKey,
+		Temperature:  cfg.Agent.Temperature,
+		TaskBudget:   taskBudgetFromConfig(cfg),
+		Pricing:      entry.Price,
+		QuoteContext: quoteCtx,
+		ModelRef:     modelRef,
+		Gate:         headlessGate,
+		Hooks:        hookRunner,
+		Jobs:         jm,
 		// Parent write reservation at the executor entry covers all writers
 		// (including late Economy/MCP adds) without wrapping tool schemas.
 		WriteScheduler:               subagentScheduler,
@@ -1651,6 +1662,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MaxSubagentDepth:             maxSubagentDepth,
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
+	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
 
 	var runner agent.Runner = executor
 	label := entry.Model
@@ -1692,6 +1704,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 				MaxSteps:                     0,
 				Gate:                         headlessGate,
 				ModelRef:                     modelRefFromEntry(pe),
+				QuoteContext:                 quoteCtx,
 				ContextWindow:                pe.ContextWindow,
 				SoftCompactRatio:             cfg.Agent.SoftCompactRatio,
 				ToolResultSnipRatio:          cfg.Agent.ToolResultSnipRatio,
@@ -1894,18 +1907,18 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		taskTool.WithCapabilityRuntime(capRuntime)
 	}
 	// Build one role-neutral semantic router so an in-place switch never needs a
-	// controller rebuild. The frozen TaskPolicy decides whether a turn may call
+	// controller rebuild. Host constraints and live capability routing decide whether a turn may call
 	// it; construction alone does not add a provider request.
 	var router *capability.SemanticRouter
 	if modelRef := strings.TrimSpace(cfg.Agent.SubagentModels["capability-router"]); modelRef != "" {
 		effortRef := strings.TrimSpace(cfg.Agent.SubagentEfforts["capability-router"])
 		if p, price, _, err := resolveSubagentProvider(modelRef, effortRef); err == nil && p != nil {
 			usageModelRef, _ := subagentIdentity(modelRef, effortRef)
-			router = &capability.SemanticRouter{Provider: p, Sink: sink, Model: usageModelRef, Pricing: price, Audit: capAudit}
+			router = &capability.SemanticRouter{Provider: p, Sink: sink, Model: usageModelRef, Pricing: price, QuoteContext: quoteCtx, Audit: capAudit}
 		}
 	}
 	if router == nil {
-		router = &capability.SemanticRouter{Provider: execProv, Sink: sink, Model: modelRef, Pricing: entry.Price, Audit: capAudit}
+		router = &capability.SemanticRouter{Provider: execProv, Sink: sink, Model: modelRef, Pricing: entry.Price, QuoteContext: quoteCtx, Audit: capAudit}
 	}
 	ctrl.WireCapabilityRouting(cfg.Plugins, capSpecs, router, capAudit)
 	ctrl.SetCapabilityProxyRouting(true)
@@ -2031,7 +2044,7 @@ func applyUnifiedProviderToolSurface(reg *tool.Registry) {
 
 // effectivePlannerModel centralizes planner precedence. Every role setting
 // builds the configured planner so later in-place switches retain the same
-// runtime; the per-turn TaskPolicy decides whether it is invoked.
+// runtime; explicit Plan, approval, or Goal start decides whether it is invoked.
 func effectivePlannerModel(cfg *config.Config, opts Options) string {
 	if cfg == nil || opts.Ablation.Off(ablation.Planner) {
 		return ""
@@ -2818,39 +2831,6 @@ func MCPStartupNotice(failures []plugin.Failure) (text, detail string, ok bool) 
 	}
 	return "Some MCP servers failed to start; run /mcp for details.", fmt.Sprintf("%d MCP server(s) failed to start: %s%s\n%s",
 		len(failures), strings.Join(names, ", "), more, strings.Join(details, "\n")), true
-}
-
-// LSPSpecs returns the language → server map: the built-in defaults overlaid with
-// any user overrides. A user entry may set only the fields it wants to change;
-// empty fields keep the default for that language.
-func LSPSpecs(cfg config.LSPConfig) map[string]lsp.ServerSpec {
-	specs := lsp.DefaultSpecs()
-	for lang, s := range cfg.Servers {
-		spec := specs[lang]
-		if s.Command != "" {
-			spec.Command = s.Command
-		}
-		if s.Args != nil {
-			spec.Args = s.Args
-		}
-		if s.Env != nil {
-			spec.Env = s.Env
-		}
-		if s.LanguageID != "" {
-			spec.LanguageID = s.LanguageID
-		}
-		if s.Extensions != nil {
-			spec.Extensions = s.Extensions
-		}
-		if s.InstallHint != "" {
-			spec.InstallHint = s.InstallHint
-		}
-		if spec.LanguageID == "" {
-			spec.LanguageID = lang
-		}
-		specs[lang] = spec
-	}
-	return specs
 }
 
 func providerNames(cfg *config.Config) string {
