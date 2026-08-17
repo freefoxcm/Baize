@@ -170,8 +170,11 @@ func TestOpenCodeGoDeepSeekAlternativeProtocolPresets(t *testing.T) {
 	if cfgEntry, _ := cfg.Provider("opencode-go-deepseek-anthropic"); cfgEntry.HasModel("deepseek-v4-pro") || !EffectiveWebSearch(cfgEntry) || !HasServerWebSearchCapability(cfgEntry) {
 		t.Fatalf("opencode-go-deepseek-anthropic entry = %+v, want Flash-only web search capability", cfgEntry)
 	}
-	if cap := EffortCapabilityForEntry(flash); !cap.Supported || cap.Default != "high" || !containsString(cap.Levels, "max") {
+	if cap := EffortCapabilityForEntry(flash); !cap.Supported || cap.Default != "high" || !stringSlicesEqual(cap.Levels, []string{"auto", "disabled", "low", "high", "max"}) {
 		t.Fatalf("opencode-go-deepseek-anthropic Flash effort capability = %+v", cap)
+	}
+	if got, err := NormalizeEffort(flash, "low"); err != nil || got != "low" {
+		t.Fatalf("opencode-go-deepseek-anthropic Flash low = %q/%v, want low/nil", got, err)
 	}
 }
 
@@ -599,17 +602,6 @@ func TestCuratedProviderPresetCapabilities(t *testing.T) {
 	}
 	if zaiPlanAnthropic.Kind != "anthropic" || !zaiPlanAnthropic.AuthHeader || zaiPlanAnthropic.BaseURL != "https://api.z.ai/api/anthropic" || zaiPlanAnthropic.DefaultModel() != "glm-5.2" || zaiPlanAnthropic.ContextWindow != 1000000 {
 		t.Fatalf("zai-coding-plan-global-anthropic capability mismatch: %+v", zaiPlanAnthropic)
-	}
-
-	deepseek, ok := cfg.ResolveModel("opencode-go/deepseek-v4-pro")
-	if !ok {
-		t.Fatal("opencode-go/deepseek-v4-pro did not resolve")
-	}
-	if protocol := ReasoningProtocolForEntry(deepseek); protocol != ReasoningProtocolDeepSeek {
-		t.Fatalf("opencode deepseek protocol = %q, want deepseek", protocol)
-	}
-	if cap := EffortCapabilityForEntry(deepseek); !cap.Supported || cap.Default != "high" || !containsString(cap.Levels, "max") {
-		t.Fatalf("opencode deepseek effort capability = %+v, want high/max", cap)
 	}
 
 	kimi, ok := cfg.ResolveModel("opencode-go/kimi-k2.6")

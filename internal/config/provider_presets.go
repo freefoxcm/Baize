@@ -673,12 +673,12 @@ var curatedProviderPresets = []ProviderPreset{
 			ModelOverrides: withOpenCodeGoChatContextOverrides(map[string]ProviderModelOverride{
 				"deepseek-v4-flash": {
 					ReasoningProtocol: ReasoningProtocolDeepSeek,
-					SupportedEfforts:  []string{"disabled", "high", "max"},
+					SupportedEfforts:  []string{"disabled", "low", "high", "max"},
 					DefaultEffort:     "high",
 				},
 				"deepseek-v4-pro": {
 					ReasoningProtocol: ReasoningProtocolDeepSeek,
-					SupportedEfforts:  []string{"disabled", "high", "max"},
+					SupportedEfforts:  []string{"disabled", "low", "high", "max"},
 					DefaultEffort:     "high",
 				},
 				"kimi-k2.6": {

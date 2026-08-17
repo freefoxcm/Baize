@@ -178,16 +178,6 @@ func estimateRequestTokens(systemPrompt string, schemas []provider.ToolSchema, m
 	return total
 }
 
-// estimateRequest estimates what the next provider request built from msgs
-// would cost (messages + system prompt when absent + tool schemas).
-func (a *Agent) estimateRequest(msgs []provider.Message) int {
-	var schemas []provider.ToolSchema
-	if a.svc.tools != nil {
-		schemas = a.svc.tools.Schemas()
-	}
-	return estimateRequestTokens(a.systemPrompt(), schemas, msgs)
-}
-
 // SummarizeFrom keeps the compatibility index contract while installing a
 // projection that compresses from that user-turn boundary onward.
 func (a *Agent) SummarizeFrom(ctx context.Context, fromIdx int) error {
