@@ -120,6 +120,25 @@ func TestServeClipboardHasInsecureContextFallback(t *testing.T) {
 	}
 }
 
+func TestServeModelSwitchRefreshesProviderIdentity(t *testing.T) {
+	source := string(baizeJS)
+	for _, want := range []string{
+		"function fetchModelsState()",
+		"modelsCache=Array.isArray(data?.models)?data.models:[];",
+		"updateModelTrigger();",
+		"function refreshModelSelection(){fetchModelsState().catch(()=>{});fetchStatus();fetchEffort();}",
+		"function submitModelSwitch(ref)",
+		"if(isModelSwitch)refreshModelSelection()",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("Baize model switch missing provider refresh contract %q", want)
+		}
+	}
+	if got := strings.Count(source, "submitModelSwitch("); got != 3 {
+		t.Fatalf("submitModelSwitch references = %d, want function plus both model pickers", got)
+	}
+}
+
 func TestServePDFJSAssetRoutes(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc})
