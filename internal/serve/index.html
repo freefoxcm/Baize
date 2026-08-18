@@ -204,8 +204,17 @@
         </div>
         <div class="composer-guidance-list" id="guidance-list"></div>
       </div>
+      <div class="attachment-upload" id="attachment-upload" style="display:none" role="status">
+        <div class="attachment-upload__meta"><span id="attachment-upload-name"></span><span id="attachment-upload-percent">0%</span></div>
+        <div class="attachment-upload__track"><span id="attachment-upload-fill"></span></div>
+        <button type="button" id="attachment-upload-cancel">__('attachment_cancel_upload')</button>
+      </div>
       <div class="composer" id="composer">
         <span class="composer__caret">&#8250;</span>
+        <button type="button" class="composer__btn composer__btn--attach" id="btn-attach" title="__('attachment_choose')" aria-label="__('attachment_choose')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+        </button>
+        <input type="file" id="attachment-file-input" multiple hidden>
         <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
         <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
@@ -328,6 +337,12 @@
       <label class="settings-field"><span>__('settings_reasoning_display')</span><select id="setting-reasoning-display"><option value="closed">__('settings_reasoning_closed')</option><option value="auto">__('settings_reasoning_auto')</option><option value="open">__('settings_reasoning_open')</option></select></label>
       <label class="settings-field"><span>__('settings_subagent_preview')</span><select id="setting-subagent-preview"><option value="full">__('settings_preview_full')</option><option value="compact">__('settings_preview_compact')</option></select></label>
       <label class="settings-check"><input id="setting-subagent-collapse" type="checkbox"><span>__('settings_subagent_collapse')</span></label>
+    </section>
+    <section class="settings-group attachment-storage"><div class="attachment-storage__head"><h3>__('attachments_storage')</h3><button type="button" class="dialog-btn" id="attachments-refresh">__('workspace_refresh')</button></div>
+      <p class="attachment-storage__usage" id="attachments-usage">__('loading')</p>
+      <div class="attachment-storage__list" id="attachments-list"></div>
+      <button type="button" class="dialog-btn dialog-btn--danger" id="attachments-clear">__('attachments_clear_all')</button>
+      <small>__('attachments_history_warning')</small>
     </section>
     <div class="settings-actions"><button type="button" class="dialog-btn" id="settings-retry" hidden>__('settings_retry')</button><button type="submit" class="dialog-btn settings-save">__('settings_save')</button></div>
   </form>

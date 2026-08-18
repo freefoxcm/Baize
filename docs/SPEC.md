@@ -1068,6 +1068,10 @@ ask   = []                                 # force a prompt even if otherwise al
 # allow_write    = ["/tmp"]    # extra dirs write_file/edit_file/multi_edit/move_file may modify
 # forbid_read    = ["${HOME}/.ssh"]   # paths read/list/search tools and sandboxed bash may not inspect
 
+[attachments]
+max_file_mib = 100             # 1-1024 MiB
+workspace_quota_mib = 1024     # must be >= max_file_mib
+
 [serve]
 auth_mode = "none"             # none|token|password; use auth before binding beyond localhost
 # token = ""                   # optional fixed token; empty token mode generates one at startup
@@ -1121,6 +1125,15 @@ default `auth_mode = "none"` is intended for the loopback default
 bcrypt `password_hash`. `behind_proxy` must stay false unless the server is
 behind a trusted proxy that owns the `X-Forwarded-For` and `X-Forwarded-Proto`
 headers.
+
+`[attachments]` controls streamed workspace storage under `.reasonix/attachments/`.
+The defaults are 100 MiB per file and 1024 MiB per workspace. Saves use a
+same-directory temporary file, streaming SHA-256, `0600` permissions, an atomic
+rename, and a workspace lock around quota accounting. Multipart `/attach`
+requires `X-Reasonix-Request: attachment-v1` and rejects cross-site origins; the
+legacy JSON/Base64 image protocol remains compatible. Deleting managed
+attachments rotates the session temporary directory without deleting reports or
+exports.
 
 MCP servers may also be declared in a project-root `.mcp.json` using Claude
 Code's exact `mcpServers` schema (`command`/`args`/`env`, `type`/`url`/`headers`,

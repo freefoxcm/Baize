@@ -52,6 +52,7 @@ type Config struct {
 	Billing          BillingConfig       `toml:"billing"`
 	Telemetry        TelemetryConfig     `toml:"telemetry"`
 	Notifications    NotificationsConfig `toml:"notifications"`
+	Attachments      AttachmentsConfig   `toml:"attachments"`
 	Agent            AgentConfig         `toml:"agent"`
 	Providers        []ProviderEntry     `toml:"providers"`
 	Tools            ToolsConfig         `toml:"tools"`
@@ -1838,6 +1839,7 @@ func Default() *Config {
 			ApprovalRequest: true,
 			AskRequest:      true,
 		},
+		Attachments: defaultAttachmentsConfig(),
 		Agent: AgentConfig{
 			SystemPrompt: DefaultSystemPrompt,
 			// Normal interactive execution has no configurable total round cap. It

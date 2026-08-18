@@ -106,6 +106,10 @@ allow = ["Bash(go test:*)"]                  # 从不询问
 # allow_write    = ["/tmp"]    # write_file/edit_file/multi_edit/move_file 额外可写的目录
 # forbid_read    = ["${HOME}/.ssh"]   # agent 不可读取或列出的路径
 
+[attachments]
+max_file_mib = 100             # WebUI 单文件上限，允许 1–1024 MiB
+workspace_quota_mib = 1024     # .reasonix/attachments 总量，必须不小于单文件上限
+
 [serve]
 auth_mode = "none"             # none|token|password；绑定到非 localhost 前请先开启认证
 # token = ""                   # 可选固定 token；token 模式为空时启动时自动生成
@@ -121,6 +125,8 @@ tool_timeout_seconds = { "generate_video" = 1800 }   # 可选：raw MCP tool 名
 ```
 
 完整 schema 与每个字段的契约见 [`SPEC.md` §5](./SPEC.md#5-configuration-toml)。
+
+Serve WebUI 的文件选择和拖放使用流式上传，不会把普通文件转成 Base64；图片粘贴保持兼容协议。附件以 `0600` 权限保留在工作区 `.reasonix/attachments/`，直到用户在 Storage 页面单项删除或全部清理。删除会令历史消息中的附件引用失效，并同步轮换当前会话临时目录，使 Inline 数据分析缓存失效；报告和导出文件不会随附件删除。上传中断、取消、超限或配额不足不会保留半文件。
 
 已安装或由项目配置声明的 MCP server 不需要逐工具信任名单。独立双模型 Planner 可使用所有
 非 destructive 工具，即使 server 没有声明 `readOnlyHint`；严格只读 subagent 仍要求

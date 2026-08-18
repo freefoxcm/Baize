@@ -112,6 +112,10 @@ allow = ["Bash(go test:*)"]                  # never prompted
 # allow_write    = ["/tmp"]    # extra dirs write_file/edit_file/multi_edit/move_file may touch
 # forbid_read    = ["${HOME}/.ssh"]   # paths the agent must not read or list
 
+[attachments]
+max_file_mib = 100             # WebUI per-file limit; valid range 1-1024 MiB
+workspace_quota_mib = 1024     # .reasonix/attachments quota; must be >= max_file_mib
+
 [serve]
 auth_mode = "none"             # none|token|password; use auth before binding beyond localhost
 # token = ""                   # optional fixed token; empty token mode generates one at startup
@@ -127,6 +131,8 @@ tool_timeout_seconds = { "generate_video" = 1800 }   # optional raw MCP tool nam
 ```
 
 For the full schema and every field's contract, see [`SPEC.md` §5](./SPEC.md#5-configuration-toml).
+
+Serve WebUI file selection and drag/drop use streaming uploads rather than Base64; image paste keeps the compatibility protocol. Attachments are stored with `0600` permissions under the workspace `.reasonix/attachments/` until the user deletes one or clears all from Storage. Deletion invalidates historical references and rotates the current session temporary directory so Inline analysis caches are invalidated; reports and exports are retained. Interrupted, cancelled, over-limit, and over-quota uploads leave no partial file.
 
 Installed and project-configured MCP servers need no per-tool trust
 list. The dedicated two-model Planner may use every non-destructive MCP tool,

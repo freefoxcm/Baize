@@ -5,3 +5,7 @@ pandas
 openpyxl
 matplotlib
 reportlab
+duckdb
+sqlglot
+pypdf
+pdfplumber

@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"io"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/billing"
@@ -250,6 +251,15 @@ type Settings interface {
 	SetDisplayRecorder(fn func(content, display string))
 }
 
+// Attachments is the workspace-local attachment storage surface used by rich
+// frontends. Every mutation is quota locked and path confined.
+type Attachments interface {
+	SaveAttachment(context.Context, string, io.Reader, int64) (AttachmentInfo, error)
+	ListAttachments(context.Context) ([]AttachmentInfo, AttachmentUsage, error)
+	DeleteAttachment(context.Context, string) error
+	ClearAttachments(context.Context) (int, error)
+}
+
 // SessionAPI is the full driving port — the composition of every sub-port. A
 // rich frontend (the HTTP server, the desktop app, the TUI) depends on this;
 // leaner frontends (bot, acp) depend on just the sub-ports they use.
@@ -265,6 +275,7 @@ type SessionAPI interface {
 	SessionPersistence
 	Input
 	Settings
+	Attachments
 	Inbox
 }
 
@@ -283,6 +294,7 @@ var (
 	_ SessionPersistence = (*Controller)(nil)
 	_ Input              = (*Controller)(nil)
 	_ Settings           = (*Controller)(nil)
+	_ Attachments        = (*Controller)(nil)
 	_ Inbox              = (*Controller)(nil)
 	_ SessionAPI         = (*Controller)(nil)
 )

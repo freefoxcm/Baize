@@ -120,6 +120,34 @@ func TestServeClipboardHasInsecureContextFallback(t *testing.T) {
 	}
 }
 
+func TestServeWebUIStreamsAndManagesAttachments(t *testing.T) {
+	html := string(indexHTML)
+	js := string(baizeJS)
+	for _, want := range []string{
+		`id="attachment-file-input"`,
+		`id="attachment-upload-cancel"`,
+		`id="attachments-list"`,
+		`id="attachments-clear"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("WebUI missing attachment element %q", want)
+		}
+	}
+	for _, want := range []string{
+		"new FormData()",
+		"xhr.upload.onprogress",
+		"setRequestHeader('X-Reasonix-Request','attachment-v1')",
+		"attachmentXHR?.abort()",
+		"fetch('/attachments')",
+		"post('/attachments/delete'",
+		"post('/attachments/clear'",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("WebUI missing streaming attachment behavior %q", want)
+		}
+	}
+}
+
 func TestServeModelSwitchRefreshesProviderIdentity(t *testing.T) {
 	source := string(baizeJS)
 	for _, want := range []string{

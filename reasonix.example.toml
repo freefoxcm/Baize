@@ -152,6 +152,12 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # bash           = "enforce"   # enforce (default on macOS/Linux) | off; Windows fixes this to off because it has no OS-level Bash sandbox
 # network        = true
 
+# Workspace attachments are streamed to .reasonix/attachments. Limits apply to
+# every WebUI upload; the quota must be at least the per-file limit.
+[attachments]
+max_file_mib = 100
+workspace_quota_mib = 1024
+
 # Skills are invokable playbooks (SKILL.md / <name>.md with frontmatter), found
 # under .reasonix/skills, .agents/skills, .agent/skills, .claude/skills (project)
 # and the same dirs under ~ (global). Built-ins (explore/research/review/security-review/test)
