@@ -3,14 +3,123 @@ package serve
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"reasonix/internal/control"
 )
+
+type attachmentTurn struct {
+	display string
+	input   string
+	refLine string
+}
+
+func (s *Server) prepareAttachmentTurn(r *http.Request, input string, requested []string) (attachmentTurn, error) {
+	items, _, err := s.ctl().ListAttachments(r.Context())
+	if err != nil {
+		return attachmentTurn{}, err
+	}
+	available := make(map[string]control.AttachmentInfo, len(items))
+	for _, item := range items {
+		available[item.Path] = item
+	}
+
+	selected := make([]control.AttachmentInfo, 0, len(requested))
+	seen := make(map[string]struct{}, len(requested))
+	for _, raw := range requested {
+		path := filepath.ToSlash(strings.TrimSpace(raw))
+		if path == "" {
+			return attachmentTurn{}, fmt.Errorf("attachment path is empty")
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		item, ok := available[path]
+		if !ok {
+			return attachmentTurn{}, fmt.Errorf("attachment does not exist in this workspace: %s", path)
+		}
+		if directImageAttachment(item.Path) && item.Size > 10<<20 {
+			return attachmentTurn{}, fmt.Errorf("image attachment exceeds the 10 MiB limit: %s", item.Name)
+		}
+		seen[path] = struct{}{}
+		selected = append(selected, item)
+	}
+	if len(selected) == 0 {
+		return attachmentTurn{}, fmt.Errorf("missing attachments")
+	}
+
+	displayRefs := make([]string, 0, len(selected))
+	rawRefs := make([]string, 0, len(selected))
+	imageCount := 0
+	for _, item := range selected {
+		rawRef := "@" + control.EscapeRefPath(item.Path)
+		rawRefs = append(rawRefs, rawRef)
+		displayRefs = append(displayRefs, attachmentDisplayRef(item, rawRef))
+		if directImageAttachment(item.Path) {
+			imageCount++
+		}
+	}
+
+	visibleInput := strings.TrimSpace(input)
+	modelInput := visibleInput
+	if modelInput == "" {
+		switch imageCount {
+		case len(selected):
+			modelInput = "Analyze the attached image or images and respond with the relevant findings."
+		case 0:
+			modelInput = "Review the attached file or files and respond with the relevant findings."
+		default:
+			modelInput = "Review the attached images and files and respond with the relevant findings."
+		}
+	}
+	return attachmentTurn{
+		display: joinAttachmentText(visibleInput, strings.Join(displayRefs, " ")),
+		input:   modelInput,
+		refLine: joinAttachmentText(visibleInput, strings.Join(rawRefs, " ")),
+	}, nil
+}
+
+func attachmentDisplayRef(item control.AttachmentInfo, fallback string) string {
+	name := strings.TrimSpace(strings.NewReplacer(
+		"[", "", "]", "", "(", "", ")", "", "\r", " ", "\n", " ", "\t", " ",
+	).Replace(item.Name))
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" {
+		name = filepath.Base(item.Path)
+	}
+	if strings.ContainsAny(item.Path, "\r\n") {
+		return fallback
+	}
+	displayPath := strings.NewReplacer("%", "%25", ")", "%29").Replace(item.Path)
+	return "@[" + name + "](" + displayPath + ")"
+}
+
+func joinAttachmentText(left, right string) string {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" {
+		return right
+	}
+	if right == "" {
+		return left
+	}
+	return left + "\n\n" + right
+}
+
+func directImageAttachment(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	default:
+		return false
+	}
+}
 
 func requestIsCrossSite(r *http.Request) bool {
 	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site") {

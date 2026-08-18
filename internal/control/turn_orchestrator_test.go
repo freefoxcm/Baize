@@ -607,7 +607,7 @@ func TestTurnOrchestratorRefTurnPreservesExpandedPasteForRouting(t *testing.T) {
 		return "<file path=\"notes.txt\">\nreference\n</file>", nil
 	}
 
-	if err := c.runRefTurnWithResolverSync(context.Background(), expanded, expanded, display, "", resolve); err != nil {
+	if err := c.runRefTurnWithResolverSync(context.Background(), expanded, expanded, expanded, display, "", resolve); err != nil {
 		t.Fatal(err)
 	}
 	if len(runner.inputs) != 1 || !strings.Contains(runner.inputs[0], "Referenced context:") || !strings.Contains(runner.inputs[0], expanded) {
