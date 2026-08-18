@@ -435,6 +435,8 @@ var Chinese = Messages{
 	SetupPromptProviderName:  "供应商名称",
 	InvalidProviderNameFmt:   "供应商名称 %q 无效。名称不能为空或包含“/”；custom 和 anthropic 为保留名称。",
 	SetupPromptModels:        "模型列表（用逗号分隔）",
+	SetupVisionModelsFmt:     "选择 %s 中支持图片输入的模型",
+	SetupVisionUnsupported:   "%s 使用的端点不支持图片输入，将这些模型保存为纯文本模型。",
 	SetupSharedKeyWarningFmt: "%s 已被 %s（%s）使用。确认共享这项凭据？",
 	SetupPromptAPIKeyFmt:     "输入 %s 的新值",
 	SetupSelectDefaultModel:  "选择默认模型",

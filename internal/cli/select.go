@@ -259,6 +259,15 @@ func selectOne(label string, items []menuItem) (int, error) {
 // exceeds the terminal height, only a viewport-sized window is shown. Pressing
 // '/' enters search mode to filter items by keyword.
 func selectMany(label string, items []menuItem) ([]int, error) {
+	return selectManyWithOptions(label, items, selectManyOptions{})
+}
+
+type selectManyOptions struct {
+	checked    []bool
+	allowEmpty bool
+}
+
+func selectManyWithOptions(label string, items []menuItem, opts selectManyOptions) ([]int, error) {
 	fd := int(os.Stdin.Fd())
 	old, err := term.MakeRaw(fd)
 	if err != nil {
@@ -280,6 +289,7 @@ func selectMany(label string, items []menuItem) ([]int, error) {
 
 	cur := 0
 	checked := make([]bool, len(items))
+	copy(checked, opts.checked)
 	scroll := 0
 	prevLines := 0
 
@@ -371,13 +381,8 @@ func selectMany(label string, items []menuItem) ([]int, error) {
 				scroll = 0
 				redraw()
 			case k[0] == '\r' || k[0] == '\n':
-				var out []int
-				for i, c := range checked {
-					if c {
-						out = append(out, i)
-					}
-				}
-				if len(out) == 0 {
+				out, ok := selectedManyIndices(checked, opts.allowEmpty)
+				if !ok {
 					continue
 				}
 				fmt.Fprint(w, "\r\n")
@@ -431,13 +436,8 @@ func selectMany(label string, items []menuItem) ([]int, error) {
 
 		switch {
 		case k[0] == '\r' || k[0] == '\n':
-			var out []int
-			for i, c := range checked {
-				if c {
-					out = append(out, i)
-				}
-			}
-			if len(out) == 0 {
+			out, ok := selectedManyIndices(checked, opts.allowEmpty)
+			if !ok {
 				continue // need at least one selection
 			}
 			fmt.Fprint(w, "\r\n")
@@ -475,6 +475,16 @@ func selectMany(label string, items []menuItem) ([]int, error) {
 		}
 		redraw()
 	}
+}
+
+func selectedManyIndices(checked []bool, allowEmpty bool) ([]int, bool) {
+	var out []int
+	for i, selected := range checked {
+		if selected {
+			out = append(out, i)
+		}
+	}
+	return out, len(out) > 0 || allowEmpty
 }
 
 // filterIndices returns the original indices of items matching query.

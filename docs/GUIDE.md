@@ -1270,8 +1270,9 @@ time, descend into folders) plus MCP resources.
 ## Two-model collaboration
 
 `reasonix setup` manages providers, model lists, credentials, connection tests,
-and the default model. It stages changes until Save and exit, and synchronizes
-provider access with the desktop app. See the [CLI reference](./CLI.md#configure-providers).
+per-model image input, and the default model. It stages changes until Save and
+exit, and synchronizes provider access with the desktop app. See the
+[CLI reference](./CLI.md#configure-providers).
 Running two models together (executor + planner, separate cache-stable sessions)
 is a one-line edit afterwards — set `planner_model` to any other enabled provider:
 

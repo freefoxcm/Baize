@@ -383,6 +383,20 @@ func TestProviderSetupSessionSummaryReportsChanges(t *testing.T) {
 	}
 }
 
+func TestProviderSetupSessionSummaryReportsVisionOnlyChange(t *testing.T) {
+	cfg := setupTestConfig()
+	s := newProviderSetupSession(cfg)
+	edited := cfg.Providers[0]
+	edited.VisionModels = []string{"desktop-model"}
+	if err := s.upsert([]config.ProviderEntry{edited}); err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(s.summary(), "\n")
+	if !strings.Contains(text, edited.Name) {
+		t.Fatalf("summary %q does not report vision-only edit", text)
+	}
+}
+
 func TestProviderSetupOperationReplayPreservesConcurrentUnrelatedChanges(t *testing.T) {
 	isolateUserConfig(t)
 	path := config.UserConfigPath()

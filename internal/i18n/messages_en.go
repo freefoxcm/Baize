@@ -434,6 +434,8 @@ var English = Messages{
 	SetupPromptProviderName:  "Provider name",
 	InvalidProviderNameFmt:   "Provider name %q is invalid. Use a non-empty name without '/'; custom and anthropic are reserved.",
 	SetupPromptModels:        "Models (comma-separated)",
+	SetupVisionModelsFmt:     "Select models that support image input for %s",
+	SetupVisionUnsupported:   "%s uses an endpoint that does not support image input; saving these models as text-only.",
 	SetupSharedKeyWarningFmt: "%s is also used by %s at %s. Share this credential?",
 	SetupPromptAPIKeyFmt:     "Enter new value for %s",
 	SetupSelectDefaultModel:  "Select default model",
