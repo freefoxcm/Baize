@@ -454,11 +454,7 @@ func (s *providerSetupSession) summary() []string {
 }
 
 func providerSetupEqual(a, b config.ProviderEntry) bool {
-	// Render-level equality is unnecessary here: the manager only changes these
-	// fields, while advanced provider fields are preserved by editing a copy.
-	return a.Name == b.Name && a.Kind == b.Kind && a.BaseURL == b.BaseURL &&
-		a.Model == b.Model && strings.Join(a.Models, "\x00") == strings.Join(b.Models, "\x00") &&
-		a.Default == b.Default && a.APIKeyEnv == b.APIKeyEnv
+	return config.ProviderEntriesConfigEqual(a, b)
 }
 
 func runProviderSetupManager(s *providerSetupSession, configPath, envPath string) int {
@@ -544,6 +540,12 @@ func addProviderToSession(s *providerSetupSession, anthropic bool) bool {
 		}
 		return false
 	}
+	for i := range result.entries {
+		result.entries[i], err = promptProviderVision(result.entries[i])
+		if err != nil {
+			return false
+		}
+	}
 	for _, entry := range result.entries {
 		if !confirmSharedCredential(s.cfg, entry, "") {
 			return false
@@ -592,29 +594,6 @@ func manageProvider(s *providerSetupSession, providerIndex int) {
 		setDefaultProvider(s, p)
 	case 4:
 		removeProviderFromSession(s, p)
-	}
-}
-
-func editProvider(s *providerSetupSession, current config.ProviderEntry) {
-	in := bufio.NewScanner(os.Stdin)
-	edited := current
-	edited.BaseURL = ask(in, os.Stdout, i18n.M.CustomPromptBaseURL, current.BaseURL)
-	models := ask(in, os.Stdout, i18n.M.SetupPromptModels, strings.Join(current.ModelList(), ","))
-	edited.Models = splitModels(models)
-	if len(edited.Models) == 1 {
-		edited.Model = edited.Models[0]
-	} else {
-		edited.Model = ""
-	}
-	if len(edited.Models) > 0 && !containsString(edited.Models, edited.Default) {
-		edited.Default = edited.Models[0]
-	}
-	edited.APIKeyEnv = promptOptionalAPIKeyEnvName(in, os.Stdout, i18n.M.CustomPromptKeyEnv, current.APIKeyEnv)
-	if !confirmSharedCredential(s.cfg, edited, current.Name) {
-		return
-	}
-	if err := s.upsert([]config.ProviderEntry{edited}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 	}
 }
 
@@ -712,6 +691,10 @@ func testAndRefreshProvider(s *providerSetupSession, p config.ProviderEntry) {
 	p.Model = ""
 	if !containsString(selected, p.Default) {
 		p.Default = selected[0]
+	}
+	p, err = promptProviderVision(p)
+	if err != nil {
+		return
 	}
 	if err := s.upsert([]config.ProviderEntry{p}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

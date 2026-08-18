@@ -63,6 +63,7 @@ provider，并支持：
 
 - 添加 OpenAI-compatible 或 Anthropic-compatible provider；
 - 编辑 endpoint 和模型列表；
+- 逐模型选择该 provider 中支持图片输入的模型；
 - 更新 API Key，或测试连接并刷新模型；
 - 设置默认模型；
 - 删除 provider。
@@ -70,6 +71,11 @@ provider，并支持：
 选择“保存并退出”后会先展示并确认待执行操作；取消会丢弃本次修改。保存时 setup 会重新
 加载最新配置：桌面端或其他 CLI 产生的不相关修改会被保留，改到同一项时则报告冲突，
 不会直接覆盖。
+
+添加、编辑或刷新 provider 后，setup 会再次显示已启用模型，并用复选列表配置图片输入能力。
+已有 `vision_models` 会保持预选；旧配置 `vision = true` 会预选当前全部模型；尚未配置时只做
+保守的模型名推断。空选后确认会明确写入 `vision_models = []`。官方 DeepSeek 端点始终按纯文本
+处理，即使配置中存在能力元数据也不能强制开启；第三方兼容网关则可以声明实际支持图片的模型子集。
 
 Provider 定义只保存 `api_key_env` 变量名。即使使用 `--local`，Key 的真实值也始终保存
 在 CLI 与桌面端共用的 Reasonix 全局 `.env` 中。如果变量名已被其他 provider 使用，

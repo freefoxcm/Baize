@@ -70,6 +70,7 @@ lists configured providers and lets you:
 
 - add OpenAI-compatible or Anthropic-compatible providers;
 - edit endpoints and model lists;
+- select the models in each provider that accept image input;
 - update API keys or test the connection and refresh models;
 - choose the default model; and
 - remove providers.
@@ -78,6 +79,14 @@ Choose **Save and exit** to review and confirm the pending operations. Canceling
 discards them. Setup reloads the latest config while saving: unrelated desktop
 or CLI changes are retained, while an overlapping change is reported as a
 conflict instead of being overwritten.
+
+After adding, editing, or refreshing a provider, setup shows its enabled models
+again as an image-input checklist. Existing `vision_models` choices are
+preselected; legacy `vision = true` selects every current model; and an
+unconfigured provider gets only conservative name-based suggestions. Confirming
+an empty checklist records `vision_models = []` explicitly. Official DeepSeek
+endpoints remain text-only even if capability metadata is present, while custom
+compatible gateways can declare their actual image-capable subset.
 
 Provider definitions contain only the `api_key_env` variable name. Key values
 are stored in the shared Reasonix home `.env`, even with `--local`. When a

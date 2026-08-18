@@ -450,6 +450,8 @@ type Messages struct {
 	SetupPromptProviderName  string
 	InvalidProviderNameFmt   string
 	SetupPromptModels        string
+	SetupVisionModelsFmt     string
+	SetupVisionUnsupported   string
 	SetupSharedKeyWarningFmt string
 	SetupPromptAPIKeyFmt     string
 	SetupSelectDefaultModel  string

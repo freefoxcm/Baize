@@ -408,6 +408,8 @@ var ChineseTraditional = Messages{
 	SetupPromptProviderName:  "供應商名稱",
 	InvalidProviderNameFmt:   "供應商名稱 %q 無效。名稱不能為空或包含「/」；custom 和 anthropic 為保留名稱。",
 	SetupPromptModels:        "模型列表（用逗號分隔）",
+	SetupVisionModelsFmt:     "選擇 %s 中支援圖片輸入的模型",
+	SetupVisionUnsupported:   "%s 使用的端點不支援圖片輸入，將這些模型儲存為純文字模型。",
 	SetupSharedKeyWarningFmt: "%s 已被 %s（%s）使用。確認共用這項憑據？",
 	SetupPromptAPIKeyFmt:     "輸入 %s 的新值",
 	SetupSelectDefaultModel:  "選擇預設模型",

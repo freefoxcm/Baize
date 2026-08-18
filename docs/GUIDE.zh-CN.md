@@ -984,7 +984,7 @@ evaluator 判定。Light/Balanced 会接受 `update_goal` 里诚实申报的 `un
 
 ## 双模型协同
 
-`reasonix setup` 现在统一管理 provider、模型列表、凭据、连接测试和默认模型；所有修改
+`reasonix setup` 现在统一管理 provider、模型列表、逐模型图片输入、凭据、连接测试和默认模型；所有修改
 会暂存到“保存并退出”，并同步维护桌面端 provider access。完整用法见
 [CLI 命令参考](./CLI.zh-CN.md#配置供应商)。若要让两个模型协同（执行器 + 规划器，
 各自独立、缓存稳定的 session），向导后手动在 `reasonix.toml` 加一行即可：
