@@ -308,6 +308,8 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`.app--sidebar-collapsed`,
 		`.app--workspace-open`,
 		`.workspace-panel`,
+		`.workspace-browser{min-width:0;min-height:0;display:flex;flex-direction:column;`,
+		`.workspace-tree{min-height:0;flex:1;overflow:auto;`,
 		`.workspace-resize-guide`,
 		`position:fixed;z-index:180`,
 		`width:min(var(--workspace-width),80vw,1200px)`,
