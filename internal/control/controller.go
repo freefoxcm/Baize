@@ -1208,6 +1208,17 @@ func (c *Controller) SubmitHTTPFormat(input, format string) {
 	c.submitHTTPWithFormat(input, "", f)
 }
 
+// SubmitHTTPAttachmentTurn starts an ordinary HTTP turn whose persisted raw
+// display and reference source differ from the provider-facing task text.
+func (c *Controller) SubmitHTTPAttachmentTurn(display, input, refLine, format string) {
+	c.runGuarded(func(ctx context.Context) error {
+		return c.runRefTurnWithResolverSync(
+			c.withTurnFormat(ctx, strings.TrimSpace(format)),
+			input, display, refLine, display, "", c.ResolveScopedRefs,
+		)
+	})
+}
+
 // isNonTurnHTTPInput reports inputs that never reach the agent turn loop, so a
 // structured-output request attached to them would otherwise leak into the
 // next real turn (the format slot is consumed only by runGoalLoopWithRawDisplay).
@@ -1346,6 +1357,16 @@ func (c *Controller) runPreparedInvocationTurn(
 // metadata so the edit survives session rewrites.
 func (c *Controller) SubmitEditedDisplay(display, input, original string) {
 	c.submit(input, display, original)
+}
+
+// SubmitEditedHTTPAttachmentTurn is the attachment-aware counterpart of
+// SubmitEditedDisplay for the workspace-scoped HTTP frontend.
+func (c *Controller) SubmitEditedHTTPAttachmentTurn(display, input, refLine, original string) {
+	c.runGuarded(func(ctx context.Context) error {
+		return c.runRefTurnWithResolverSync(
+			ctx, input, display, refLine, display, original, c.ResolveScopedRefs,
+		)
+	})
 }
 
 // SubmitUserTurn starts a normal model turn without interpreting shell or slash
@@ -1868,37 +1889,37 @@ func (c *Controller) runRefTurn(input, display string) {
 // plain-goal path; review #7234 binds format to the accepted turn).
 func (c *Controller) runRefTurnWithFormat(input, display, format string) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, "", c.ResolveRefs)
+		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, input, display, "", c.ResolveRefs)
 	})
 }
 
 func (c *Controller) runScopedRefTurnWithFormat(input, display, format string) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, "", c.ResolveScopedRefs)
+		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, input, display, "", c.ResolveScopedRefs)
 	})
 }
 
 func (c *Controller) runRefTurnWithRefsFormat(input, refLine, display, format string) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, "", c.ResolveRefs)
+		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, refLine, display, "", c.ResolveRefs)
 	})
 }
 
 func (c *Controller) runScopedRefTurnWithRefsFormat(input, refLine, display, format string) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, "", c.ResolveScopedRefs)
+		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, refLine, display, "", c.ResolveScopedRefs)
 	})
 }
 
 func (c *Controller) runEditedRefTurnWithFormat(input, display, original, format string) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, original, c.ResolveRefs)
+		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, input, display, original, c.ResolveRefs)
 	})
 }
 
 func (c *Controller) runEditedRefTurnWithRefsFormat(input, refLine, display, original, format string) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, original, c.ResolveRefs)
+		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, refLine, display, original, c.ResolveRefs)
 	})
 }
 
@@ -1911,11 +1932,11 @@ func (c *Controller) runRefTurnWithRefs(input, refLine, display string) {
 
 func (c *Controller) runRefTurnWithResolver(input, refLine, display string, resolve func(context.Context, string) (string, []string)) {
 	c.runGuarded(func(ctx context.Context) error {
-		return c.runRefTurnWithResolverSync(ctx, input, refLine, display, "", resolve)
+		return c.runRefTurnWithResolverSync(ctx, input, input, refLine, display, "", resolve)
 	})
 }
 
-func (c *Controller) runRefTurnWithResolverSync(ctx context.Context, input, refLine, display, original string, resolve func(context.Context, string) (string, []string)) error {
+func (c *Controller) runRefTurnWithResolverSync(ctx context.Context, input, raw, refLine, display, original string, resolve func(context.Context, string) (string, []string)) error {
 	block, errs := resolve(ctx, refLine)
 	for _, e := range errs {
 		c.notice(e)
@@ -1925,9 +1946,9 @@ func (c *Controller) runRefTurnWithResolverSync(ctx context.Context, input, refL
 		sent = "Referenced context:\n\n" + block + "\n\n" + input
 	}
 	if strings.TrimSpace(original) != "" {
-		return c.runEditedGoalLoopWithImageRefsRawDisplay(ctx, sent, input, refLine, display, original)
+		return c.runEditedGoalLoopWithImageRefsRawDisplay(ctx, sent, raw, refLine, display, original)
 	}
-	return c.runGoalLoopWithImageRefsRawDisplay(ctx, sent, input, refLine, display)
+	return c.runGoalLoopWithImageRefsRawDisplay(ctx, sent, raw, refLine, display)
 }
 
 // notice emits an informational Notice event.

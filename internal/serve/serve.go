@@ -779,120 +779,22 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// submit runs raw user input as a turn (slash commands and @-references
-// resolved by the controller). Returns 202 — output arrives on the event
-// stream; intercepted commands (/model, /effort, /switch) return 204.
-func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Input  string `json:"input"`
-		Format string `json:"format"`
-		Action string `json:"action"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Input == "" {
-		http.Error(w, "missing input", http.StatusBadRequest)
-		return
-	}
-	body.Format = strings.TrimSpace(body.Format)
-	body.Action = strings.TrimSpace(body.Action)
-	switch body.Format {
-	case "", "json_object":
-		// Supported: empty = default text output, json_object = structured.
-	default:
-		http.Error(w, `unsupported format (supported: "json_object")`, http.StatusBadRequest)
-		return
-	}
-	if err := validateSubmitAction(body.Format, body.Action); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	trimmed := strings.TrimSpace(body.Input)
-	if strings.HasPrefix(trimmed, "!") {
-		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
-		return
-	}
-	// Intercept /model <ref> for runtime model switching (the controller's
-	// Submit path only lists models — switching is frontend-specific).
-	if strings.HasPrefix(trimmed, "/model ") {
-		ref := strings.TrimSpace(strings.TrimPrefix(trimmed, "/model"))
-		if ref != "" {
-			if err := s.switchModel(r.Context(), ref); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-	}
-	// /switch must restore the target session's approval mode (desktop parity).
-	if strings.HasPrefix(trimmed, "/switch ") {
-		if err := s.switchSession(trimmed); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	// Intercept /effort <level> for reasoning-effort switching; bare /effort
-	// reports the current level and available levels (mirrors how /model
-	// lists models instead of switching). The controller's Submit path has no
-	// /effort case, so without this the bare command would surface as
-	// "unknown command". /thinking is the same knob under its historical name.
-	if trimmed == "/effort" || strings.HasPrefix(trimmed, "/effort ") || trimmed == "/thinking" || strings.HasPrefix(trimmed, "/thinking ") {
-		level := strings.TrimSpace(strings.TrimPrefix(trimmed, "/effort"))
-		if rest, ok := strings.CutPrefix(trimmed, "/thinking"); ok {
-			level = strings.TrimSpace(rest)
-		}
-		if level == "" {
-			// Bare command reports the current level and available levels.
-			s.effort(w, r)
-			return
-		}
-		if err := s.switchEffort(r.Context(), level); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	// Serialize turn admission with controller-generation rebuilds. Admission
-	// marks an ordinary turn running synchronously, so a reload that follows
-	// observes the busy state; a submit that follows a reload targets only the
-	// published replacement. This closes the check/build/swap race where a
-	// request could otherwise start on cur after reload's initial busy check.
-	s.bindMu.Lock()
-	ctrl := s.ctl()
-	// Fix false 202 while a turn is active: SubmitHTTPFormat silently drops
-	// concurrent input. Clients must use POST /inbox/items for durable follow-up.
-	if ctrl.Running() {
-		s.bindMu.Unlock()
-		http.Error(w, "session is busy; use POST /inbox/items for durable follow-up", http.StatusConflict)
-		return
-	}
-	submitWithAction(ctrl, body.Input, body.Format, body.Action)
-	// After synchronous admission, a successful start sets Running. A silent
-	// drop (rotating/closed) leaves Running false — return 409 instead of 202.
-	// Finishing-window park also leaves Running false briefly; prefer 202 only
-	// when Running or a pending prompt is observed, else durable-queue guidance.
-	if !ctrl.Running() && !ctrl.RuntimeStatus().PendingPrompt {
-		s.bindMu.Unlock()
-		http.Error(w, "input was not admitted; session is rotating, closed, or finishing — use POST /inbox/items", http.StatusConflict)
-		return
-	}
-	s.bindMu.Unlock()
-	w.WriteHeader(http.StatusAccepted)
-}
-
 // deliveryRecovery continues a turn that ended at the final-readiness gate.
 // It mirrors Desktop's recovery action: a paused Goal is resumed first so its
 // delivery scope/checkpoint survive, then the controller receives a one-shot
 // authorization to reuse the immediately preceding delivery evidence ledger.
 func (s *Server) deliveryRecovery(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Display string `json:"display"`
-		Input   string `json:"input"`
+		Display     string   `json:"display"`
+		Input       string   `json:"input"`
+		Attachments []string `json:"attachments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" {
 		http.Error(w, "missing input", http.StatusBadRequest)
+		return
+	}
+	if len(body.Attachments) > 0 {
+		http.Error(w, "attachments cannot be combined with a recovery action", http.StatusBadRequest)
 		return
 	}
 	body.Input = strings.TrimSpace(body.Input)
@@ -923,10 +825,15 @@ func (s *Server) deliveryRecovery(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Text string `json:"text"`
+		Text        string   `json:"text"`
+		Attachments []string `json:"attachments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
 		http.Error(w, "missing text", http.StatusBadRequest)
+		return
+	}
+	if len(body.Attachments) > 0 {
+		http.Error(w, "attachments cannot be used for running guidance", http.StatusBadRequest)
 		return
 	}
 	// TrySteer reports whether the active turn accepted the guidance. A
@@ -945,19 +852,45 @@ func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
 // controller uses to mark the edit. Output arrives on the event stream.
 func (s *Server) edit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Display  string `json:"display"`
-		Input    string `json:"input"`
-		Original string `json:"original"`
+		Display     string   `json:"display"`
+		Input       string   `json:"input"`
+		Original    string   `json:"original"`
+		Attachments []string `json:"attachments"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Input) == "" && len(body.Attachments) == 0 {
 		http.Error(w, "missing input", http.StatusBadRequest)
 		return
 	}
-	if strings.HasPrefix(strings.TrimSpace(body.Input), "!") {
+	trimmed := strings.TrimSpace(body.Input)
+	if strings.HasPrefix(trimmed, "!") {
 		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
 		return
 	}
-	s.ctl().SubmitEditedDisplay(body.Display, body.Input, body.Original)
+	if len(body.Attachments) > 0 {
+		if strings.HasPrefix(trimmed, "/") {
+			http.Error(w, "attachments cannot be combined with slash commands", http.StatusBadRequest)
+			return
+		}
+		s.bindMu.Lock()
+		defer s.bindMu.Unlock()
+		ctrl := s.ctl()
+		if strings.TrimSpace(ctrl.Goal()) != "" {
+			http.Error(w, "attachments are unavailable while a Goal is active", http.StatusConflict)
+			return
+		}
+		turn, err := s.prepareAttachmentTurn(r, body.Input, body.Attachments)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ctrl.Running() {
+			http.Error(w, "attachments cannot be edited while the session is busy", http.StatusConflict)
+			return
+		}
+		ctrl.SubmitEditedHTTPAttachmentTurn(turn.display, turn.input, turn.refLine, body.Original)
+	} else {
+		s.ctl().SubmitEditedDisplay(body.Display, body.Input, body.Original)
+	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -1424,10 +1357,15 @@ func (s *Server) bypass(w http.ResponseWriter, r *http.Request) {
 // Setting a non-empty goal disables plan mode (matching the desktop behavior).
 func (s *Server) goal(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Goal string `json:"goal"`
+		Goal        string   `json:"goal"`
+		Attachments []string `json:"attachments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+	if len(body.Attachments) > 0 {
+		http.Error(w, "attachments are unavailable for Goal drafts", http.StatusBadRequest)
 		return
 	}
 	goal := strings.TrimSpace(body.Goal)
@@ -1697,20 +1635,21 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	used, window := s.ctl().ContextSnapshot()
 	hit, miss := s.ctl().SessionCache()
 	sess := map[string]any{
-		"label":            s.ctl().Label(),
-		"running":          s.ctl().Running(),
-		"plan":             s.ctl().PlanMode(),
-		"autoApproveTools": s.ctl().AutoApproveTools(),
-		"bypass":           s.ctl().AutoApproveTools(),
-		"toolApprovalMode": s.ctl().ToolApprovalMode(),
-		"goal":             s.ctl().Goal(),
-		"goalStatus":       s.ctl().GoalStatus(),
-		"cwd":              s.ctl().SessionDir(),
-		"workspaceRoot":    s.ctl().WorkspaceRoot(),
-		"used":             used,
-		"window":           window,
-		"cacheHit":         hit,
-		"cacheMiss":        miss,
+		"label":             s.ctl().Label(),
+		"running":           s.ctl().Running(),
+		"plan":              s.ctl().PlanMode(),
+		"autoApproveTools":  s.ctl().AutoApproveTools(),
+		"bypass":            s.ctl().AutoApproveTools(),
+		"toolApprovalMode":  s.ctl().ToolApprovalMode(),
+		"goal":              s.ctl().Goal(),
+		"goalStatus":        s.ctl().GoalStatus(),
+		"cwd":               s.ctl().SessionDir(),
+		"workspaceRoot":     s.ctl().WorkspaceRoot(),
+		"used":              used,
+		"window":            window,
+		"cacheHit":          hit,
+		"cacheMiss":         miss,
+		"imageInputEnabled": s.ctl().ImageInputEnabled(),
 	}
 	if u := s.ctl().LastUsage(); u != nil {
 		sess["lastUsage"] = u

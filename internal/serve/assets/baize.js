@@ -82,7 +82,17 @@ const __T = {
     'model': 'Model',
     'workspace': 'Workspace',
     'workspace_files': 'Files',
-    'attachment_choose': 'Attach files',
+    'attachment_choose': 'Add attachment',
+    'attachment_upload_image': 'Upload image',
+    'attachment_upload_file': 'Upload file',
+    'attachment_remove': 'Remove attachment',
+    'attachment_draft_label': 'Draft attachments',
+    'attachment_vision_warning': 'This model will not receive images directly, but Baize can still try a vision sub-agent or image tool.',
+    'attachment_image_type': 'Images must be PNG, JPEG, GIF, or WebP.',
+    'attachment_image_too_large': 'Each image must be 10 MiB or smaller.',
+    'attachment_unavailable_goal': 'Attachments are unavailable in Goal mode. Your current attachments are still in the draft.',
+    'attachment_unavailable_running': 'Attachments cannot be added or sent while a task is running. Your draft is unchanged.',
+    'attachment_unavailable_command': 'Attachments cannot be combined with slash or shell commands.',
     'attachment_cancel_upload': 'Cancel upload',
     'attachment_upload_failed': 'File upload failed',
     'attachment_paste_too_large': 'Large clipboard files are not supported. Use file selection or drag and drop.',
@@ -459,6 +469,16 @@ const __T = {
     'workspace': '工作区',
     'workspace_files': '文件',
     'attachment_choose': '添加附件',
+    'attachment_upload_image': '上传图片',
+    'attachment_upload_file': '上传文件',
+    'attachment_remove': '移除附件',
+    'attachment_draft_label': '草稿附件',
+    'attachment_vision_warning': '当前模型不会直接接收图片，但 Baize 仍可尝试视觉子代理或图片工具。',
+    'attachment_image_type': '图片仅支持 PNG、JPEG、GIF 或 WebP。',
+    'attachment_image_too_large': '单张图片不能超过 10 MiB。',
+    'attachment_unavailable_goal': 'Goal 模式暂不支持附件；当前附件仍保留在草稿中。',
+    'attachment_unavailable_running': '任务运行期间不能添加或发送附件；当前草稿保持不变。',
+    'attachment_unavailable_command': '附件不能与斜杠命令或 shell 命令混用。',
     'attachment_cancel_upload': '取消上传',
     'attachment_upload_failed': '文件上传失败',
     'attachment_paste_too_large': '剪贴板中的大文件不支持直接粘贴，请使用文件选择或拖放。',
@@ -828,6 +848,11 @@ window.fetch = (...args) => __authReady.then(() => __nativeFetch(...args));
 // ── state ──
 let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask';
 let goalMode = false, goalActive = false, goalText = '';
+let imageInputEnabled = null;
+let draftAttachments = [];
+let attachmentUploading = false;
+let attachmentXHR = null;
+let attachmentUploadCancelled = false;
 // guidance queue (desktop composer-guidance parity): mid-turn input is queued
 // here while a turn runs, then steered in immediately or sent after turn_done.
 let guidanceQueue = [];
@@ -1188,6 +1213,7 @@ function setRunning(on) {
   updateActionAvailability();
   if(on){turnStartAt=Date.now();turnTokens=0;turnOutputTokens=0;turnOutputChars=0;turnOutputCharsAtUsage=0;modelActiveAt=0;modelActiveMs=0;waitAccumMs=0;waitStartedAt=0;tickTimer=setInterval(updateRunStrip,1000);} else {clearInterval(tickTimer);}
   updateRunStrip();
+  updateAttachmentAvailability();
 }
 
 function setRetrying(attempt,max) {
@@ -1239,9 +1265,86 @@ function resetItems() { items = []; nextItemId = 1; liveAssistant = null; delive
 function hasVisibleItems() {
   return items.some(it => it.kind === 'user' || it.kind === 'assistant' || it.kind === 'tool');
 }
+
+const NAMED_ATTACHMENT_REF_RE = /(^|\s)@\[([^\]\r\n]+)\]\((\.reasonix\/attachments\/[^)\s]+)\)/g;
+const RAW_ATTACHMENT_REF_RE = /(^|\s)@(\.reasonix\/attachments\/[^\s]+)/g;
+const DIRECT_IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp']);
+const DIRECT_IMAGE_MIMES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
+
+function attachmentBaseName(path) {
+  const clean = String(path || '').replace(/[\\/]+$/, '');
+  return clean.slice(Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\')) + 1) || 'attachment';
+}
+function attachmentExt(path) {
+  const name = attachmentBaseName(path);
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+function attachmentRecord(path, name) {
+  const ext = attachmentExt(path);
+  return { path, name: String(name || attachmentBaseName(path)).trim() || 'attachment', kind: DIRECT_IMAGE_EXTS.has(ext) ? 'image' : 'file', ext: ext.toUpperCase() };
+}
+function parseAttachmentRefsForDisplay(value) {
+  const attachments = [];
+  const seen = new Set();
+  const remember = (path, name) => {
+    if (!seen.has(path)) { seen.add(path); attachments.push(attachmentRecord(path, name)); }
+  };
+  const text = String(value || '')
+    .replace(NAMED_ATTACHMENT_REF_RE, (_full, lead, label, path) => {
+      try { path = decodeURIComponent(path); } catch {}
+      remember(path, label.replace(/\\([\[\]])/g, '$1')); return lead;
+    })
+    .replace(RAW_ATTACHMENT_REF_RE, (_full, lead, path) => { remember(path, attachmentBaseName(path)); return lead; })
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { text, attachments };
+}
+function displayAttachmentName(name) {
+  return String(name || 'attachment').replace(/[\[\]()\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'attachment';
+}
+function formatAttachmentMessage(text, attachments) {
+  const refs = attachments.map(a => '@[' + displayAttachmentName(a.name) + '](' + a.path + ')').join(' ');
+  return [String(text || '').trim(), refs].filter(Boolean).join('\n\n');
+}
+function attachmentFileURL(path) { return '/file?path=' + encodeURIComponent(path); }
+function renderAttachmentCards(attachments, options={}) {
+  const list = el('div', 'msg-attachments' + (options.draft ? ' msg-attachments--draft' : '') + (options.edit ? ' msg-attachments--edit' : ''));
+  attachments.forEach((attachment, index) => {
+    const card = el('div', 'attachment-card attachment-card--' + attachment.kind);
+    if (attachment.kind === 'image') {
+      const preview = el('button', 'attachment-card__preview');
+      preview.type = 'button'; preview.title = attachment.name;
+      const img = document.createElement('img');
+      img.src = attachmentFileURL(attachment.path); img.alt = attachment.name;
+      preview.appendChild(img); preview.onclick = () => openImageViewer(img.src);
+      card.appendChild(preview);
+    } else {
+      const icon = el('span', 'attachment-card__file');
+      icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+      card.appendChild(icon);
+    }
+    const meta = el('span', 'attachment-card__meta');
+    meta.appendChild(el('span', 'attachment-card__name', attachment.name));
+    meta.appendChild(el('span', 'attachment-card__type', attachment.ext || __('attachment_upload_file')));
+    card.appendChild(meta);
+    if (options.removable) {
+      const remove = el('button', 'attachment-card__remove', '×');
+      remove.type = 'button'; remove.title = __('attachment_remove'); remove.setAttribute('aria-label', __('attachment_remove') + ': ' + attachment.name);
+      remove.onclick = () => options.onRemove?.(index, attachment);
+      card.appendChild(remove);
+    }
+    list.appendChild(card);
+  });
+  return list;
+}
 // textOut returns the plain text of an item for copying/export purposes.
 function itemPlainText(it) {
-  if (it.kind === 'user') return it.text || '';
+  if (it.kind === 'user') {
+    const parsed = parseAttachmentRefsForDisplay(it.text);
+    return [parsed.text, parsed.attachments.map(a => a.name).join('\n')].filter(Boolean).join('\n\n');
+  }
   if (it.kind === 'assistant') {
     const parts = [];
     if (it.reasoning) parts.push(it.reasoning);
@@ -1292,39 +1395,47 @@ function startEdit(it, d) {
   editingItem = it;
   const textEl = d.querySelector('.msg__text');
   if (!textEl) { editingItem = null; return; }
+  const current = parseAttachmentRefsForDisplay(it.text);
+  let editAttachments = current.attachments.slice();
+  const previousTextDisplay = textEl.style.display;
   textEl.style.display = 'none';
+  const currentCards = d.querySelector('.msg-attachments');
+  if (currentCards) currentCards.style.display = 'none';
   const box = el('div', 'msg-edit');
   const ta = document.createElement('textarea');
   ta.className = 'msg-edit__input';
-  ta.value = it.text;
+  ta.value = current.text;
   ta.spellcheck = false;
   const bar = el('div', 'msg-edit__bar');
   const hint = el('span', 'msg-edit__hint', __('edit_hint'));
   const save = el('button', 'msg-edit__btn msg-edit__btn--save', __('edit_save'));
   const cancel = el('button', 'msg-edit__btn', __('edit_cancel'));
   save.type = 'button'; cancel.type = 'button';
+  const editCards = el('div');
+  const renderEditCards = () => {
+    editCards.textContent = '';
+    if (!editAttachments.length) return;
+    editCards.appendChild(renderAttachmentCards(editAttachments, { edit:true, removable:true, onRemove:index => { editAttachments.splice(index, 1); renderEditCards(); } }));
+  };
+  renderEditCards();
   bar.appendChild(hint); bar.appendChild(save); bar.appendChild(cancel);
-  box.appendChild(ta); box.appendChild(bar);
+  box.appendChild(ta); box.appendChild(editCards); box.appendChild(bar);
   d.appendChild(box);
   const finish = (saveIt) => {
     box.remove();
-    textEl.style.display = '';
+    textEl.style.display = previousTextDisplay;
+    if (currentCards) currentCards.style.display = '';
     editingItem = null;
     if (saveIt) {
-      const v = ta.value;
-      post('/edit', { display: v, input: v, original: it.text }).then(r => {
+      const v = ta.value.trim();
+      if (!v && !editAttachments.length) return;
+      post('/edit', { input: v, original: it.text, attachments: editAttachments.map(a => a.path) }).then(r => {
         if (r.ok) {
-          it.text = v;
+          it.text = formatAttachmentMessage(v, editAttachments);
           syncQuestionNav();
-          const sec = d.querySelector('.md-sections');
-          if (sec) { sec.innerHTML = renderMarkdown(v); fixImageSrcs(sec); }
-          let note = d.querySelector('.msg__edited');
-          if (!note) {
-            note = el('span', 'msg__edited', __('edited_note'));
-            const wrap = d.querySelector('.msg__text');
-            if (wrap && wrap.nextSibling) wrap.after(note);
-            else d.appendChild(note);
-          }
+          const replacement = renderItem(it);
+          replacement.appendChild(el('span', 'msg__edited', __('edited_note')));
+          d.replaceWith(replacement);
         }
       });
     }
@@ -1438,6 +1549,7 @@ function appendItem(it, dom) {
 // for history rebuilds. Both read the same item state.
 function renderItem(it) {
   if (it.kind === 'user') {
+    const parsed = parseAttachmentRefsForDisplay(it.text);
     const d = el('div', 'msg msg--user');
     d.id = 'question-anchor-' + it.id; // jump-bar scroll target (desktop parity)
     const wrap = el('div', 'msg__text msg__text--md');
@@ -1445,11 +1557,14 @@ function renderItem(it) {
     const tail = el('span', 'md-tail');
     wrap.appendChild(sections); wrap.appendChild(tail);
     d.appendChild(wrap);
-    if (it.text) {
-      sections.innerHTML = renderMarkdown(it.text);
+    if (parsed.text) {
+      sections.innerHTML = renderMarkdown(parsed.text);
       fixImageSrcs(sections);
+    } else {
+      wrap.style.display = 'none';
     }
     tail.style.display = 'none';
+    if (parsed.attachments.length) d.appendChild(renderAttachmentCards(parsed.attachments));
     addMsgActions(it, d, { editable: true });
     it.dom = { root: d, text: wrap, sections };
     return d;
@@ -1493,7 +1608,9 @@ function questionAnchors() {
   let turn = 0;
   for (const it of items) {
     if (it.kind !== 'user') continue;
-    anchors.push({ id: it.id, text: compactText(it.text, 80), turn });
+    const parsed = parseAttachmentRefsForDisplay(it.text);
+    const label = parsed.text || parsed.attachments.map(a => a.name).join(', ');
+    anchors.push({ id: it.id, text: compactText(label, 80), turn });
     turn += 1;
   }
   return anchors;
@@ -3281,6 +3398,7 @@ function fetchStatus(){
     // Re-sync running from the server: after a history rebuild the SSE guard
     // skips turn_started/turn_done, so the server is the source of truth here.
     if(typeof s.running==='boolean'&&s.running!==running)setRunning(s.running);
+    if(typeof s.imageInputEnabled==='boolean')imageInputEnabled=s.imageInputEnabled;
     // sync mode UI without triggering POST (server is source of truth)
     planMode=!!s.plan;
     toolApprovalMode=s.toolApprovalMode || ((s.autoApproveTools??s.bypass)?'yolo':'ask');
@@ -3292,6 +3410,7 @@ function fetchStatus(){
     goalText=(s.goal||'').trim();
     goalActive=goalText!==''&&(s.goalStatus||'')==='running';
     updateGoalUI();
+    renderDraftAttachments();
     sessionCostQuote=s.sessionCostQuote||null;
     // sidebar metrics
     const cacheTotal=(s.cacheHit||0)+(s.cacheMiss||0);
@@ -3543,45 +3662,44 @@ function openImageViewer(url) {
 }
 function closeImageViewer(){if(imageViewer){imageViewer.remove();imageViewer=null;}}
 
-// ── attachments (legacy image paste + streaming file upload) ──
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-function insertIntoComposer(text) {
-  const at = input.selectionStart ?? input.value.length;
-  const prefix = input.value.slice(0, at);
-  const suffix = input.value.slice(at);
-  const sep = prefix && !/\n$/.test(prefix) ? '\n' : '';
-  input.value = prefix + sep + text + '\n' + suffix;
-  input.dispatchEvent(new Event('input'));
-  input.focus();
-}
-async function attachPastedImages(files) {
-  for (const f of files) {
-    if (!f.type || !f.type.startsWith('image/')) continue;
-    if (f.size > 10 << 20) { showNotice(__('attachment_paste_too_large'),'warn'); continue; }
-    const b64 = await fileToBase64(f);
-    const r = await post('/attach', { name: f.name || 'paste.png', data: b64 });
-    if (r.ok) {
-      const res = await r.json();
-      if (res.path) insertIntoComposer('![' + (f.name || 'image') + '](' + res.path + ')');
-    }
+// ── draft attachments ──
+function renderDraftAttachments() {
+  const shelf = $('#composer-attachments');
+  shelf.textContent = '';
+  shelf.style.display = draftAttachments.length ? '' : 'none';
+  if (draftAttachments.length) {
+    shelf.appendChild(renderAttachmentCards(draftAttachments, { draft:true, removable:true, onRemove:index => {
+      draftAttachments.splice(index, 1);
+      renderDraftAttachments();
+    } }));
   }
+  const hasImage = draftAttachments.some(a => a.kind === 'image');
+  $('#composer-attachment-warning').style.display = hasImage && imageInputEnabled === false ? '' : 'none';
+  updateAttachmentAvailability();
 }
-let attachmentXHR=null;
+function attachmentEntryDisabled() { return running || attachmentUploading || goalMode || goalText !== ''; }
+function updateAttachmentAvailability() {
+  const disabled = attachmentEntryDisabled();
+  const button = $('#btn-attach');
+  if (button) button.disabled = disabled;
+  if (attachmentUploading) btnSend.disabled = true;
+  else btnSend.disabled = false;
+  if (disabled) closeAttachmentMenu();
+}
 function showUpload(file,loaded=0,total=file.size){
   const box=$('#attachment-upload'),pct=total>0?Math.min(100,Math.round(loaded*100/total)):0;
-  box.style.display='grid';$('#attachment-upload-name').textContent=file.name;$('#attachment-upload-percent').textContent=pct+'%';$('#attachment-upload-fill').style.width=pct+'%';
+  box.style.display='grid';$('#attachment-upload-name').textContent=uploadFileName(file);$('#attachment-upload-percent').textContent=pct+'%';$('#attachment-upload-fill').style.width=pct+'%';
 }
 function hideUpload(){const box=$('#attachment-upload');if(box)box.style.display='none';attachmentXHR=null;}
+function uploadFileName(file) {
+  if (file.name) return file.name;
+  const ext = {'image/png':'png','image/jpeg':'jpg','image/gif':'gif','image/webp':'webp'}[String(file.type || '').toLowerCase()] || 'bin';
+  return 'clipboard-' + Date.now() + '.' + ext;
+}
 function uploadAttachment(file){
   return new Promise((resolve,reject)=>{
-    const form=new FormData();form.append('file',file,file.name);
+    const name=uploadFileName(file);
+    const form=new FormData();form.append('file',file,name);
     const xhr=new XMLHttpRequest();attachmentXHR=xhr;xhr.open('POST','/attach');xhr.setRequestHeader('X-Reasonix-Request','attachment-v1');
     xhr.upload.onprogress=e=>showUpload(file,e.loaded,e.lengthComputable?e.total:file.size);
     xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){try{resolve(JSON.parse(xhr.responseText));}catch(error){reject(error);}}else reject(new Error(xhr.responseText.trim()||('HTTP '+xhr.status)));};
@@ -3589,14 +3707,37 @@ function uploadAttachment(file){
     showUpload(file);xhr.send(form);
   });
 }
-async function attachFiles(files) {
+function isDirectImageFile(file) {
+  const ext = attachmentExt(file.name);
+  const mime = String(file.type || '').toLowerCase();
+  return (DIRECT_IMAGE_MIMES.has(mime) && (!ext || DIRECT_IMAGE_EXTS.has(ext))) || (DIRECT_IMAGE_EXTS.has(ext) && !mime);
+}
+function validateImageFile(file) {
+  if (!isDirectImageFile(file)) { showNotice(__('attachment_image_type'),'warn'); return false; }
+  if (file.size > 10 << 20) { showNotice(__('attachment_image_too_large'),'warn'); return false; }
+  return true;
+}
+async function attachFiles(files, imageOnly=false) {
+  if (attachmentEntryDisabled()) {
+    showNotice(goalMode || goalText ? __('attachment_unavailable_goal') : __('attachment_unavailable_running'),'warn');
+    return;
+  }
+  attachmentUploading = true;
+  attachmentUploadCancelled = false;
+  updateAttachmentAvailability();
   for (const f of files) {
+    if (attachmentUploadCancelled) break;
+    const image = isDirectImageFile(f);
+    if ((imageOnly || image) && !validateImageFile(f)) continue;
     try{
       const res=await uploadAttachment(f);
-      if(res.path){const image=f.type&&f.type.startsWith('image/');insertIntoComposer(image?'!['+(f.name||'image')+']('+res.path+')':'@'+res.path);}
+      if(res.path){draftAttachments.push({...attachmentRecord(res.path,res.name||uploadFileName(f)),size:res.size||f.size});renderDraftAttachments();}
     }catch(error){if(error?.name!=='AbortError')showNotice((error instanceof Error?error.message:String(error))||__('attachment_upload_failed'),'warn');}
     finally{hideUpload();}
   }
+  attachmentUploading = false;
+  attachmentUploadCancelled = false;
+  updateAttachmentAvailability();
 }
 input.addEventListener('paste', e => {
   const files = e.clipboardData && e.clipboardData.files;
@@ -3604,7 +3745,7 @@ input.addEventListener('paste', e => {
   const all = Array.from(files);
   const imgs = all.filter(f => f.type && f.type.startsWith('image/'));
   e.preventDefault();
-  if (imgs.length) attachPastedImages(imgs);
+  if (imgs.length) attachFiles(imgs, true);
   if (imgs.length !== all.length) showNotice(__('attachment_paste_files'),'warn');
 });
 const composerBox = input.closest('.composer') || input.parentElement;
@@ -3622,9 +3763,36 @@ composerBox.addEventListener('drop', e => {
 function hasFiles(e) {
   return !!((e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)||(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes('Files')));
 }
-$('#btn-attach').onclick=()=>$('#attachment-file-input').click();
+const attachmentMenu = $('#attachment-menu');
+function closeAttachmentMenu({restoreFocus=false}={}) {
+  if (!attachmentMenu) return;
+  attachmentMenu.style.display = 'none';
+  $('#btn-attach').setAttribute('aria-expanded','false');
+  if (restoreFocus) $('#btn-attach').focus();
+}
+function openAttachmentMenu() {
+  if (attachmentEntryDisabled()) return;
+  attachmentMenu.style.display = '';
+  $('#btn-attach').setAttribute('aria-expanded','true');
+  attachmentMenu.querySelector('[role="menuitem"]')?.focus();
+}
+$('#btn-attach').onclick=()=>attachmentMenu.style.display==='none'?openAttachmentMenu():closeAttachmentMenu({restoreFocus:true});
+$('#attachment-image-option').onclick=()=>{closeAttachmentMenu();$('#attachment-image-input').click();};
+$('#attachment-file-option').onclick=()=>{closeAttachmentMenu();$('#attachment-file-input').click();};
+$('#attachment-image-input').onchange=e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attachFiles(files,true);};
 $('#attachment-file-input').onchange=e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attachFiles(files);};
-$('#attachment-upload-cancel').onclick=()=>attachmentXHR?.abort();
+$('#attachment-upload-cancel').onclick=()=>{attachmentUploadCancelled=true;attachmentXHR?.abort();};
+attachmentMenu.addEventListener('keydown',e=>{
+  const items=Array.from(attachmentMenu.querySelectorAll('[role="menuitem"]'));
+  const index=items.indexOf(document.activeElement);
+  if(e.key==='Escape'){e.preventDefault();closeAttachmentMenu({restoreFocus:true});return;}
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    const step=e.key==='ArrowDown'?1:-1;
+    items[(index+step+items.length)%items.length]?.focus();
+  }
+});
+document.addEventListener('click',e=>{if(attachmentMenu.style.display!=='none'&&!e.target.closest('.attachment-picker'))closeAttachmentMenu();});
 
 // ── input handling ──
 async function syncModeBeforeSubmit(){
@@ -3775,12 +3943,18 @@ function foldGuidanceBackToDraft() {
 }
 
 async function send(){
-  const v=input.value.trim(); if(!v)return;
+  const v=input.value.trim();
+  const attachments=draftAttachments.slice();
+  if(!v&&!attachments.length)return;
   if(running){
+    if(attachments.length){showNotice(__('attachment_unavailable_running'),'warn');return;}
     // Mid-turn: queue as guidance instead of starting a second turn.
     queueGuidance(v);
     return;
   }
+  if(attachmentUploading)return;
+  if(attachments.length&&(goalMode||goalText)){showNotice(__('attachment_unavailable_goal'),'warn');return;}
+  if(attachments.length&&(v.startsWith('/')||v.startsWith('!'))){showNotice(__('attachment_unavailable_command'),'warn');return;}
   if(v==='/reload'){
     input.value='';input.style.height='';closeSlashMenu();
     showNotice(__('extensions_reloading'));
@@ -3801,10 +3975,17 @@ async function send(){
     goalMode=false;
     updateGoalUI();
   }
-  appendUserMsg(v);
   const isModelSwitch=submitInput.startsWith('/model ');
-  post('/submit',{input:submitInput}).then(r=>{if(r.ok&&(r.status===202||r.status===204)){if(isModelSwitch)refreshModelSelection();else{fetchStatus();fetchEffort();}loadSessions();}});
-  input.value='';input.style.height='';closeSlashMenu();
+  const response=await post('/submit',{input:submitInput,attachments:attachments.map(a=>a.path)});
+  if(!response.ok){showNotice((await response.text()).trim()||__('attachment_upload_failed'),'warn');return;}
+  if(response.status===202||response.status===204){
+    appendUserMsg(formatAttachmentMessage(v,attachments));
+    draftAttachments=[];
+    renderDraftAttachments();
+    if(isModelSwitch)refreshModelSelection();else{fetchStatus();fetchEffort();}
+    loadSessions();
+    input.value='';input.style.height='';closeSlashMenu();
+  }
 }
 
 input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';updateSlashMenu();});
@@ -3869,6 +4050,7 @@ function updateGoalUI(){
     bar.style.display='none';
   }
   input.placeholder=running?__('placeholder_running'):(goalMode?__('goal_placeholder'):__('placeholder'));
+  updateAttachmentAvailability();
 }
 async function setToolApprovalMode(mode){toolApprovalMode=mode;bypassMode=mode==='yolo';updateModeButtons();await post('/tool-approval-mode',{mode});}
 async function setPlan(on){planMode=on;updateModeButtons();await post('/plan',{on});}
@@ -3884,6 +4066,7 @@ function toggleGoalMode(){
     goalMode=false;
     updateGoalUI();
   } else {
+    if(draftAttachments.length){showNotice(__('attachment_unavailable_goal'),'warn');return;}
     goalMode=true;
     updateGoalUI();
     input.focus();
