@@ -7,7 +7,7 @@
 | 工具 | Read-only | 说明 |
 | --- | --- | --- |
 | `analyze_data` | true | 在进程内对 JSON 执行确定、无副作用的 Starlark 分组、聚合、交集和趋势计算，不创建临时文件，也不提供文件、环境、时间、随机、网络、模块或子进程能力。 |
-| `bash` | false | 执行 shell 命令并返回 stdout/stderr。构建、测试、git、包管理器等使用它；读写查找文件优先使用专用工具。 |
+| `bash` | false | 执行 shell 命令并返回 stdout/stderr。有界结构化输入通过前台专用、上限 2 MiB 的 `stdin` 传递；构建、测试、git、包管理器等使用它，读写查找文件优先使用专用工具。 |
 | `bash_output` | true | 读取后台 `bash` 或 `task` job 自上次读取后的新增输出和状态。 |
 | `code_index` | true | 轻量内置代码符号索引；优先使用 `lsp_*` 或代码图 MCP，缺失时用它兜底。 |
 | `complete_step` | true | 用宿主验证的命令、查询工具、受限计算、复审或文件证据记录已批准计划中一个步骤的完成情况。 |

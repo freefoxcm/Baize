@@ -7,7 +7,27 @@ import (
 	"reasonix/internal/evidence"
 	"reasonix/internal/instruction"
 	"reasonix/internal/provider"
+	"reasonix/internal/taskcontract"
 )
+
+func TestSummarizeReadinessGapsDeduplicatesPresentation(t *testing.T) {
+	got := summarizeReadinessGaps([]string{"verify", "review", "verify", "verify"})
+	want := "verify (3 obligations); review"
+	if got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
+}
+
+func TestObligationGapExplainsOpaqueAndReviewRecovery(t *testing.T) {
+	opaque := obligationGap(taskcontract.Obligation{Kind: taskcontract.ObligationFullVerify, Origin: taskcontract.ReasonOpaqueWriter})
+	if !strings.Contains(opaque, "readOnlyHint=true") || !strings.Contains(opaque, "destructiveHint=false") {
+		t.Fatalf("opaque gap = %q", opaque)
+	}
+	review := obligationGap(taskcontract.Obligation{Kind: taskcontract.ObligationDiffReview})
+	if !strings.Contains(review, "git status") || !strings.Contains(review, "do not count") {
+		t.Fatalf("review gap = %q", review)
+	}
+}
 
 func readinessLedger(receipts ...evidence.Receipt) *evidence.Ledger {
 	l := evidence.NewLedger()

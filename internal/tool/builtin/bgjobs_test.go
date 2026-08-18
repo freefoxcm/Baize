@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"reasonix/internal/evidence"
 	"reasonix/internal/jobs"
 	"reasonix/internal/planmode"
+	"reasonix/internal/sandbox"
 )
 
 // End-to-end through the actual tools: a background bash job runs under a manager
@@ -20,7 +22,16 @@ func TestBackgroundBashWaitAndOutput(t *testing.T) {
 	defer m.Close()
 	ctx := jobs.WithManager(context.Background(), m)
 
-	start, err := bash{}.Execute(ctx, []byte(`{"command":"printf hello; sleep 0.3","run_in_background":true}`))
+	b := bash{}
+	command := "printf hello; sleep 0.3"
+	if b.resolved().Kind == sandbox.ShellPowerShell {
+		command = "[Console]::Out.Write('hello'); Start-Sleep -Milliseconds 300"
+	}
+	args, err := json.Marshal(map[string]any{"command": command, "run_in_background": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := b.Execute(ctx, args)
 	if err != nil {
 		t.Fatalf("bash background: %v", err)
 	}

@@ -224,6 +224,7 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 	if len(missing) == 0 && stop.Disposition == taskcontract.StopReady {
 		return out
 	}
+	reason := summarizeReadinessGaps(missing)
 	out.applies = true
 	switch stop.Disposition {
 	case taskcontract.StopReady:
@@ -234,11 +235,11 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 			return out
 		}
 	case taskcontract.StopPartial:
-		out.reason = strings.Join(missing, "; ")
+		out.reason = reason
 		return a.applyPartialCheckWaiver(out)
 	case taskcontract.StopBlocked:
 		out.continuationUnsafe = true
-		out.reason = strings.Join(missing, "; ")
+		out.reason = reason
 		return out
 	case taskcontract.StopContinue:
 		if a.loopGuardAllowsFinal() {
@@ -247,7 +248,7 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 		if a.turn.engine != nil {
 			a.turn.engine.NoteRecoveryAttempt()
 		}
-		out.reason = strings.Join(missing, "; ")
+		out.reason = reason
 		if !a.turn.automaticReadinessContinuation && !a.closedLoopActive() {
 			return a.applyPartialCheckWaiver(out)
 		}
@@ -256,16 +257,40 @@ func (a *Agent) finalReadinessCheckFor() finalReadinessCheck {
 	if a.loopGuardAllowsFinal() {
 		return out
 	}
-	out.reason = strings.Join(missing, "; ")
+	out.reason = reason
 	return a.applyPartialCheckWaiver(out)
+}
+
+func summarizeReadinessGaps(gaps []string) string {
+	counts := make(map[string]int, len(gaps))
+	ordered := make([]string, 0, len(gaps))
+	for _, gap := range gaps {
+		gap = strings.TrimSpace(gap)
+		if gap == "" {
+			continue
+		}
+		if counts[gap] == 0 {
+			ordered = append(ordered, gap)
+		}
+		counts[gap]++
+	}
+	for i, gap := range ordered {
+		if counts[gap] > 1 {
+			ordered[i] = fmt.Sprintf("%s (%d obligations)", gap, counts[gap])
+		}
+	}
+	return strings.Join(ordered, "; ")
 }
 
 func obligationGap(o taskcontract.Obligation) string {
 	switch o.Kind {
 	case taskcontract.ObligationTargetedVerify, taskcontract.ObligationFullVerify:
+		if o.Origin == taskcontract.ReasonOpaqueWriter {
+			return "run full verification after the latest opaque mutation; read-only MCP tools must declare readOnlyHint=true and destructiveHint=false"
+		}
 		return "run relevant verification after the latest mutation"
 	case taskcontract.ObligationDiffReview:
-		return "inspect the changed result after the latest mutation (read the touched file or run git diff/status)"
+		return "inspect the changed result after the latest mutation (read each touched file or view git diff patch content; git status and git diff --check do not count)"
 	case taskcontract.ObligationIndependentReview:
 		return "run an independent review after the latest mutation"
 	case taskcontract.ObligationSecurityReview:

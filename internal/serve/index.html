@@ -211,10 +211,6 @@
       </div>
       <div class="composer" id="composer">
         <span class="composer__caret">&#8250;</span>
-        <button type="button" class="composer__btn composer__btn--attach" id="btn-attach" title="__('attachment_choose')" aria-label="__('attachment_choose')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
-        </button>
-        <input type="file" id="attachment-file-input" multiple hidden>
         <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
         <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
@@ -224,6 +220,10 @@
         </button>
       </div>
       <div class="composer-meta" id="composer-meta">
+        <button type="button" class="composer-meta__attach" id="btn-attach" title="__('attachment_choose')" aria-label="__('attachment_choose')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+        </button>
+        <input type="file" id="attachment-file-input" multiple hidden>
         <div class="composer-meta__control composer-meta__control--mode">
           <div class="task-mode">
             <button type="button" class="task-mode__trigger" id="btn-task-mode" title="__('task_mode_title')">

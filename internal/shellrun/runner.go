@@ -45,6 +45,7 @@ type Request struct {
 	Argv              []string
 	Dir               string
 	Env               []string
+	Stdin             *string
 	Timeout           time.Duration
 	WaitDelay         time.Duration
 	CommandPreview    string
@@ -101,6 +102,9 @@ func RunForeground(ctx context.Context, req Request) Result {
 	cmd := proc.CommandContext(runCtx, req.Argv[0], req.Argv[1:]...)
 	cmd.Dir = req.Dir
 	cmd.Env = req.Env
+	if req.Stdin != nil {
+		cmd.Stdin = strings.NewReader(*req.Stdin)
+	}
 	cmd.WaitDelay = waitDelay
 
 	collector := newOutputCollector(combinedOutputMaxBytes, tool.OutputTailMaxBytes)

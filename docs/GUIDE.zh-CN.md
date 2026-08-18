@@ -643,7 +643,10 @@ Starlark 程序，不提供文件、环境变量、时钟、随机数、网络�
 确实需要 Python 时，Bash 可传 `execution_scope: "scratch"`：工作区只读，会话私有
 临时目录是唯一写入根，网络、后台进程、额外写目录和沙箱逃逸均被禁用；Linux 下该
 目录映射为 `/tmp`。Scratch 仅在宿主能证明 OS 沙箱可用时执行，沙箱不可用会直接
-拒绝而不会退化为无隔离执行，此时应改用 `analyze_data`。普通 Bash 在 normal 作用域
+拒绝而不会退化为无隔离执行，此时应改用 `analyze_data`。前台 Bash 还可通过可选的
+`stdin` 传递不超过 2 MiB 的 UTF-8 文本；有界 JSON 等结构化请求应使用该字段，而不应
+插值进 shell 命令或先写入工作区请求文件。`stdin` 不支持后台执行或保留后台进程。
+普通 Bash 在 normal 作用域
 写入 `/tmp` 仍按持久或未知修改处理，继续要求正常的修改后验证和复审。
 
 `reasonix doctor` 会将该能力显示为 `scratch available`；无法隔离临时分析时则同时

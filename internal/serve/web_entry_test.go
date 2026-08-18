@@ -133,6 +133,12 @@ func TestServeWebUIStreamsAndManagesAttachments(t *testing.T) {
 			t.Fatalf("WebUI missing attachment element %q", want)
 		}
 	}
+	metaIndex := strings.Index(html, `id="composer-meta"`)
+	attachIndex := strings.Index(html, `id="btn-attach"`)
+	taskModeIndex := strings.Index(html, `id="btn-task-mode"`)
+	if metaIndex < 0 || attachIndex < metaIndex || taskModeIndex < attachIndex {
+		t.Fatalf("attachment button must be in the composer meta bar before the task mode control")
+	}
 	for _, want := range []string{
 		"new FormData()",
 		"xhr.upload.onprogress",
@@ -141,6 +147,9 @@ func TestServeWebUIStreamsAndManagesAttachments(t *testing.T) {
 		"fetch('/attachments')",
 		"post('/attachments/delete'",
 		"post('/attachments/clear'",
+		"'delivery_checks': 'Delivery checks: {count} total (initial check + {automatic} automatic follow-up checks).'",
+		"'delivery_checks': '已完成 {count} 次交付检查（初始检查 + {automatic} 次自动补查）。'",
+		"const attempts=Number(e&&e.readiness&&e.readiness.attempts)||0;",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("WebUI missing streaming attachment behavior %q", want)

@@ -162,7 +162,7 @@ func TestBashRoutesToClientTerminal(t *testing.T) {
 func TestBashTerminalFallsBackWhenUnhandled(t *testing.T) {
 	term := &fakeTerminal{ok: false}
 	b := bash{workDir: t.TempDir(), terminal: term}
-	out, err := b.Execute(context.Background(), json.RawMessage(`{"command":"printf local"}`))
+	out, err := b.Execute(context.Background(), argsJSON(t, map[string]any{"command": localOutputCommand(b.resolved())}))
 	if err != nil || !strings.Contains(out, "local") {
 		t.Fatalf("unhandled terminal must fall back to local execution; got %q, %v", out, err)
 	}
@@ -186,11 +186,32 @@ func TestBashTerminalSkippedWhenEnvFilteringEnabled(t *testing.T) {
 	b := bash{workDir: t.TempDir(), terminal: term}
 	// The client terminal spawns with its own unfiltered environment, so an
 	// enabled [secrets].filter_subprocess_env must force local execution.
-	out, err := b.Execute(context.Background(), json.RawMessage(`{"command":"printf local"}`))
+	out, err := b.Execute(context.Background(), argsJSON(t, map[string]any{"command": localOutputCommand(b.resolved())}))
 	if err != nil || !strings.Contains(out, "local") {
 		t.Fatalf("env filtering must fall back to local execution; got %q, %v", out, err)
 	}
 	if len(term.called) != 0 {
 		t.Fatalf("env filtering must never route to the client terminal; calls = %v", term.called)
 	}
+}
+
+func TestBashTerminalSkippedWhenStdinProvided(t *testing.T) {
+	for _, input := range []string{"request", ""} {
+		term := &fakeTerminal{out: "must not run", ok: true}
+		b := bash{workDir: t.TempDir(), terminal: term}
+		out, err := b.Execute(context.Background(), argsJSON(t, map[string]any{"command": localOutputCommand(b.resolved()), "stdin": input}))
+		if err != nil || !strings.Contains(out, "local") {
+			t.Fatalf("stdin %q must use local execution; got %q, %v", input, out, err)
+		}
+		if len(term.called) != 0 {
+			t.Fatalf("stdin %q must never route to the client terminal; calls = %v", input, term.called)
+		}
+	}
+}
+
+func localOutputCommand(sh sandbox.Shell) string {
+	if sh.Kind == sandbox.ShellPowerShell {
+		return "[Console]::Out.Write('local')"
+	}
+	return "printf local"
 }

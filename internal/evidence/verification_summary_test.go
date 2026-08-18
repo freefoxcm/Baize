@@ -23,6 +23,38 @@ func TestVerificationCommandSummaryRecommendationsAreRecognized(t *testing.T) {
 	}
 }
 
+func TestPythonVerificationAllowsIsolationFlagsBeforeModule(t *testing.T) {
+	for _, command := range []string{
+		"python -B -E -m unittest discover -s tests",
+		"python3 -E -B -m pytest -q",
+		"/opt/reasonix-skills/bin/python -B -E -m unittest",
+	} {
+		if !IsVerificationCommand(command) {
+			t.Errorf("expected recognized verifier: %s", command)
+		}
+	}
+	for _, command := range []string{
+		"python -O -m unittest",
+		"python -B -E -m compileall .",
+		"python -B -E -c 'print(1)'",
+		"python -B -E scripts/check.py",
+		"node scripts/check.js",
+		"python -B -E -m custom_checker",
+		"python -B -E -m unittest --junitxml=report.xml",
+	} {
+		if IsVerificationCommand(command) {
+			t.Errorf("unexpected recognized verifier: %s", command)
+		}
+	}
+}
+
+func TestPythonUnittestDiscoveryPatternIsNotInlineInterpreterSource(t *testing.T) {
+	args := json.RawMessage(`{"command":"python -B -E -m unittest discover -s .reasonix/skills/_shared -p test_delivery_artifacts.py"}`)
+	if BashToolCallUsesOpaqueInlineInterpreter(args) {
+		t.Fatal("unittest -p is a discovery pattern after -m, not Python inline source")
+	}
+}
+
 func TestGoBuildAlwaysCountsAsMutation(t *testing.T) {
 	// Even ./... can expand to one main package and write a root executable.
 	// The static classifier cannot know package expansion or inherited GOFLAGS,

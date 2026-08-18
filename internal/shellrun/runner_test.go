@@ -86,7 +86,12 @@ func TestDisplayName(t *testing.T) {
 }
 
 func TestRunForegroundSuccess(t *testing.T) {
-	argv, sh := shellArgv(t, "printf 'ok\\n'")
+	sh := sandbox.ResolveShell("auto", "", nil)
+	command := "printf 'ok\\n'"
+	if sh.Kind == sandbox.ShellPowerShell {
+		command = "Write-Output ok"
+	}
+	argv := shellArgvWith(sh, command)
 	res := RunForeground(context.Background(), Request{
 		Argv:      argv,
 		ShellKind: sh.Kind.String(),
@@ -104,6 +109,26 @@ func TestRunForegroundSuccess(t *testing.T) {
 	}
 	if !strings.Contains(res.Combined, "ok") {
 		t.Fatalf("combined = %q", res.Combined)
+	}
+}
+
+func TestRunForegroundPassesStdin(t *testing.T) {
+	want := "structured request\n"
+	var got string
+	res := RunForeground(context.Background(), Request{
+		Argv:  []string{"irrelevant"},
+		Stdin: &want,
+		Run: func(_ context.Context, cmd *exec.Cmd, _ proc.RunOptions) (*proc.TrackedCommand, error) {
+			body, err := io.ReadAll(cmd.Stdin)
+			got = string(body)
+			return nil, err
+		},
+	})
+	if res.Err != nil {
+		t.Fatalf("RunForeground: %v", res.Err)
+	}
+	if got != want {
+		t.Fatalf("stdin = %q, want %q", got, want)
 	}
 }
 

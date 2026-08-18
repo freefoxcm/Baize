@@ -147,6 +147,10 @@
           "run_in_background": {
             "description": "Run detached: returns a job id immediately and keeps running across turns (no foreground timeout). Read new output with bash_output, wait with wait, stop it with kill_shell. Use for long-running commands like servers, watchers, or builds you don't need to block on.",
             "type": "boolean"
+          },
+          "stdin": {
+            "description": "Optional UTF-8 text passed to the foreground command on standard input (maximum 2 MiB). Unavailable for background or preserved-process execution. Prefer this over command-line interpolation or workspace request files for bounded structured input.",
+            "type": "string"
           }
         },
         "required": [
