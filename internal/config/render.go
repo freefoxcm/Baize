@@ -45,12 +45,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	defaults := Default()
 	var b strings.Builder
 
-	b.WriteString("# Reasonix configuration.\n")
-	fmt.Fprintf(&b, "# Resolution order: flag > ./reasonix.toml > %s > built-in defaults.\n", userConfigDisplayPath())
-	b.WriteString("# Fields marked user/global only are not overridden by ./reasonix.toml.\n")
-	b.WriteString("# Secrets are named via api_key_env and stored in Reasonix's global .env; never put keys here.\n\n")
-
-	fmt.Fprintf(&b, "config_version = %d   # schema marker for diagnostics; old versions may ignore it\n", configVersion(c))
+	renderConfigHeader(&b, c)
 	fmt.Fprintf(&b, "default_model = %q\n", c.DefaultModel)
 	if c.Language != "" {
 		fmt.Fprintf(&b, "language      = %q   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG\n", c.Language)
@@ -60,6 +55,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if scope != RenderScopeProject {
 		fmt.Fprintf(&b, "credentials_store = %q   # legacy compatibility; provider keys are saved in Reasonix's global .env\n", normalizeCredentialsStore(c.CredentialsStore))
 	}
+
+	renderAttachmentConfig(&b, c, defaults, scope)
 	b.WriteString("\n")
 
 	if shouldRenderUI(c, defaults, scope) {
@@ -915,6 +912,8 @@ func RenderTOMLProjectDelta(c *Config) string {
 		}
 		b.WriteString("\n")
 	}
+
+	renderAttachmentDelta(&b, c, d)
 
 	// [agent] section — per-field comparison
 	var agentBuf strings.Builder

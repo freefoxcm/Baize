@@ -1,9 +1,11 @@
 package serve
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +20,10 @@ import (
 // testCtrlWithWorkspace builds a controller whose session lives in a temp
 // workspace so /file and /attach have a root to confine against.
 func testCtrlWithWorkspace(t *testing.T) (*control.Controller, string) {
+	return testCtrlWithAttachmentPolicy(t, control.AttachmentPolicy{})
+}
+
+func testCtrlWithAttachmentPolicy(t *testing.T, policy control.AttachmentPolicy) (*control.Controller, string) {
 	t.Helper()
 	home := t.TempDir()
 	ws := filepath.Join(home, "ws")
@@ -30,15 +36,39 @@ func testCtrlWithWorkspace(t *testing.T) (*control.Controller, string) {
 	}
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{
-		Sink:          bc,
-		SessionDir:    sessDir,
-		WorkspaceRoot: ws,
+		Sink:             bc,
+		SessionDir:       sessDir,
+		WorkspaceRoot:    ws,
+		AttachmentPolicy: policy,
 	})
 	// WorkspaceRoot must return the configured workspace.
 	if got := ctrl.WorkspaceRoot(); got != ws {
 		t.Fatalf("WorkspaceRoot() = %q, want %q", got, ws)
 	}
 	return ctrl, ws
+}
+
+func multipartAttachmentRequest(t *testing.T, endpoint, name string, body []byte) *http.Request {
+	t.Helper()
+	var encoded bytes.Buffer
+	w := multipart.NewWriter(&encoded)
+	part, err := w.CreateFormFile("file", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, &encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("X-Reasonix-Request", "attachment-v1")
+	return req
 }
 
 func TestServeFileServesWorkspaceImages(t *testing.T) {
@@ -222,6 +252,152 @@ func TestServeAttachSavesBase64Image(t *testing.T) {
 	}
 	if resp, _ := http.Post(srv.URL+"/attach", "application/json", strings.NewReader(`{"name":"x.png"}`)); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("missing data status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestServeAttachStreamsMultipartFile(t *testing.T) {
+	ctrl, ws := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	raw := []byte("月份,金额\n2026-01,42\n")
+	req := multipartAttachmentRequest(t, srv.URL+"/attach", "sales.xlsx", raw)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("multipart attach status=%d body=%q", resp.StatusCode, body)
+	}
+	var info control.AttachmentInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "sales.xlsx" || info.Size != int64(len(raw)) || len(info.SHA256) != 64 {
+		t.Fatalf("attachment response = %+v", info)
+	}
+	got, err := os.ReadFile(filepath.Join(ws, filepath.FromSlash(info.Path)))
+	if err != nil || !bytes.Equal(got, raw) {
+		t.Fatalf("saved multipart file mismatch: %q, %v", got, err)
+	}
+}
+
+func TestServeAttachMultipartCSRFProtection(t *testing.T) {
+	ctrl, _ := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	missingHeader := multipartAttachmentRequest(t, srv.URL+"/attach", "x.csv", []byte("a\n1\n"))
+	missingHeader.Header.Del("X-Reasonix-Request")
+	resp, err := http.DefaultClient.Do(missingHeader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("missing attachment header status=%d, want 403", resp.StatusCode)
+	}
+
+	crossSite := multipartAttachmentRequest(t, srv.URL+"/attach", "x.csv", []byte("a\n1\n"))
+	crossSite.Header.Set("Origin", "https://evil.example")
+	crossSite.Header.Set("Sec-Fetch-Site", "cross-site")
+	resp, err = http.DefaultClient.Do(crossSite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site attachment status=%d, want 403", resp.StatusCode)
+	}
+}
+
+func TestServeAttachReportsFileAndWorkspaceLimits(t *testing.T) {
+	ctrl, _ := testCtrlWithAttachmentPolicy(t, control.AttachmentPolicy{MaxFileBytes: 4, WorkspaceQuotaBytes: 5})
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.DefaultClient.Do(multipartAttachmentRequest(t, srv.URL+"/attach", "large.csv", []byte("12345")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("large attachment status=%d, want 413", resp.StatusCode)
+	}
+
+	resp, err = http.DefaultClient.Do(multipartAttachmentRequest(t, srv.URL+"/attach", "first.csv", []byte("1234")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first attachment status=%d, want 200", resp.StatusCode)
+	}
+	resp, err = http.DefaultClient.Do(multipartAttachmentRequest(t, srv.URL+"/attach", "quota.csv", []byte("12")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("quota attachment status=%d, want 507", resp.StatusCode)
+	}
+}
+
+func TestServeAttachmentManagement(t *testing.T) {
+	ctrl, _ := testCtrlWithWorkspace(t)
+	srv := httptest.NewServer(New(ctrl, NewBroadcaster(), config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	upload, err := http.DefaultClient.Do(multipartAttachmentRequest(t, srv.URL+"/attach", "sales.csv", []byte("a\n1\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved control.AttachmentInfo
+	if err := json.NewDecoder(upload.Body).Decode(&saved); err != nil {
+		t.Fatal(err)
+	}
+	upload.Body.Close()
+
+	resp, err := http.Get(srv.URL + "/attachments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed struct {
+		Attachments []control.AttachmentInfo `json:"attachments"`
+		Usage       control.AttachmentUsage  `json:"usage"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if len(listed.Attachments) != 1 || listed.Usage.Count != 1 {
+		t.Fatalf("attachment listing = %+v", listed)
+	}
+
+	deleteBody, _ := json.Marshal(map[string]string{"path": saved.Path})
+	resp, err = http.Post(srv.URL+"/attachments/delete", "application/json", bytes.NewReader(deleteBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete attachment status=%d, want 204", resp.StatusCode)
+	}
+
+	upload, err = http.DefaultClient.Do(multipartAttachmentRequest(t, srv.URL+"/attach", "again.csv", []byte("a\n2\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload.Body.Close()
+	resp, err = http.Post(srv.URL+"/attachments/clear", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("clear attachments status=%d, want 200", resp.StatusCode)
 	}
 }
 

@@ -1,6 +1,8 @@
 package control
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -20,7 +22,6 @@ import (
 )
 
 const maxImageAttachmentBytes = 10 * 1024 * 1024
-const maxFileAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCreateAttempts = 1000
 
 var attachmentPathSeq atomic.Uint64
@@ -49,14 +50,8 @@ func SaveAttachmentBytes(origName string, raw []byte) (string, error) {
 }
 
 func SaveAttachmentBytesInRoot(root, origName string, raw []byte) (string, error) {
-	if len(raw) == 0 || len(raw) > maxFileAttachmentBytes {
-		return "", fmt.Errorf("attachment must be between 1 byte and 25 MB")
-	}
-	ext := strings.ToLower(filepath.Ext(origName))
-	if !safeAttachmentExt.MatchString(ext) {
-		ext = ".bin"
-	}
-	return saveAttachmentBytesInRoot(root, ext, raw)
+	info, err := SaveAttachmentReaderInRoot(context.Background(), root, filepath.Base(origName), bytes.NewReader(raw), int64(len(raw)), DefaultAttachmentPolicy())
+	return info.Path, err
 }
 
 func SaveImageDataURL(dataURL string) (string, error) {
@@ -166,61 +161,7 @@ func SaveImageFile(path string) (string, error) {
 }
 
 func SaveAttachmentFile(path string) (string, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return "", err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("attachment path must not be a symlink")
-	}
-	if info.IsDir() || info.Size() <= 0 || info.Size() > maxFileAttachmentBytes {
-		return "", fmt.Errorf("attachment must be between 1 byte and 25 MB")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	if !os.SameFile(info, opened) {
-		return "", fmt.Errorf("attachment changed while opening")
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, maxFileAttachmentBytes+1))
-	if err != nil {
-		return "", err
-	}
-	if len(raw) == 0 || len(raw) > maxFileAttachmentBytes {
-		return "", fmt.Errorf("attachment must be between 1 byte and 25 MB")
-	}
-	if after, err := f.Stat(); err != nil {
-		return "", err
-	} else if !os.SameFile(opened, after) || after.Size() != opened.Size() {
-		return "", fmt.Errorf("attachment changed while reading")
-	}
-	ext := strings.ToLower(filepath.Ext(path))
-	if !safeAttachmentExt.MatchString(ext) {
-		ext = ".bin"
-	}
-	if err := ensureAttachmentRoot(); err != nil {
-		return "", err
-	}
-	rel, dst, err := createAttachmentFile(ext)
-	if err != nil {
-		return "", err
-	}
-	if _, err := dst.Write(raw); err != nil {
-		_ = dst.Close()
-		_ = os.Remove(rel)
-		return "", err
-	}
-	if err := dst.Close(); err != nil {
-		_ = os.Remove(rel)
-		return "", err
-	}
-	return filepath.ToSlash(rel), nil
+	return SaveAttachmentFileInRoot(".", path, DefaultAttachmentPolicy())
 }
 
 func SaveClipboardImage() (string, error) {
@@ -394,7 +335,19 @@ func ensureAttachmentRoot() error {
 }
 
 func ensureAttachmentRootIn(base string) error {
-	root := filepath.Join(base, ".reasonix", "attachments")
+	reasonixDir := filepath.Join(base, ".reasonix")
+	if info, err := os.Lstat(reasonixDir); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf(".reasonix directory is invalid or a symlink")
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.Mkdir(reasonixDir, 0o755); err != nil && !os.IsExist(err) {
+			return err
+		}
+	} else {
+		return err
+	}
+	root := filepath.Join(reasonixDir, "attachments")
 	if info, err := os.Lstat(root); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("attachment directory must not be a symlink")
@@ -406,7 +359,7 @@ func ensureAttachmentRootIn(base string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := os.Mkdir(root, 0o755); err != nil && !os.IsExist(err) {
 		return err
 	}
 	info, err := os.Lstat(root)

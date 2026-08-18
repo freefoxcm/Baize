@@ -81,6 +81,19 @@ const __T = {
     'model': 'Model',
     'workspace': 'Workspace',
     'workspace_files': 'Files',
+    'attachment_choose': 'Attach files',
+    'attachment_cancel_upload': 'Cancel upload',
+    'attachment_upload_failed': 'File upload failed',
+    'attachment_paste_too_large': 'Large clipboard files are not supported. Use file selection or drag and drop.',
+    'attachment_paste_files': 'Clipboard files cannot be streamed safely. Use file selection or drag and drop.',
+    'attachments_storage': 'Attachment storage',
+    'attachments_usage': '{count} files · {used} / {quota} · {max} per file',
+    'attachments_empty': 'No stored attachments',
+    'attachments_clear_all': 'Clear all attachments',
+    'attachments_history_warning': 'Attachments remain until you delete them. Deleting one can invalidate references in earlier messages.',
+    'attachments_delete_warning': 'Delete this attachment? References in conversation history may stop working and the current analysis cache will be cleared.',
+    'attachments_clear_warning': 'Delete all attachments? Historical references may stop working and the current analysis cache will be cleared.',
+    'attachments_delete_failed': 'Could not delete attachments.',
     'workspace_search': 'Search workspace files',
     'workspace_refresh': 'Refresh files',
     'workspace_close': 'Close file panel',
@@ -443,6 +456,19 @@ const __T = {
     'model': '模型',
     'workspace': '工作区',
     'workspace_files': '文件',
+    'attachment_choose': '添加附件',
+    'attachment_cancel_upload': '取消上传',
+    'attachment_upload_failed': '文件上传失败',
+    'attachment_paste_too_large': '剪贴板中的大文件不支持直接粘贴，请使用文件选择或拖放。',
+    'attachment_paste_files': '剪贴板文件无法安全地流式上传，请使用文件选择或拖放。',
+    'attachments_storage': '附件存储',
+    'attachments_usage': '{count} 个文件 · 已用 {used} / {quota} · 单文件上限 {max}',
+    'attachments_empty': '暂无附件',
+    'attachments_clear_all': '清理全部附件',
+    'attachments_history_warning': '附件会保留到你主动删除。删除后，历史消息中的引用可能失效。',
+    'attachments_delete_warning': '确认删除此附件？历史对话中的引用可能失效，当前分析缓存也会被清理。',
+    'attachments_clear_warning': '确认删除全部附件？历史引用可能失效，当前分析缓存也会被清理。',
+    'attachments_delete_failed': '附件删除失败。',
     'workspace_search': '搜索工作区文件',
     'workspace_refresh': '刷新文件',
     'workspace_close': '关闭文件面板',
@@ -3510,7 +3536,7 @@ function openImageViewer(url) {
 }
 function closeImageViewer(){if(imageViewer){imageViewer.remove();imageViewer=null;}}
 
-// ── attachments (paste / drag-drop images into the composer) ──
+// ── attachments (legacy image paste + streaming file upload) ──
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3528,10 +3554,10 @@ function insertIntoComposer(text) {
   input.dispatchEvent(new Event('input'));
   input.focus();
 }
-async function attachFiles(files) {
+async function attachPastedImages(files) {
   for (const f of files) {
     if (!f.type || !f.type.startsWith('image/')) continue;
-    if (f.size > 10 << 20) continue;
+    if (f.size > 10 << 20) { showNotice(__('attachment_paste_too_large'),'warn'); continue; }
     const b64 = await fileToBase64(f);
     const r = await post('/attach', { name: f.name || 'paste.png', data: b64 });
     if (r.ok) {
@@ -3540,27 +3566,58 @@ async function attachFiles(files) {
     }
   }
 }
+let attachmentXHR=null;
+function showUpload(file,loaded=0,total=file.size){
+  const box=$('#attachment-upload'),pct=total>0?Math.min(100,Math.round(loaded*100/total)):0;
+  box.style.display='grid';$('#attachment-upload-name').textContent=file.name;$('#attachment-upload-percent').textContent=pct+'%';$('#attachment-upload-fill').style.width=pct+'%';
+}
+function hideUpload(){const box=$('#attachment-upload');if(box)box.style.display='none';attachmentXHR=null;}
+function uploadAttachment(file){
+  return new Promise((resolve,reject)=>{
+    const form=new FormData();form.append('file',file,file.name);
+    const xhr=new XMLHttpRequest();attachmentXHR=xhr;xhr.open('POST','/attach');xhr.setRequestHeader('X-Reasonix-Request','attachment-v1');
+    xhr.upload.onprogress=e=>showUpload(file,e.loaded,e.lengthComputable?e.total:file.size);
+    xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){try{resolve(JSON.parse(xhr.responseText));}catch(error){reject(error);}}else reject(new Error(xhr.responseText.trim()||('HTTP '+xhr.status)));};
+    xhr.onerror=()=>reject(new Error(__('attachment_upload_failed')));xhr.onabort=()=>reject(new DOMException('Upload cancelled','AbortError'));
+    showUpload(file);xhr.send(form);
+  });
+}
+async function attachFiles(files) {
+  for (const f of files) {
+    try{
+      const res=await uploadAttachment(f);
+      if(res.path){const image=f.type&&f.type.startsWith('image/');insertIntoComposer(image?'!['+(f.name||'image')+']('+res.path+')':'@'+res.path);}
+    }catch(error){if(error?.name!=='AbortError')showNotice((error instanceof Error?error.message:String(error))||__('attachment_upload_failed'),'warn');}
+    finally{hideUpload();}
+  }
+}
 input.addEventListener('paste', e => {
   const files = e.clipboardData && e.clipboardData.files;
   if (!files || !files.length) return;
-  const imgs = Array.from(files).filter(f => f.type && f.type.startsWith('image/'));
-  if (imgs.length) { e.preventDefault(); attachFiles(imgs); }
+  const all = Array.from(files);
+  const imgs = all.filter(f => f.type && f.type.startsWith('image/'));
+  e.preventDefault();
+  if (imgs.length) attachPastedImages(imgs);
+  if (imgs.length !== all.length) showNotice(__('attachment_paste_files'),'warn');
 });
 const composerBox = input.closest('.composer') || input.parentElement;
 let dragDepth = 0;
-composerBox.addEventListener('dragenter', e => { if (hasImageFiles(e)) { e.preventDefault(); dragDepth++; composerBox.classList.add('composer--drag'); } });
-composerBox.addEventListener('dragover', e => { if (hasImageFiles(e)) { e.preventDefault(); } });
+composerBox.addEventListener('dragenter', e => { if (hasFiles(e)) { e.preventDefault(); dragDepth++; composerBox.classList.add('composer--drag'); } });
+composerBox.addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); } });
 composerBox.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; composerBox.classList.remove('composer--drag'); } });
 composerBox.addEventListener('drop', e => {
-  if (!hasImageFiles(e)) return;
+  if (!hasFiles(e)) return;
   e.preventDefault();
   dragDepth = 0;
   composerBox.classList.remove('composer--drag');
   attachFiles(Array.from(e.dataTransfer.files));
 });
-function hasImageFiles(e) {
-  return Array.from((e.dataTransfer && e.dataTransfer.files) || []).some(f => f.type && f.type.startsWith('image/'));
+function hasFiles(e) {
+  return !!((e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)||(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes('Files')));
 }
+$('#btn-attach').onclick=()=>$('#attachment-file-input').click();
+$('#attachment-file-input').onchange=e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attachFiles(files);};
+$('#attachment-upload-cancel').onclick=()=>attachmentXHR?.abort();
 
 // ── input handling ──
 async function syncModeBeforeSubmit(){
@@ -4398,11 +4455,36 @@ themeBtn.onclick=()=>{
 // ── settings drawer ──
 const settingsDrawer=$('#settings-drawer'),settingsBackdrop=$('#settings-backdrop'),settingsButton=$('#btn-settings'),settingsForm=$('#settings-form');
 let settingsRevision='',settingsSnapshot=null,settingsDirty=false;
+async function loadAttachments(){
+  const list=$('#attachments-list'),usageNode=$('#attachments-usage');
+  if(!list||!usageNode)return;
+  list.innerHTML='<div class="empty-note">'+escHtml(__('loading'))+'</div>';
+  try{
+    const response=await fetch('/attachments');if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));
+    const view=await response.json(),items=Array.isArray(view.attachments)?view.attachments:[],usage=view.usage||{};
+    usageNode.textContent=__('attachments_usage').replace('{count}',String(usage.count||0)).replace('{used}',workspaceFormatBytes(usage.total_bytes||0)).replace('{quota}',workspaceFormatBytes(usage.quota_bytes||0)).replace('{max}',workspaceFormatBytes(usage.max_file_bytes||0));
+    list.textContent='';
+    if(!items.length)list.appendChild(el('div','empty-note',__('attachments_empty')));
+    items.forEach(item=>{
+      const row=el('div','attachment-storage__item');row.appendChild(el('span','attachment-storage__item-name',item.name||item.path||''));row.appendChild(el('span','attachment-storage__item-size',workspaceFormatBytes(item.size||0)));
+      const del=el('button','attachment-storage__delete',__('delete'));del.type='button';del.onclick=()=>deleteManagedAttachment(item.path);row.appendChild(del);list.appendChild(row);
+    });
+    $('#attachments-clear').disabled=!items.length;
+  }catch(error){list.textContent='';list.appendChild(el('div','empty-note',error instanceof Error?error.message:String(error)));}
+}
+async function deleteManagedAttachment(path){
+  if(!window.confirm(__('attachments_delete_warning')))return;
+  const response=await post('/attachments/delete',{path});if(!response.ok){showNotice((await response.text()).trim()||__('attachments_delete_failed'),'warn');return;}await loadAttachments();
+}
+async function clearManagedAttachments(){
+  if(!window.confirm(__('attachments_clear_warning')))return;
+  const response=await post('/attachments/clear',{});if(!response.ok){showNotice((await response.text()).trim()||__('attachments_delete_failed'),'warn');return;}await loadAttachments();
+}
 function openSettings(){
   if(!ordinaryOverlayAllowed())return;
   closeWorkspacePanel({restoreFocus:false});closeOrdinaryModals();
   settingsDrawer.classList.add('settings-drawer--open');settingsDrawer.setAttribute('aria-hidden','false');settingsBackdrop.hidden=false;settingsButton.setAttribute('aria-expanded','true');
-  if(!settingsDirty)loadSettings();
+  if(!settingsDirty)loadSettings();loadAttachments();
 }
 function closeSettings({preserveDraft=false,restoreFocus=false}={}){const wasOpen=settingsDrawer?.classList.contains('settings-drawer--open');settingsDrawer?.classList.remove('settings-drawer--open');settingsDrawer?.setAttribute('aria-hidden','true');if(settingsBackdrop)settingsBackdrop.hidden=true;settingsButton?.setAttribute('aria-expanded','false');if(!preserveDraft)settingsDirty=false;if(wasOpen&&restoreFocus)settingsButton?.focus();}
 function settingsState(text,tone){const state=$('#settings-state');state.textContent=text||'';state.dataset.tone=tone||'';}
@@ -4461,6 +4543,7 @@ settingsForm.onsubmit=async event=>{
 };
 $('#settings-retry').onclick=async()=>{try{const response=await post('/settings/apply',{});if(!response.ok&&response.status!==202)throw new Error((await response.text()).trim()||('HTTP '+response.status));await loadSettings();}catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}};
 settingsButton.onclick=openSettings;$('#settings-close').onclick=()=>closeSettings({restoreFocus:true});settingsBackdrop.onclick=()=>closeSettings({restoreFocus:true});
+$('#attachments-refresh').onclick=loadAttachments;$('#attachments-clear').onclick=clearManagedAttachments;
 if(window.matchMedia){window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(storedThemePreference()==='auto')applyAppearanceSettings();});}
 applyAppearanceSettings();
 

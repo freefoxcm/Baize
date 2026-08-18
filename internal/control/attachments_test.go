@@ -1,13 +1,43 @@
 package control
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"reasonix/internal/sessiontemp"
 )
+
+type zeroAttachmentReader struct{}
+
+func (zeroAttachmentReader) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
+}
+
+type cancelingAttachmentReader struct {
+	cancel context.CancelFunc
+	read   bool
+}
+
+func (r *cancelingAttachmentReader) Read(p []byte) (int, error) {
+	if r.read {
+		return 0, io.EOF
+	}
+	r.read = true
+	n := copy(p, "partial")
+	r.cancel()
+	return n, nil
+}
 
 const tinyPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
@@ -111,7 +141,7 @@ func TestSaveAttachmentFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveAttachmentFile: %v", err)
 	}
-	if !strings.HasPrefix(got, ".reasonix/attachments/clipboard-") || !strings.HasSuffix(got, ".pdf") {
+	if !strings.HasPrefix(got, ".reasonix/attachments/upload-") || !strings.HasSuffix(got, ".pdf") {
 		t.Fatalf("path = %q, want attachment pdf path", got)
 	}
 	if data, err := os.ReadFile(got); err != nil || string(data) != "%PDF-1.4 body" {
@@ -159,6 +189,166 @@ func TestSaveAttachmentFileRejectsSymlink(t *testing.T) {
 	}
 	if _, err := SaveAttachmentFile("link.bin"); err == nil {
 		t.Fatal("symlink attachment path should fail")
+	}
+}
+
+func TestSaveAttachmentReaderStreamsHashesAndUsesPrivatePermissions(t *testing.T) {
+	root := t.TempDir()
+	raw := []byte("month,amount\n2026-01,10\n")
+	info, err := SaveAttachmentReaderInRoot(context.Background(), root, "sales.csv", bytes.NewReader(raw), int64(len(raw)), AttachmentPolicy{MaxFileBytes: 1024, WorkspaceQuotaBytes: 2048})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "sales.csv" || info.Size != int64(len(raw)) || len(info.SHA256) != 64 {
+		t.Fatalf("unexpected attachment info: %+v", info)
+	}
+	fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(info.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Fatalf("attachment mode = %o, want 600", fi.Mode().Perm())
+	}
+}
+
+func TestAttachmentDefaultHundredMiBBoundary(t *testing.T) {
+	if os.Getenv("REASONIX_LARGE_ATTACHMENT_TESTS") != "1" {
+		t.Skip("set REASONIX_LARGE_ATTACHMENT_TESTS=1 for the 100 MiB acceptance boundary")
+	}
+	policy := DefaultAttachmentPolicy()
+	exactRoot := t.TempDir()
+	info, err := SaveAttachmentReaderInRoot(context.Background(), exactRoot, "exact.csv", io.LimitReader(zeroAttachmentReader{}, policy.MaxFileBytes), policy.MaxFileBytes, policy)
+	if err != nil {
+		t.Fatalf("100 MiB upload: %v", err)
+	}
+	if info.Size != policy.MaxFileBytes {
+		t.Fatalf("exact upload size=%d, want %d", info.Size, policy.MaxFileBytes)
+	}
+	overRoot := t.TempDir()
+	_, err = SaveAttachmentReaderInRoot(context.Background(), overRoot, "over.csv", io.LimitReader(zeroAttachmentReader{}, policy.MaxFileBytes+1), -1, policy)
+	if !errors.Is(err, ErrAttachmentTooLarge) {
+		t.Fatalf("100 MiB + 1 upload error=%v, want ErrAttachmentTooLarge", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(overRoot, ".reasonix", "attachments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), ".") {
+			t.Fatalf("over-limit upload left attachment %q", entry.Name())
+		}
+	}
+}
+
+func TestSaveAttachmentReaderCleansTempFilesOnLimitAndQuotaFailures(t *testing.T) {
+	root := t.TempDir()
+	policy := AttachmentPolicy{MaxFileBytes: 4, WorkspaceQuotaBytes: 5}
+	if _, err := SaveAttachmentReaderInRoot(context.Background(), root, "large.csv", strings.NewReader("12345"), -1, policy); !errors.Is(err, ErrAttachmentTooLarge) {
+		t.Fatalf("large upload error = %v", err)
+	}
+	if _, err := SaveAttachmentReaderInRoot(context.Background(), root, "first.csv", strings.NewReader("1234"), 4, policy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveAttachmentReaderInRoot(context.Background(), root, "quota.csv", strings.NewReader("12"), 2, policy); !errors.Is(err, ErrAttachmentQuota) {
+		t.Fatalf("quota upload error = %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, ".reasonix", "attachments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".upload-") {
+			t.Fatalf("failed upload left temporary file %q", entry.Name())
+		}
+	}
+}
+
+func TestSaveAttachmentReaderCleansTempFileWhenCanceled(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err := SaveAttachmentReaderInRoot(ctx, root, "canceled.csv", &cancelingAttachmentReader{cancel: cancel}, -1, DefaultAttachmentPolicy())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled upload error = %v, want context.Canceled", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, ".reasonix", "attachments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".upload-") {
+			t.Fatalf("canceled upload left temporary file %q", entry.Name())
+		}
+	}
+}
+
+func TestSaveAttachmentReaderRejectsSymlinkedReasonixDirectory(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, ".reasonix")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, err := SaveAttachmentReaderInRoot(context.Background(), root, "sales.csv", strings.NewReader("a\n1\n"), 4, DefaultAttachmentPolicy())
+	if err == nil {
+		t.Fatal("symlinked .reasonix directory should be rejected")
+	}
+}
+
+func TestConcurrentAttachmentUploadsCannotExceedQuota(t *testing.T) {
+	root := t.TempDir()
+	policy := AttachmentPolicy{MaxFileBytes: 8, WorkspaceQuotaBytes: 10}
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for _, name := range []string{"a.csv", "b.csv"} {
+		wg.Go(func() {
+			_, err := SaveAttachmentReaderInRoot(context.Background(), root, name, strings.NewReader("123456"), 6, policy)
+			results <- err
+		})
+	}
+	wg.Wait()
+	close(results)
+	success, quota := 0, 0
+	for err := range results {
+		if err == nil {
+			success++
+		} else if errors.Is(err, ErrAttachmentQuota) {
+			quota++
+		} else {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if success != 1 || quota != 1 {
+		t.Fatalf("success=%d quota=%d, want 1/1", success, quota)
+	}
+}
+
+func TestAttachmentManagementDeletesAndRotatesSessionTemp(t *testing.T) {
+	root := t.TempDir()
+	tempManager := sessiontemp.NewWithRoot(t.TempDir())
+	ctrl := New(Options{WorkspaceRoot: root, SessionTemp: tempManager, AttachmentPolicy: AttachmentPolicy{MaxFileBytes: 1024, WorkspaceQuotaBytes: 4096}})
+	defer ctrl.Close()
+	lease, err := tempManager.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldTemp := lease.Dir()
+	lease.Release()
+	info, err := ctrl.SaveAttachment(context.Background(), "sales.csv", strings.NewReader("a\n1\n"), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, usage, err := ctrl.ListAttachments(context.Background())
+	if err != nil || len(items) != 1 || usage.Count != 1 {
+		t.Fatalf("list=%+v usage=%+v err=%v", items, usage, err)
+	}
+	if err := ctrl.DeleteAttachment(context.Background(), info.Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(oldTemp); !os.IsNotExist(err) {
+		t.Fatalf("old session temp still exists after attachment delete: %v", err)
+	}
+	_, usage, err = ctrl.ListAttachments(context.Background())
+	if err != nil || usage.Count != 0 || usage.TotalBytes != 0 {
+		t.Fatalf("usage after delete = %+v, err=%v", usage, err)
 	}
 }
 

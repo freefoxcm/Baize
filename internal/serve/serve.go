@@ -6,6 +6,7 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -588,6 +590,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /edit", s.edit)
 	mux.HandleFunc("GET /file", s.file)
 	mux.HandleFunc("POST /attach", s.attach)
+	mux.HandleFunc("GET /attachments", s.attachments)
+	mux.HandleFunc("POST /attachments/delete", s.deleteAttachment)
+	mux.HandleFunc("POST /attachments/clear", s.clearAttachments)
 	mux.HandleFunc("GET /effort", s.effort)
 	mux.HandleFunc("POST /effort", s.setEffort)
 	mux.HandleFunc("GET /profile", s.profile)
@@ -645,7 +650,12 @@ func csrfGuard(next http.Handler) http.Handler {
 			if i := strings.IndexByte(ct, ';'); i >= 0 {
 				ct = ct[:i]
 			}
-			if !strings.EqualFold(strings.TrimSpace(ct), "application/json") {
+			if strings.EqualFold(strings.TrimSpace(ct), "multipart/form-data") && r.URL.Path == "/attach" {
+				if r.Header.Get("X-Reasonix-Request") != "attachment-v1" || requestIsCrossSite(r) {
+					http.Error(w, "multipart attachment request rejected", http.StatusForbidden)
+					return
+				}
+			} else if !strings.EqualFold(strings.TrimSpace(ct), "application/json") {
 				http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 				return
 			}
@@ -993,21 +1003,27 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, clean)
 }
 
-// attach saves a pasted/dropped file (base64 in JSON — the CSRF guard
-// requires application/json) under <workspace>/.reasonix/attachments/ and
-// returns the workspace-relative path for use as a markdown image reference.
+// attach preserves the JSON image protocol and adds streaming multipart files.
 func (s *Server) attach(w http.ResponseWriter, r *http.Request) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		http.Error(w, "invalid content type", http.StatusBadRequest)
+		return
+	}
+	if strings.EqualFold(mediaType, "multipart/form-data") {
+		s.attachMultipart(w, r)
+		return
+	}
+	if !strings.EqualFold(mediaType, "application/json") {
+		http.Error(w, "unsupported content type", http.StatusUnsupportedMediaType)
+		return
+	}
 	var body struct {
 		Name string `json:"name"`
 		Data string `json:"data"` // base64
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Data == "" {
 		http.Error(w, "missing data", http.StatusBadRequest)
-		return
-	}
-	root := s.ctl().WorkspaceRoot()
-	if root == "" {
-		http.Error(w, "no workspace", http.StatusNotFound)
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(body.Data)
@@ -1023,22 +1039,12 @@ func (s *Server) attach(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "paste.png"
 	}
-	dir := filepath.Join(root, ".reasonix", "attachments")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		http.Error(w, "write failed", http.StatusInternalServerError)
-		return
-	}
-	final := filepath.Join(dir, time.Now().Format("20060102-150405")+"-"+name)
-	if err := os.WriteFile(final, raw, 0o644); err != nil {
-		http.Error(w, "write failed", http.StatusInternalServerError)
-		return
-	}
-	rel, err := filepath.Rel(root, final)
+	info, err := s.ctl().SaveAttachment(r.Context(), name, bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
-		http.Error(w, "write failed", http.StatusInternalServerError)
+		writeAttachmentError(w, err)
 		return
 	}
-	writeJSON(w, map[string]string{"path": filepath.ToSlash(rel)})
+	writeJSON(w, info)
 }
 
 // securePathJoin resolves raw (absolute or workspace-relative) against root,

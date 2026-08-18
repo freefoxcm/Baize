@@ -443,6 +443,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// RequireKey fails fast on a missing credential (run/serve); plugin-
 	// namespaced refs carry no config credential — the extension provider holds
 	// its own keys — so the merged resolver's resolution is their only gate.
+	attachmentConfig := cfg.Attachments.Effective()
+	if err := attachmentConfig.Validate(); err != nil {
+		return nil, err
+	}
 	if opts.RequireKey && opts.ProviderResolver == nil && providerext.PluginRefOwner(modelName) == "" {
 		if err := cfg.Validate(modelName); err != nil {
 			return nil, err
@@ -1778,8 +1782,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			}
 			applyMCPIsolation(spec, root, pluginSpecOptions)
 		},
-		CapabilityRuntime:      capRuntime,
-		WorkspaceRoot:          root,
+		CapabilityRuntime: capRuntime,
+		WorkspaceRoot:     root,
+		AttachmentPolicy: control.AttachmentPolicy{
+			MaxFileBytes:        attachmentConfig.MaxFileBytes(),
+			WorkspaceQuotaBytes: attachmentConfig.WorkspaceQuotaBytes(),
+		},
 		ExternalFolderToolRefs: readPathResolver,
 		ResponseLanguage:       cfg.ResponseLanguage(),
 		ReasoningLanguage:      cfg.ReasoningLanguage(),

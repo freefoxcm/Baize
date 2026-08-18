@@ -40,7 +40,7 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
       > /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-      bash bubblewrap build-essential ca-certificates chromium curl fonts-noto-cjk git jq make \
+      bash bubblewrap build-essential ca-certificates chromium curl fonts-noto-cjk git jq make poppler-utils \
       openssh-client pkg-config python-is-python3 python3 python3-pip python3-venv \
       ripgrep tar unzip wget zip \
     && rm -rf /var/lib/apt/lists/*
@@ -54,6 +54,9 @@ RUN printf '[global]\nindex-url = %s\ntimeout = 60\nretries = 5\n' "${PYPI_INDEX
     && printf 'registry=%s\ndisturl=%s\nfetch-retries=5\nfetch-timeout=60000\n' "${NPM_REGISTRY}" "${NODE_DIST_URL}" > /etc/npmrc \
     && python3 -m venv /opt/reasonix-skills \
     && /opt/reasonix-skills/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements-skills.lock \
+    && printf '%s\n' \
+      'export PATH="/opt/reasonix-runtime/npm/bin:/opt/reasonix-runtime/pnpm:/opt/reasonix-skills/bin:/usr/local/go/bin:$PATH"' \
+      > /etc/profile.d/reasonix-runtime.sh \
     && npm install --global --registry "${NPM_REGISTRY}" "pnpm@${PNPM_VERSION}" \
     && groupadd --gid "${APP_GID}" reasonix \
     && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home reasonix \

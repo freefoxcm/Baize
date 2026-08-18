@@ -234,7 +234,8 @@ type Controller struct {
 	// path refs, the working directory for user "!" shell commands and custom
 	// command discovery, and the guard root for checkpoint restore writes. It is
 	// surfaced to frontends via WorkspaceRoot().
-	workspaceRoot string
+	workspaceRoot    string
+	attachmentPolicy AttachmentPolicy
 
 	// externalFolderRefs maps session-generated @ tokens to user-dropped
 	// directories outside workspaceRoot. It is intentionally per-controller:
@@ -505,6 +506,7 @@ type Options struct {
 	// WorkspaceRoot is the project root checkpoint restores are confined to ("" =
 	// no confinement). Frontends pass the cwd they launched the session in.
 	WorkspaceRoot          string
+	AttachmentPolicy       AttachmentPolicy
 	ExternalFolderToolRefs externalFolderToolRefs
 	// ResponseLanguage controls final-answer language preference. Empty/auto
 	// means no transient injection because the stable language policy follows the
@@ -651,6 +653,7 @@ func New(opts Options) *Controller {
 		capabilityRuntime:                 opts.CapabilityRuntime,
 		ablation:                          opts.Ablation,
 		workspaceRoot:                     opts.WorkspaceRoot,
+		attachmentPolicy:                  opts.AttachmentPolicy.normalized(),
 		externalFolderToolRefs:            opts.ExternalFolderToolRefs,
 		providerResolver:                  opts.ProviderResolver,
 		runtimeGeneration:                 opts.RuntimeGeneration,
