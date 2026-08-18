@@ -447,6 +447,8 @@ type Messages struct {
 	SetupSetDefault          string
 	SetupRemoveProvider      string
 	SetupBack                string
+	SetupPromptProviderName  string
+	InvalidProviderNameFmt   string
 	SetupPromptModels        string
 	SetupSharedKeyWarningFmt string
 	SetupPromptAPIKeyFmt     string

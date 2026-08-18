@@ -405,6 +405,8 @@ var ChineseTraditional = Messages{
 	SetupSetDefault:          "設定預設模型",
 	SetupRemoveProvider:      "刪除供應商",
 	SetupBack:                "返回",
+	SetupPromptProviderName:  "供應商名稱",
+	InvalidProviderNameFmt:   "供應商名稱 %q 無效。名稱不能為空或包含「/」；custom 和 anthropic 為保留名稱。",
 	SetupPromptModels:        "模型列表（用逗號分隔）",
 	SetupSharedKeyWarningFmt: "%s 已被 %s（%s）使用。確認共用這項憑據？",
 	SetupPromptAPIKeyFmt:     "輸入 %s 的新值",

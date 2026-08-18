@@ -432,6 +432,8 @@ var Chinese = Messages{
 	SetupSetDefault:          "设置默认模型",
 	SetupRemoveProvider:      "删除供应商",
 	SetupBack:                "返回",
+	SetupPromptProviderName:  "供应商名称",
+	InvalidProviderNameFmt:   "供应商名称 %q 无效。名称不能为空或包含“/”；custom 和 anthropic 为保留名称。",
 	SetupPromptModels:        "模型列表（用逗号分隔）",
 	SetupSharedKeyWarningFmt: "%s 已被 %s（%s）使用。确认共享这项凭据？",
 	SetupPromptAPIKeyFmt:     "输入 %s 的新值",
