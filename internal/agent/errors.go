@@ -106,9 +106,9 @@ type FinalReadinessError struct {
 
 func (e *FinalReadinessError) Error() string {
 	if e == nil {
-		return "final-answer readiness failed"
+		return "final-answer readiness incomplete"
 	}
-	return fmt.Sprintf("final-answer readiness failed %d times: %s", e.Attempts, e.Reason)
+	return fmt.Sprintf("final-answer readiness incomplete after %d checks: %s", e.Attempts, e.Reason)
 }
 
 // RecoveryPauseError reports that Auto recovery exhausted its Episode budget

@@ -1741,7 +1741,7 @@ func bashCommandUsesOpaqueInlineInterpreter(command string) bool {
 func bashSegmentUsesOpaqueInlineInterpreter(segment string) bool {
 	normalized, _ := shellsafe.NormalizeBashSafeRedirectsForMatch(segment)
 	argv, malformed := shellparse.StaticFields(normalized)
-	if malformed != "" || len(argv) == 0 {
+	if malformed != "" || len(argv) == 0 || bashSegmentIsVerification(argv) {
 		return false
 	}
 	base := strings.ToLower(filepath.Base(argv[0]))
@@ -1891,7 +1891,7 @@ func verificationCommandRecommendations() []verificationCommandRecommendation {
 		{label: "cargo test|check|clippy", examples: []string{"cargo test", "cargo check", "cargo clippy"}},
 		{label: "node --check|--test", examples: []string{"node --check index.js", "node --test"}},
 		{label: "make|just test|check|lint|verify|ci", examples: []string{"make test", "just verify"}},
-		{label: "python -m pytest|unittest", examples: []string{"python -m pytest", "python -m unittest"}},
+		{label: "python [-B] [-E] -m pytest|unittest", examples: []string{"python -m pytest", "python -B -E -m unittest"}},
 		{label: "dotnet test", examples: []string{"dotnet test"}},
 		{label: "swift test", examples: []string{"swift test"}},
 		{label: "mvn|gradle test|check|verify", examples: []string{"mvn test", "gradle check"}},
@@ -1963,7 +1963,7 @@ func bashSegmentIsVerification(fields []string) bool {
 	case "make", "just":
 		return len(args) > 0 && hasCommandArg(args[:1], "test", "check", "lint", "verify", "ci")
 	case "python", "python3":
-		return len(args) > 1 && args[0] == "-m" && hasCommandArg(args[1:2], "pytest", "unittest")
+		return pythonSegmentIsVerification(args)
 	case "dotnet":
 		return len(args) > 0 && args[0] == "test"
 	case "swift":

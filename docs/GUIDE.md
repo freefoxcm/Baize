@@ -812,9 +812,12 @@ the session-private temporary directory is its only writable root, networking,
 background processes, extra write directories, and sandbox escape are disabled,
 and Linux maps that directory to `/tmp`. Scratch execution requires a proven OS
 sandbox and fails closed when one is unavailable; use `analyze_data` in that
-case. Writing a script to ordinary `/tmp` from normal Bash is still treated as a
-durable or unknown mutation and retains the normal verification and review
-requirements.
+case. Foreground Bash also accepts an optional UTF-8 `stdin` string of at most
+2 MiB. Use it for bounded JSON or similar structured requests instead of shell
+interpolation or a workspace request file; it is unavailable with background or
+preserved-process execution. Writing a script to ordinary `/tmp` from normal
+Bash is still treated as a durable or unknown mutation and retains the normal
+verification and review requirements.
 
 `reasonix doctor` reports this capability as `scratch available` or includes
 the backend failure reason when scratch analysis cannot be isolated.

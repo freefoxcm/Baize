@@ -11,8 +11,10 @@ import (
 	"reasonix/internal/tool"
 )
 
+const bashStdinMaxBytes = 2 << 20
+
 func (bash) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to execute"},"execution_scope":{"type":"string","enum":["normal","scratch"],"description":"Optional execution boundary. scratch requires a proven OS sandbox, disables network/background/extra write roots, makes the workspace read-only, and permits writes only in the session-private temporary directory. Use analyze_data first for JSON calculations."},"run_in_background":{"type":"boolean","description":"Run detached: returns a job id immediately and keeps running across turns (no foreground timeout). Read new output with bash_output, wait with wait, stop it with kill_shell. Use for long-running commands like servers, watchers, or builds you don't need to block on."},"preserve_background_processes":{"type":"boolean","description":"After the shell command exits normally, keep any process-group members it intentionally left behind. Use only for deliberate daemonization, browser/GUI/session launchers such as playwright-cli open, or nohup/disown/setsid; cancellation and timeouts still kill the process group."},"additional_write_dirs":{"type":"array","items":{"type":"string"},"description":"Directories this command must write outside the workspace. Directories only, no globs. Accepts absolute paths, workspace-relative paths, ~, and ${HOME}. Request the smallest set needed; the host will not infer paths from the command text."},"justification":{"type":"string","description":"Required when additional_write_dirs is non-empty. Explain why those directories must be writable."}},"required":["command"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to execute"},"stdin":{"type":"string","description":"Optional UTF-8 text passed to the foreground command on standard input (maximum 2 MiB). Unavailable for background or preserved-process execution. Prefer this over command-line interpolation or workspace request files for bounded structured input."},"execution_scope":{"type":"string","enum":["normal","scratch"],"description":"Optional execution boundary. scratch requires a proven OS sandbox, disables network/background/extra write roots, makes the workspace read-only, and permits writes only in the session-private temporary directory. Use analyze_data first for JSON calculations."},"run_in_background":{"type":"boolean","description":"Run detached: returns a job id immediately and keeps running across turns (no foreground timeout). Read new output with bash_output, wait with wait, stop it with kill_shell. Use for long-running commands like servers, watchers, or builds you don't need to block on."},"preserve_background_processes":{"type":"boolean","description":"After the shell command exits normally, keep any process-group members it intentionally left behind. Use only for deliberate daemonization, browser/GUI/session launchers such as playwright-cli open, or nohup/disown/setsid; cancellation and timeouts still kill the process group."},"additional_write_dirs":{"type":"array","items":{"type":"string"},"description":"Directories this command must write outside the workspace. Directories only, no globs. Accepts absolute paths, workspace-relative paths, ~, and ${HOME}. Request the smallest set needed; the host will not infer paths from the command text."},"justification":{"type":"string","description":"Required when additional_write_dirs is non-empty. Explain why those directories must be writable."}},"required":["command"]}`)
 }
 
 func (b bash) DeclareWriteAccess(args json.RawMessage) (tool.WriteAccessDeclaration, error) {
@@ -48,6 +50,12 @@ func validateBashWriteDirs(p bashParams) error {
 func validateBashParams(p bashParams) error {
 	if p.Command == "" {
 		return fmt.Errorf("command is required")
+	}
+	if p.Stdin != nil && len(*p.Stdin) > bashStdinMaxBytes {
+		return fmt.Errorf("stdin exceeds the 2 MiB limit")
+	}
+	if p.Stdin != nil && (p.RunInBackground || p.PreserveBackgroundProcesses) {
+		return fmt.Errorf("stdin is available only for foreground commands without preserved background processes")
 	}
 	scope := strings.ToLower(strings.TrimSpace(p.ExecutionScope))
 	if scope != "" && scope != "normal" && scope != "scratch" {

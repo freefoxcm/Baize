@@ -97,6 +97,7 @@ type bash struct {
 
 type bashParams struct {
 	Command                     string   `json:"command"`
+	Stdin                       *string  `json:"stdin,omitempty"`
 	ExecutionScope              string   `json:"execution_scope,omitempty"`
 	RunInBackground             bool     `json:"run_in_background"`
 	PreserveBackgroundProcesses bool     `json:"preserve_background_processes"`
@@ -132,7 +133,7 @@ func (b bash) Description() string {
 // bashToolSteer points the model at the cross-platform built-in tools instead of
 // shell utilities, so it doesn't reach for grep/cat/ls/find (absent or different
 // on native Windows) when a native tool already does the job everywhere.
-const bashToolSteer = " Use for builds, tests, git, package managers, etc. To search/read/list/edit/move files, prefer the dedicated tools (grep, read_file, ls, glob, edit_file, move_file) over shell grep/cat/ls/find/sed/mv/Move-Item — they behave identically on every OS. For symbol search or architecture questions, prefer LSP/read tools and targeted grep before shell commands."
+const bashToolSteer = " Use for builds, tests, git, package managers, etc. Pass bounded structured input through stdin instead of shell interpolation or workspace request files; stdin is foreground-only and capped at 2 MiB. To search/read/list/edit/move files, prefer the dedicated tools (grep, read_file, ls, glob, edit_file, move_file) over shell grep/cat/ls/find/sed/mv/Move-Item — they behave identically on every OS. For symbol search or architecture questions, prefer LSP/read tools and targeted grep before shell commands."
 
 // resolved returns the bound shell, resolving lazily for the zero-value instance
 // (e.g. a registry that never went through ConfineBash).
@@ -230,7 +231,7 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 	// (the host terminal spawns with its own unfiltered environment, which
 	// would leak the credentials the user asked to strip), and never for
 	// background jobs. ok=false falls back to local execution unchanged.
-	if b.terminal != nil && !p.RunInBackground && !prepared.Wrapped && !secrets.FilterSubprocessEnv() {
+	if b.terminal != nil && p.Stdin == nil && !p.RunInBackground && !prepared.Wrapped && !secrets.FilterSubprocessEnv() {
 		envMap := sandbox.SessionTempEnvMap(prepared.SessionTemp, prepared.LinuxSandboxed)
 		if out, ok, termErr := b.terminal.RunCommand(ctx, p.Command, b.workDir, b.timeout, envMap); ok {
 			out = appendSessionDataHint(out, b.guard.CommandHint(b.workDir, p.Command))
@@ -425,6 +426,7 @@ func (b bash) runForegroundDetailed(ctx context.Context, p bashParams, sh sandbo
 		Argv:              argv,
 		Dir:               b.workDir,
 		Env:               cmdEnv,
+		Stdin:             p.Stdin,
 		Timeout:           b.foregroundTimeout(),
 		WaitDelay:         bashWaitDelay,
 		CommandPreview:    commandPreview(p.Command),

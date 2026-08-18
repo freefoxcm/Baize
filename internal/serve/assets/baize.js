@@ -59,6 +59,7 @@ const __T = {
     'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
     'delivery_incomplete_title': 'Delivery checks are not complete',
     'delivery_incomplete_body': 'The response was generated, but required delivery evidence is still incomplete.',
+    'delivery_checks': 'Delivery checks: {count} total (initial check + {automatic} automatic follow-up checks).',
     'delivery_continue': 'Continue checks',
     'delivery_continue_prompt': 'Continue and complete the remaining delivery checks.',
     'delivery_missing': 'Still needed: {items}',
@@ -434,6 +435,7 @@ const __T = {
     'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
     'delivery_incomplete_title': '交付检查尚未完成',
     'delivery_incomplete_body': '内容已经生成，但所需的交付证据尚未完成。',
+    'delivery_checks': '已完成 {count} 次交付检查（初始检查 + {automatic} 次自动补查）。',
     'delivery_continue': '继续检查',
     'delivery_continue_prompt': '继续完成剩余的交付检查。',
     'delivery_missing': '仍需完成：{items}',
@@ -1070,6 +1072,10 @@ function renderDeliveryCard(it){
   card.dataset.deliveryId=it.id||'';
   card.appendChild(el('div','delivery-card__title',__('delivery_incomplete_title')));
   card.appendChild(el('div','delivery-card__body',__('delivery_incomplete_body')));
+  if(it.attempts>0){
+    const checks=__('delivery_checks').replace('{count}',String(it.attempts)).replace('{automatic}',String(Math.max(0,it.attempts-1)));
+    card.appendChild(el('div','delivery-card__checks',checks));
+  }
   if(it.detail)card.appendChild(el('div','delivery-card__detail',it.detail));
   if(it.raw){
     const details=el('details','delivery-card__raw');
@@ -1101,7 +1107,8 @@ function deliveryReadinessItem(e){
   const labels=missing.map(id=>DELIVERY_REQUIREMENTS[id]).filter(Boolean).map(key=>__(key));
   const detail=labels.length?__('delivery_missing').replace('{items}',labels.join(__LANG==='zh'?'、':', ')):'';
   const raw=String(e&&e.err||'');
-  return {id:genItemId(),kind:'delivery',detail,raw,turn:currentTurn};
+  const attempts=Number(e&&e.readiness&&e.readiness.attempts)||0;
+  return {id:genItemId(),kind:'delivery',detail,raw,attempts,turn:currentTurn};
 }
 function showDeliveryReadiness(e){
   disableDeliveryCards();
