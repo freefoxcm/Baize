@@ -1752,6 +1752,17 @@ func providerSlug(kind, baseURL string) string {
 	return kind + "-" + slug
 }
 
+func promptProviderName(in *bufio.Scanner, w io.Writer, def string) string {
+	for {
+		name := ask(in, w, i18n.M.SetupPromptProviderName, def)
+		if name != "" && !strings.Contains(name, "/") &&
+			!strings.EqualFold(name, "custom") && !strings.EqualFold(name, "anthropic") {
+			return name
+		}
+		fmt.Fprintf(w, i18n.M.InvalidProviderNameFmt+"\n", name)
+	}
+}
+
 func apiKeyEnvFromProviderName(name string) string {
 	stem := strings.ToUpper(strings.TrimSpace(name))
 	stem = strings.Map(func(r rune) rune {
@@ -1864,11 +1875,15 @@ func promptCustomProviderManual() (providerPromptResult, error) {
 }
 
 // promptCustomProviderManualWith is the shared backend for manual entry.
-// Pre-filled values (baseURL, keyEnv, apiKey) are reused as-is when non-empty
+// Pre-filled values (baseURL, providerName, keyEnv, apiKey) are reused as-is when non-empty
 // so the URL-fetch flow can fall through to manual entry without re-asking
 // the user for information they've already typed. An empty apiKey is allowed
 // — the key step happens later in the wizard and Reasonix's global .env is updated then.
 func promptCustomProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKey string) (providerPromptResult, error) {
+	return promptCustomProviderManualWithName(in, baseURL, "", keyEnv, apiKey)
+}
+
+func promptCustomProviderManualWithName(in *bufio.Scanner, baseURL, providerName, keyEnv, apiKey string) (providerPromptResult, error) {
 	fmt.Println()
 	if baseURL == "" {
 		baseURL = ask(in, os.Stdout, i18n.M.CustomPromptBaseURL, "")
@@ -1876,7 +1891,9 @@ func promptCustomProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKey s
 			return providerPromptResult{}, fmt.Errorf("base URL is required")
 		}
 	}
-	providerName := providerSlug("custom", baseURL)
+	if providerName == "" {
+		providerName = promptProviderName(in, os.Stdout, providerSlug("custom", baseURL))
+	}
 	modelName := ask(in, os.Stdout, i18n.M.CustomPromptModel, "")
 	if modelName == "" {
 		return providerPromptResult{}, fmt.Errorf("model name is required")
@@ -1909,7 +1926,7 @@ func promptCustomProviderFromURL() (providerPromptResult, error) {
 	if baseURL == "" {
 		return providerPromptResult{}, fmt.Errorf("base URL is required")
 	}
-	providerName := providerSlug("custom", baseURL)
+	providerName := promptProviderName(in, os.Stdout, providerSlug("custom", baseURL))
 	keyEnv := promptAPIKeyEnvName(in, os.Stdout, i18n.M.CustomPromptKeyEnv, apiKeyEnvFromProviderName(providerName))
 	apiKey := ask(in, os.Stdout, i18n.M.CustomPromptAPIKey, "")
 
@@ -1923,7 +1940,7 @@ func promptCustomProviderFromURL() (providerPromptResult, error) {
 		} else {
 			fmt.Fprintf(os.Stderr, "  %s\n", dim(i18n.M.CustomFetchEmpty))
 		}
-		return promptCustomProviderManualWith(in, baseURL, keyEnv, apiKey)
+		return promptCustomProviderManualWithName(in, baseURL, providerName, keyEnv, apiKey)
 	}
 	fmt.Printf("  %s\n", green(fmt.Sprintf(i18n.M.FetchModelsSuccessFmt, len(models), "custom")))
 
@@ -1969,15 +1986,22 @@ func promptAnthropicProviderManual() (providerPromptResult, error) {
 
 // promptAnthropicProviderManualWith is the shared backend for manual entry
 // of an Anthropic-compatible custom provider. Pre-filled values (baseURL,
-// keyEnv, apiKey) are reused as-is when non-empty so the URL-fetch flow
+// providerName, keyEnv, apiKey) are reused as-is when non-empty so the URL-fetch flow
 // can fall through to manual entry without re-asking the user.
 func promptAnthropicProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKey string) (providerPromptResult, error) {
+	return promptAnthropicProviderManualWithName(in, baseURL, "", keyEnv, apiKey)
+}
+
+func promptAnthropicProviderManualWithName(in *bufio.Scanner, baseURL, providerName, keyEnv, apiKey string) (providerPromptResult, error) {
 	fmt.Println()
 	if baseURL == "" {
 		baseURL = ask(in, os.Stdout, i18n.M.AnthropicPromptBaseURL, "")
 		if baseURL == "" {
 			return providerPromptResult{}, fmt.Errorf("base URL is required")
 		}
+	}
+	if providerName == "" {
+		providerName = promptProviderName(in, os.Stdout, providerSlug("anthropic", baseURL))
 	}
 	modelName := ask(in, os.Stdout, i18n.M.AnthropicPromptModel, "")
 	if modelName == "" {
@@ -1992,7 +2016,7 @@ func promptAnthropicProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKe
 		apiKey = ask(in, os.Stdout, i18n.M.AnthropicPromptAPIKey, "")
 	}
 	entry := config.ProviderEntry{
-		Name: providerSlug("anthropic", baseURL), Kind: "anthropic", BaseURL: baseURL,
+		Name: providerName, Kind: "anthropic", BaseURL: baseURL,
 		Model: modelName, APIKeyEnv: keyEnv, ContextWindow: askContextWindow(in, os.Stdout),
 	}
 	fmt.Printf("  %s\n", green(fmt.Sprintf(i18n.M.AnthropicAddedFmt, entry.Name+"/"+modelName)))
@@ -2012,6 +2036,7 @@ func promptAnthropicProviderFromURL() (providerPromptResult, error) {
 	if baseURL == "" {
 		return providerPromptResult{}, fmt.Errorf("base URL is required")
 	}
+	providerName := promptProviderName(in, os.Stdout, providerSlug("anthropic", baseURL))
 	keyEnv := promptAPIKeyEnvName(in, os.Stdout, i18n.M.AnthropicPromptKeyEnv, "ANTHROPIC_API_KEY")
 	apiKey := ask(in, os.Stdout, i18n.M.AnthropicPromptAPIKey, "")
 
@@ -2025,7 +2050,7 @@ func promptAnthropicProviderFromURL() (providerPromptResult, error) {
 		} else {
 			fmt.Fprintf(os.Stderr, "  %s\n", dim(i18n.M.AnthropicFetchEmpty))
 		}
-		return promptAnthropicProviderManualWith(in, baseURL, keyEnv, apiKey)
+		return promptAnthropicProviderManualWithName(in, baseURL, providerName, keyEnv, apiKey)
 	}
 	fmt.Printf("  %s\n", green(fmt.Sprintf(i18n.M.AnthropicFetchModelsSuccessFmt, len(models), "anthropic")))
 
@@ -2042,7 +2067,7 @@ func promptAnthropicProviderFromURL() (providerPromptResult, error) {
 		selected = append(selected, models[i])
 	}
 	entry := config.ProviderEntry{
-		Name: providerSlug("anthropic", baseURL), Kind: "anthropic", BaseURL: baseURL,
+		Name: providerName, Kind: "anthropic", BaseURL: baseURL,
 		Models: selected, Model: selected[0], APIKeyEnv: keyEnv, ContextWindow: askContextWindow(in, os.Stdout),
 	}
 	fmt.Printf("  %s\n", green(fmt.Sprintf(i18n.M.AnthropicAddedFmt, entry.Name+"/"+selected[0])))

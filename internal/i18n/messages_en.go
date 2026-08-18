@@ -431,6 +431,8 @@ var English = Messages{
 	SetupSetDefault:          "Set default model",
 	SetupRemoveProvider:      "Remove provider",
 	SetupBack:                "Back",
+	SetupPromptProviderName:  "Provider name",
+	InvalidProviderNameFmt:   "Provider name %q is invalid. Use a non-empty name without '/'; custom and anthropic are reserved.",
 	SetupPromptModels:        "Models (comma-separated)",
 	SetupSharedKeyWarningFmt: "%s is also used by %s at %s. Share this credential?",
 	SetupPromptAPIKeyFmt:     "Enter new value for %s",
