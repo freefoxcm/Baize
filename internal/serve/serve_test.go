@@ -770,7 +770,7 @@ func TestServeBrandingAndAssets(t *testing.T) {
 	for _, want := range []string{
 		"<title>Baize</title>",
 		"href=\"/assets/logo-symbol.svg\"",
-		"alt=\"Baize\" class=\"brand-wordmark brand-wordmark--sidebar\"",
+		"class=\"activity-rail__brand\"><img src=\"/assets/logo-symbol.svg\" alt=\"Baize\"",
 		"alt=\"Baize\" class=\"brand-wordmark brand-wordmark--welcome\"",
 		"'placeholder': 'Message Baize...  / for commands'",
 		"'placeholder': '给 Baize 发消息...  / 查看命令'",

@@ -11,14 +11,16 @@
 <script>
 // Resolve the stored palette before first paint to avoid a theme flash.
 (function(){
-  var dark=['charcoal-copper','night-paper','paper-workbench'];
-  var light=['ivory-morning','mist-stone','sand-apricot'];
+  var dark=['charcoal-copper'];
+  var light=['ivory-morning'];
+  var legacyMap={'night-paper':'charcoal-copper','paper-workbench':'charcoal-copper','mist-stone':'ivory-morning','sand-apricot':'ivory-morning'};
   function stored(key,fallback){try{return localStorage.getItem(key)||fallback;}catch(e){return fallback;}}
   function valid(value,list,fallback){return list.indexOf(value)>=0?value:fallback;}
   var legacy=stored('baize-theme','dark');
   var preference=stored('baize-theme-preference',legacy);
   if(preference==='dark')preference='charcoal-copper';
   if(preference==='light')preference='ivory-morning';
+  preference=legacyMap[preference]||preference;
   var darkPalette=valid(stored('baize-theme-dark-palette','charcoal-copper'),dark,'charcoal-copper');
   var lightPalette=valid(stored('baize-theme-light-palette','ivory-morning'),light,'ivory-morning');
   var systemLight=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -36,56 +38,55 @@
 </button>
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
 <div class="app">
-  <aside class="sidebar">
-    <div class="sidebar__brand">
-      <img src="/assets/logo-wordmark.svg" alt="Baize" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
-      <img src="/assets/logo-symbol.svg" alt="" class="brand-symbol brand-symbol--sidebar" draggable="false" aria-hidden="true">
-      <button type="button" class="sidebar__theme-btn" id="btn-theme" title="__('theme_switch_light')" aria-label="__('theme_switch_light')">
-        <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg>
-        <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  <aside class="activity-rail" aria-label="__('workspace_navigation')">
+    <div class="activity-rail__brand"><img src="/assets/logo-symbol.svg" alt="Baize" draggable="false"></div>
+    <nav class="activity-rail__nav">
+      <button type="button" class="activity-rail__item activity-rail__item--new" id="btn-new" title="__('new_session')" aria-label="__('new_session')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><span class="activity-rail__tooltip">__('new_session')</span>
       </button>
-      <button type="button" class="sidebar__collapse-btn" id="btn-sidebar-collapse" title="__('sidebar_collapse')" aria-label="__('sidebar_collapse')" aria-expanded="true">
-        <svg class="sidebar-collapse-icon sidebar-collapse-icon--close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
-        <svg class="sidebar-collapse-icon sidebar-collapse-icon--open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m12 9 3 3-3 3"/></svg>
+      <button type="button" class="activity-rail__item activity-rail__item--active" id="btn-history" data-workbench-mode="history" title="__('sessions')" aria-label="__('sessions')" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg><span class="activity-rail__tooltip">__('sessions')</span>
       </button>
-    </div>
-<nav class="sidebar__nav" style="border-top:none;padding-top:6px">
-      <div class="sidebar__item sidebar__item--accent" id="btn-new" title="__('new_session')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        <span>__('new_session')</span>
-      </div>
-      <div class="sidebar__item" id="btn-workspace" title="__('workspace_files')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-        <span>__('workspace_files')</span>
-      </div>
+      <button type="button" class="activity-rail__item" id="btn-workspace" data-workbench-mode="files" title="__('workspace_files')" aria-label="__('workspace_files')" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="activity-rail__tooltip">__('workspace_files')</span>
+      </button>
+      <button type="button" class="activity-rail__item" id="btn-settings" data-workbench-mode="settings" title="__('settings')" aria-label="__('settings')" aria-expanded="false" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06-.06A1.7 1.7 0 0 0 19.4 9c.18.37.48.72 1 .92.35.14.71.2 1.1.18H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg><span class="activity-rail__tooltip">__('settings')</span>
+      </button>
     </nav>
-    <div class="sidebar__label-row"><span class="sidebar__label" style="padding:0">__('sessions')</span><span id="session-count" class="session-item__meta"></span></div>
-    <div class="session-search">
-      <input class="session-search__input" id="session-search" type="search" placeholder="__('search_sessions')" aria-label="__('search_sessions')">
-    </div>
-    <div class="session-list" id="session-list">
-      <div style="padding:10px;color:var(--muted-2);font-size:12px">__('loading')</div>
-    </div>
-    <div class="sidebar__section">
-      <div class="sidebar__label-row"><span class="sidebar__label" style="padding:0">__('status')</span>
-        <button type="button" class="sidebar__stats-btn" id="btn-stats" title="__('stats')" aria-label="__('stats')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-        </button>
-      </div>
-      <div class="sidebar__ctx">
-        <div class="ctx-bar"><div class="ctx-bar__fill" id="ctx-fill" style="width:0%"></div></div>
-        <div class="ctx-label"><span id="ctx-used">0 tokens</span><span id="ctx-window">0 tokens</span></div>
-      </div>
-      <div class="status-metrics" id="status-metrics">
-        <div class="sm-item"><span class="sm-val" id="sm-cache">—</span><span>__('cache')</span></div>
-        <div class="sm-item"><span class="sm-val" id="sm-cost">—</span><span>__('cost')</span></div>
-        <div class="sm-item"><span class="sm-val acc" id="sm-balance">—</span><span>__('balance')</span></div>
-      </div>
-      <div style="padding:4px 10px">
-        <div class="status status--settings" id="sidebar-status"><span class="status__dot" id="status-dot"></span><span id="status-model">-</span><button type="button" class="settings-trigger" id="btn-settings" title="__('settings')" aria-label="__('settings')" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.18.37.48.72 1 .92.35.14.71.2 1.1.18H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
-      </div>
+    <div class="activity-rail__bottom">
+      <button type="button" class="activity-rail__item" id="btn-sidebar-collapse" title="__('sidebar_collapse')" aria-label="__('sidebar_collapse')" aria-expanded="true">
+        <svg class="sidebar-collapse-icon sidebar-collapse-icon--close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
+        <svg class="sidebar-collapse-icon sidebar-collapse-icon--open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m12 9 3 3-3 3"/></svg><span class="activity-rail__tooltip">__('sidebar_collapse')</span>
+      </button>
+      <button type="button" class="activity-rail__item" id="btn-theme" title="__('theme_switch_light')" aria-label="__('theme_switch_light')">
+        <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span class="activity-rail__tooltip">__('settings_theme')</span>
+      </button>
+      <button type="button" class="activity-rail__item activity-rail__status" id="sidebar-status" title="__('status')" aria-label="__('status')">
+        <span class="status__dot" id="status-dot"></span><span class="activity-rail__tooltip" id="status-model">-</span>
+      </button>
     </div>
   </aside>
+
+  <aside class="context-panel" id="context-panel" data-view="history" aria-label="__('sessions')">
+    <section class="context-view context-view--history" id="history-panel">
+      <header class="context-panel__head"><div><span class="context-panel__eyebrow">Baize</span><h1>__('sessions')</h1></div><span id="session-count" class="context-panel__count"></span></header>
+      <div class="session-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input class="session-search__input" id="session-search" type="search" placeholder="__('search_sessions')" aria-label="__('search_sessions')"></div>
+      <div class="timeline-result" id="timeline-result" role="status"></div>
+      <div class="timeline-shell" id="session-timeline">
+        <svg class="timeline-lines" id="timeline-lines" aria-hidden="true"><path class="timeline-lines__path" id="timeline-path"></path><path class="timeline-lines__travel" id="timeline-travel"></path></svg>
+        <div class="session-list" id="session-list"><div class="timeline-empty">__('loading')</div></div>
+      </div>
+      <button type="button" class="timeline-load-more" id="session-load-more" hidden>__('load_earlier_sessions')</button>
+      <div class="context-panel__status">
+        <div class="context-panel__status-head"><span>__('status')</span><button type="button" class="sidebar__stats-btn" id="btn-stats" title="__('stats')" aria-label="__('stats')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></button></div>
+        <div class="sidebar__ctx"><div class="ctx-bar"><div class="ctx-bar__fill" id="ctx-fill" style="width:0%"></div></div><div class="ctx-label"><span id="ctx-used">0 tokens</span><span id="ctx-window">0 tokens</span></div></div>
+        <div class="status-metrics" id="status-metrics"><div class="sm-item"><span class="sm-val" id="sm-cache">—</span><span>__('cache')</span></div><div class="sm-item"><span class="sm-val" id="sm-cost">—</span><span>__('cost')</span></div><div class="sm-item"><span class="sm-val acc" id="sm-balance">—</span><span>__('balance')</span></div></div>
+      </div>
+    </section>
+  </aside>
+
 
   <section class="transcript" id="log">
     <div class="welcome" id="welcome">
@@ -132,7 +133,7 @@
   </section>
 
   <aside class="workspace-panel" id="workspace-panel" aria-hidden="true" aria-labelledby="workspace-title">
-    <div class="workspace-resizer" id="workspace-resizer" role="separator" aria-orientation="vertical" aria-label="__('workspace_resize')" aria-valuemin="480" aria-valuemax="1200" aria-valuenow="720" tabindex="0"></div>
+    <div class="workspace-resizer" id="workspace-resizer" role="separator" aria-orientation="vertical" aria-label="__('workspace_resize')" aria-valuemin="480" aria-valuemax="1200" aria-valuenow="520" tabindex="0"></div>
     <header class="workspace-panel__head">
       <div class="workspace-panel__title-wrap">
         <strong class="workspace-panel__title" id="workspace-title">__('workspace_files')</strong>
@@ -336,15 +337,11 @@
         <div class="theme-picker__group"><span class="theme-picker__label">__('settings_theme_dark_group')</span>
           <div class="theme-picker__grid">
             <label class="theme-choice"><input type="radio" name="appearanceTheme" value="charcoal-copper"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#1d1c1b"></i><i style="--swatch:#34302c"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_charcoal_copper')</strong><small>__('theme_charcoal_copper_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
-            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="night-paper"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#202123"></i><i style="--swatch:#eee7da"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_night_paper')</strong><small>__('theme_night_paper_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
-            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="paper-workbench"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#202123"></i><i style="--swatch:#f8f3e9"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_paper_workbench')</strong><small>__('theme_paper_workbench_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
           </div>
         </div>
         <div class="theme-picker__group"><span class="theme-picker__label">__('settings_theme_light_group')</span>
           <div class="theme-picker__grid">
             <label class="theme-choice"><input type="radio" name="appearanceTheme" value="ivory-morning"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#eee7dc"></i><i style="--swatch:#fffaf2"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_ivory_morning')</strong><small>__('theme_ivory_morning_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
-            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="mist-stone"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#e6e5e1"></i><i style="--swatch:#fcfbf8"></i><i style="--swatch:#db7138"></i></span><span class="theme-choice__body"><strong>__('theme_mist_stone')</strong><small>__('theme_mist_stone_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
-            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="sand-apricot"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#e5d5c1"></i><i style="--swatch:#fff4e6"></i><i style="--swatch:#c96838"></i></span><span class="theme-choice__body"><strong>__('theme_sand_apricot')</strong><small>__('theme_sand_apricot_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
           </div>
         </div>
       </fieldset>

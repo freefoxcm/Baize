@@ -268,8 +268,9 @@ func TestWorkspacePDFPreviewUsesPDFJS(t *testing.T) {
 func TestSessionListKeepsScrollableFixedRows(t *testing.T) {
 	css := string(baizeCSS)
 	for _, want := range []string{
-		`.session-list{flex:1;min-height:0;overflow-y:auto;`,
-		`.session-item{flex:0 0 auto;display:flex;`,
+		`.timeline-shell{position:relative;min-height:0;flex:1;overflow-y:auto;`,
+		`.session-list{position:relative;z-index:1;display:flex;min-height:100%;flex-direction:column;`,
+		`.session-item{position:relative;display:grid;`,
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("Baize stylesheet missing session list layout contract %q", want)
@@ -356,20 +357,24 @@ func TestBaizeThemePaletteContracts(t *testing.T) {
 	html := string(indexHTML)
 	css := string(baizeCSS)
 	js := string(baizeJS)
-	themes := []string{
-		"night-paper",
-		"charcoal-copper",
-		"paper-workbench",
-		"ivory-morning",
-		"mist-stone",
-		"sand-apricot",
-	}
+	themes := []string{"charcoal-copper", "ivory-morning"}
 	for _, theme := range themes {
 		if !strings.Contains(html, `name="appearanceTheme" value="`+theme+`"`) {
 			t.Errorf("Baize settings UI missing theme %q", theme)
 		}
 		if !strings.Contains(css, `:root[data-theme="`+theme+`"]`) {
 			t.Errorf("Baize stylesheet missing theme tokens for %q", theme)
+		}
+	}
+	for _, removed := range []string{"night-paper", "paper-workbench", "mist-stone", "sand-apricot"} {
+		if strings.Contains(html, `name="appearanceTheme" value="`+removed+`"`) {
+			t.Errorf("removed theme %q still appears in the settings UI", removed)
+		}
+		if strings.Contains(css, `:root[data-theme="`+removed+`"]`) {
+			t.Errorf("removed theme %q still has CSS tokens", removed)
+		}
+		if !strings.Contains(html+js, `'`+removed+`':'`) {
+			t.Errorf("removed theme %q is missing its storage migration", removed)
 		}
 	}
 	for _, want := range []string{
@@ -386,16 +391,6 @@ func TestBaizeThemePaletteContracts(t *testing.T) {
 			t.Errorf("Baize theme implementation missing %q", want)
 		}
 	}
-	darkFirst := strings.Index(html, `name="appearanceTheme" value="charcoal-copper"`)
-	nightPaper := strings.Index(html, `name="appearanceTheme" value="night-paper"`)
-	lightFirst := strings.Index(html, `name="appearanceTheme" value="ivory-morning"`)
-	mistStone := strings.Index(html, `name="appearanceTheme" value="mist-stone"`)
-	if darkFirst < 0 || nightPaper < 0 || darkFirst > nightPaper {
-		t.Fatal("charcoal copper must be the first dark palette")
-	}
-	if lightFirst < 0 || mistStone < 0 || lightFirst > mistStone {
-		t.Fatal("ivory morning must be the first light palette")
-	}
 	for _, want := range []string{
 		`if(preference==='dark')preference='charcoal-copper'`,
 		`family==='light'?'ivory-morning':'charcoal-copper'`,
@@ -404,9 +399,47 @@ func TestBaizeThemePaletteContracts(t *testing.T) {
 			t.Errorf("Baize default theme implementation missing %q", want)
 		}
 	}
+	footer := strings.Index(html, `<footer class="footer">`)
 	model := strings.Index(html, `id="btn-composer-model"`)
-	settings := strings.Index(html, `id="settings-drawer"`)
-	if model < 0 || settings < 0 || model > settings {
-		t.Fatal("composer model selector moved out of the composer before the settings drawer")
+	footerEnd := -1
+	if footer >= 0 {
+		footerEnd = strings.Index(html[footer:], `</footer>`)
+	}
+	if footer < 0 || model < footer || footerEnd < 0 || model > footer+footerEnd {
+		t.Fatal("composer model selector moved out of the composer footer")
+	}
+}
+
+func TestServeLeftWorkbenchContract(t *testing.T) {
+	html := string(indexHTML)
+	css := string(baizeCSS)
+	js := string(baizeJS)
+	for _, want := range []string{
+		`class="activity-rail"`, `id="btn-history"`, `data-workbench-mode="files"`,
+		`data-workbench-mode="settings"`, `class="context-panel"`, `id="timeline-lines"`,
+		`id="session-load-more"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("Serve workbench HTML missing %q", want)
+		}
+	}
+	for _, want := range []string{
+		`grid-template-columns:var(--rail-width) var(--context-width) minmax(0,1fr)`,
+		`.activity-rail__item--active::before`, `.timeline-lines__travel.is-travelling`,
+		`.context-panel[data-view="files"] .workspace-panel`,
+		`.context-panel[data-view="settings"] .settings-drawer--open`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("Serve workbench CSS missing %q", want)
+		}
+	}
+	for _, want := range []string{
+		`fetch('/sessions/timeline?'`, `setTimeout(()=>loadSessions(),180)`,
+		`function redrawTimeline()`, `loadSessions({append:true})`,
+		`contextPanel.append($('#workspace-panel'),$('#settings-drawer'))`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("Serve workbench JavaScript missing %q", want)
+		}
 	}
 }
