@@ -296,7 +296,7 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`id="btn-workspace"`,
 		`id="workspace-panel"`,
 		`id="workspace-resizer" role="separator"`,
-		`aria-valuemin="480" aria-valuemax="1200" aria-valuenow="720" tabindex="0"`,
+		`aria-valuemin="480" aria-valuemax="1200" aria-valuenow="520" tabindex="0"`,
 		`id="workspace-html-toggle"`,
 	} {
 		if !strings.Contains(html, marker) {
@@ -311,8 +311,8 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`.workspace-browser{min-width:0;min-height:0;display:flex;flex-direction:column;`,
 		`.workspace-tree{min-height:0;flex:1;overflow:auto;`,
 		`.workspace-resize-guide`,
-		`position:fixed;z-index:180`,
-		`width:min(var(--workspace-width),80vw,1200px)`,
+		`.context-panel[data-view="files"] .workspace-panel{display:flex}`,
+		`inset:0 -4px 0 auto`,
 		`.decision-pending .footer`,
 		`@media(max-width:768px)`,
 	} {
@@ -336,8 +336,9 @@ func TestWorkspaceWebUIContract(t *testing.T) {
 		`workspacePathCandidate(code.textContent,false)`,
 		`openWorkspacePath(path)`,
 		`if(error?.status===404)`,
-		`WORKSPACE_WIDTH_DEFAULT=720`,
-		`window.innerWidth*.8`,
+		`WORKSPACE_WIDTH_DEFAULT=520`,
+		`window.innerWidth-56-320`,
+		`startWidth+moveEvent.clientX-startX`,
 		`workspaceResizer.addEventListener('keydown'`,
 		`decisionInteractionLocked`,
 		`closeSettings({preserveDraft:true,restoreFocus:false})`,
