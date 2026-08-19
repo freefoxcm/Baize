@@ -716,12 +716,14 @@ type listServerInfo struct {
 // filtering.
 func (t *UseCapabilityTool) listCapabilities() (string, error) {
 	type capInfo struct {
-		ID          string `json:"id"`
-		Kind        string `json:"kind"`
-		Name        string `json:"name"`
-		Status      string `json:"status,omitempty"`
-		ReadOnly    bool   `json:"read_only,omitempty"`
-		Description string `json:"description,omitempty"`
+		ID                   string   `json:"id"`
+		Kind                 string   `json:"kind"`
+		Name                 string   `json:"name"`
+		Status               string   `json:"status,omitempty"`
+		ReadOnly             bool     `json:"read_only,omitempty"`
+		Description          string   `json:"description,omitempty"`
+		ArgumentKeys         []string `json:"argument_keys,omitempty"`
+		RequiredArgumentKeys []string `json:"required_argument_keys,omitempty"`
 	}
 	var caps []capInfo
 	if t.catalog != nil {
@@ -730,13 +732,16 @@ func (t *UseCapabilityTool) listCapabilities() (string, error) {
 			if e.Kind == capability.KindTool && t.registry != nil && t.registry.ProviderVisible(e.ToolName) {
 				continue
 			}
+			argumentKeys, requiredArgumentKeys := t.mcpArgumentKeys(e.ID)
 			caps = append(caps, capInfo{
-				ID:          e.ID,
-				Kind:        string(e.Kind),
-				Name:        e.Name,
-				Status:      string(e.Status),
-				ReadOnly:    e.ReadOnly,
-				Description: e.Description,
+				ID:                   e.ID,
+				Kind:                 string(e.Kind),
+				Name:                 e.Name,
+				Status:               string(e.Status),
+				ReadOnly:             e.ReadOnly,
+				Description:          e.Description,
+				ArgumentKeys:         argumentKeys,
+				RequiredArgumentKeys: requiredArgumentKeys,
 			})
 		}
 	}
@@ -752,7 +757,7 @@ func (t *UseCapabilityTool) listCapabilities() (string, error) {
 	payload := map[string]any{
 		"capabilities": caps,
 		"servers":      serversPayload.Servers,
-		"note":         "Call action=call with a capability_id to invoke a non-core tool, skill, MCP tool, or other catalog entry without changing the provider tool schema.",
+		"note":         "Call action=call with a capability_id to invoke a non-core tool, skill, MCP tool, or other catalog entry without changing the provider tool schema. For MCP tools, use only argument_keys shown here or exact keys from an active skill; call action=inspect before calling when keys are absent or their value schema is unclear. Never infer argument names from natural-language descriptions.",
 	}
 	if serversPayload.Note != "" {
 		payload["note"] = payload["note"].(string) + " " + serversPayload.Note
