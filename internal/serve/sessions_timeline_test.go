@@ -46,7 +46,7 @@ func TestTimelineSessionsPaginatesSearchesAndSkipsCleanup(t *testing.T) {
 	if first.Total != 31 || len(first.Items) != 30 || first.NextCursor == "" {
 		t.Fatalf("first page = %+v", first)
 	}
-	if first.Items[0].Name != "session-30" || !first.Items[0].UpdatedAt.Equal(base.Add(30*time.Minute)) || !first.Items[0].Current {
+	if first.Items[0].Name != "session-30" || !first.Items[0].UpdatedAt.Equal(base.Add(30*time.Minute)) || !first.Items[0].Current || first.Items[0].Turns != 1 {
 		t.Fatalf("first item = %+v", first.Items[0])
 	}
 	second := timelinePageRequest(t, server, "/sessions/timeline?limit=30&cursor="+url.QueryEscape(first.NextCursor))
