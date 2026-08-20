@@ -443,3 +443,148 @@ func TestServeLeftWorkbenchContract(t *testing.T) {
 		}
 	}
 }
+
+func TestServeWorkbenchFollowupLayoutContract(t *testing.T) {
+	html := string(indexHTML)
+	navStart := strings.Index(html, `<nav class="activity-rail__nav">`)
+	navEnd := strings.Index(html, `</nav>`)
+	theme := strings.Index(html, `id="btn-theme"`)
+	settings := strings.Index(html, `id="btn-settings"`)
+	status := strings.Index(html, `id="sidebar-status"`)
+	bottom := strings.Index(html, `class="activity-rail__bottom"`)
+	if navStart < 0 || navEnd < navStart || strings.Contains(html[navStart:navEnd], `id="btn-settings"`) {
+		t.Fatal("settings button must not remain in the primary activity navigation")
+	}
+	if bottom < 0 || theme < bottom || settings < theme || status < settings {
+		t.Fatal("activity rail bottom order must be theme, settings, then status")
+	}
+	if got := strings.Count(html, ` data-workbench-collapse`); got != 3 {
+		t.Fatalf("workbench collapse controls = %d, want 3", got)
+	}
+	for _, marker := range []string{`id="history-collapse"`, `id="workspace-collapse"`, `id="settings-collapse"`} {
+		if !strings.Contains(html, marker) {
+			t.Errorf("missing unified workbench collapse control %s", marker)
+		}
+	}
+	for _, removed := range []string{`id="btn-sidebar-collapse"`, `id="workspace-close"`, `id="settings-close"`} {
+		if strings.Contains(html, removed) {
+			t.Errorf("obsolete close control remains: %s", removed)
+		}
+	}
+
+	paletteStart := strings.Index(html, `class="theme-picker__palette-grid"`)
+	if paletteStart < 0 {
+		t.Fatal("settings theme palette grid is missing")
+	}
+	paletteEnd := strings.Index(html[paletteStart:], `</div>`)
+	if paletteEnd < 0 {
+		t.Fatal("settings theme palette grid is incomplete")
+	}
+	palette := html[paletteStart : paletteStart+paletteEnd]
+	for _, themeName := range []string{"charcoal-copper", "ivory-morning"} {
+		if !strings.Contains(palette, `value="`+themeName+`"`) {
+			t.Errorf("theme palette grid missing %s", themeName)
+		}
+	}
+	if auto := strings.Index(html, `value="auto"`); auto < 0 || auto > paletteStart {
+		t.Fatal("follow-system theme must remain above the palette grid")
+	}
+	css := string(baizeCSS)
+	for _, marker := range []string{
+		`.theme-picker__palette-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))`,
+		`.theme-picker__palette-grid{grid-template-columns:1fr}`,
+	} {
+		if !strings.Contains(css, marker) {
+			t.Errorf("responsive theme palette CSS missing %q", marker)
+		}
+	}
+	js := string(baizeJS)
+	for _, marker := range []string{
+		`workbenchMode==='files'&&workspaceOpen&&!sidebarCollapsed`,
+		`workbenchMode==='settings'&&settingsDrawer.classList.contains('settings-drawer--open')&&!sidebarCollapsed`,
+		`element.inert=hidden`,
+		`setSurfaceHidden(contextPanel,mobile?!mobileOpen:sidebarCollapsed)`,
+		`setSurfaceHidden($('#log'),mobileOpen)`,
+		`setSurfaceHidden($('.footer'),mobileOpen)`,
+		`menuBtn.setAttribute('aria-expanded',mobileOpen?'true':'false')`,
+		`closeSidebar({restoreFocus:true})`,
+		`workbenchMode==='files'&&!workspaceOpen||workbenchMode==='settings'&&!settingsDrawer.classList.contains('settings-drawer--open')`,
+		`setSurfaceHidden(workspacePanel,true)`,
+		`setSurfaceHidden(settingsDrawer,true)`,
+	} {
+		if !strings.Contains(js, marker) {
+			t.Errorf("workbench mode-aware toggle missing %q", marker)
+		}
+	}
+	if strings.Contains(js, `function openSidebar(){workbenchMode='history'`) {
+		t.Fatal("mobile sidebar opener must preserve the active files/settings view")
+	}
+}
+
+func TestServeTimelineFollowupContract(t *testing.T) {
+	html := string(indexHTML)
+	css := string(baizeCSS)
+	js := string(baizeJS)
+	for _, marker := range []string{
+		`id="timeline-travel-gradient"`,
+		`TIMELINE_TRAVEL_MS=520`,
+		`TIMELINE_TRAVEL_SPAN=24`,
+		`for(let index=0;index<24;index++)`,
+		`1-Math.pow(1-progress,3)`,
+		`window.matchMedia('(prefers-reduced-motion: reduce)')`,
+		`data-selected-pulse`,
+		`timelineTravelResolve`,
+		`resolve(true)`,
+		`setTimeout(reload,TIMELINE_TRAVEL_MS+40)`,
+		`if(!response.ok)throw new Error`,
+		`baize-timeline-collapsed-dates`,
+		`JSON.parse(raw)`,
+		`JSON.stringify(Array.from(collapsedTimelineDates).sort())`,
+		`return!sessionFilter.trim()&&collapsedTimelineDates.has(key)`,
+		`date.type='button'`,
+		`date.setAttribute('aria-expanded'`,
+		`timeline-group__sessions`,
+		`timelineResizeObserver.observe($('#session-timeline'))`,
+		`timelineResizeObserver.observe($('#session-list'))`,
+		`app.addEventListener('transitionend',settleWorkbenchTransition)`,
+		`event.propertyName==='grid-template-columns'`,
+	} {
+		if !strings.Contains(html+css+js, marker) {
+			t.Errorf("timeline follow-up implementation missing %q", marker)
+		}
+	}
+	for _, removed := range []string{
+		`for(let i=0;i<=length;i+=3)`,
+		`addEventListener('scroll',redrawTimeline`,
+		`.session-item__meta`,
+	} {
+		if strings.Contains(css+js, removed) {
+			t.Errorf("obsolete timeline implementation remains: %q", removed)
+		}
+	}
+	renderStart := strings.Index(js, `function renderSessions(){`)
+	renderEnd := strings.Index(js, `let sessionsLoadSequence=0;`)
+	if renderStart < 0 || renderEnd < renderStart {
+		t.Fatal("could not isolate session renderer")
+	}
+	renderer := js[renderStart:renderEnd]
+	for _, marker := range []string{`session-item__title`, `session-item__time`, `session-del`} {
+		if !strings.Contains(renderer, marker) {
+			t.Errorf("single-line session renderer missing %q", marker)
+		}
+	}
+	if strings.Contains(renderer, `.turns`) || strings.Contains(renderer, `session-item__meta`) {
+		t.Fatal("session renderer must not display turns or a second metadata line")
+	}
+	for _, marker := range []string{
+		`.session-item{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto`,
+		`.session-item__title{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`,
+		`.timeline-lines__travel.is-travelling{filter:drop-shadow`,
+		`.timeline-lines__travel.is-positioned{opacity:1}`,
+		`.timeline-group__sessions[hidden]{display:none}`,
+	} {
+		if !strings.Contains(css, marker) {
+			t.Errorf("timeline visual contract missing %q", marker)
+		}
+	}
+}

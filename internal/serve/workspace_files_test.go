@@ -292,9 +292,9 @@ func TestWorkspaceEndpointsUseServeAuthentication(t *testing.T) {
 func TestWorkspaceWebUIContract(t *testing.T) {
 	html := string(indexHTML)
 	for _, marker := range []string{
-		`id="btn-sidebar-collapse"`,
 		`id="btn-workspace"`,
 		`id="workspace-panel"`,
+		`id="workspace-collapse" data-workbench-collapse`,
 		`id="workspace-resizer" role="separator"`,
 		`aria-valuemin="480" aria-valuemax="1200" aria-valuenow="520" tabindex="0"`,
 		`id="workspace-html-toggle"`,

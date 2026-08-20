@@ -33,7 +33,7 @@
 <link rel="stylesheet" href="/assets/baize.css" />
 </head>
 <body>
-<button class="menu-btn" id="menu-btn" aria-label="Toggle sidebar">
+<button type="button" class="menu-btn" id="menu-btn" aria-label="Toggle sidebar" aria-controls="context-panel" aria-expanded="false">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
 </button>
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
@@ -50,18 +50,14 @@
       <button type="button" class="activity-rail__item" id="btn-workspace" data-workbench-mode="files" title="__('workspace_files')" aria-label="__('workspace_files')" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="activity-rail__tooltip">__('workspace_files')</span>
       </button>
-      <button type="button" class="activity-rail__item" id="btn-settings" data-workbench-mode="settings" title="__('settings')" aria-label="__('settings')" aria-expanded="false" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06-.06A1.7 1.7 0 0 0 19.4 9c.18.37.48.72 1 .92.35.14.71.2 1.1.18H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg><span class="activity-rail__tooltip">__('settings')</span>
-      </button>
     </nav>
     <div class="activity-rail__bottom">
-      <button type="button" class="activity-rail__item" id="btn-sidebar-collapse" title="__('sidebar_collapse')" aria-label="__('sidebar_collapse')" aria-expanded="true">
-        <svg class="sidebar-collapse-icon sidebar-collapse-icon--close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
-        <svg class="sidebar-collapse-icon sidebar-collapse-icon--open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m12 9 3 3-3 3"/></svg><span class="activity-rail__tooltip">__('sidebar_collapse')</span>
-      </button>
       <button type="button" class="activity-rail__item" id="btn-theme" title="__('theme_switch_light')" aria-label="__('theme_switch_light')">
         <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
         <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span class="activity-rail__tooltip">__('settings_theme')</span>
+      </button>
+      <button type="button" class="activity-rail__item" id="btn-settings" data-workbench-mode="settings" title="__('settings')" aria-label="__('settings')" aria-expanded="false" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06-.06A1.7 1.7 0 0 0 19.4 9c.18.37.48.72 1 .92.35.14.71.2 1.1.18H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg><span class="activity-rail__tooltip">__('settings')</span>
       </button>
       <button type="button" class="activity-rail__item activity-rail__status" id="sidebar-status" title="__('status')" aria-label="__('status')">
         <span class="status__dot" id="status-dot"></span><span class="activity-rail__tooltip" id="status-model">-</span>
@@ -71,11 +67,11 @@
 
   <aside class="context-panel" id="context-panel" data-view="history" aria-label="__('sessions')">
     <section class="context-view context-view--history" id="history-panel">
-      <header class="context-panel__head"><div><span class="context-panel__eyebrow">Baize</span><h1>__('sessions')</h1></div><span id="session-count" class="context-panel__count"></span></header>
+      <header class="context-panel__head"><div><span class="context-panel__eyebrow">Baize</span><h1>__('sessions')</h1></div><div class="context-panel__head-actions"><span id="session-count" class="context-panel__count"></span><button type="button" class="workbench-collapse" id="history-collapse" data-workbench-collapse aria-label="__('sidebar_collapse')" title="__('sidebar_collapse')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg></button></div></header>
       <div class="session-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input class="session-search__input" id="session-search" type="search" placeholder="__('search_sessions')" aria-label="__('search_sessions')"></div>
       <div class="timeline-result" id="timeline-result" role="status"></div>
       <div class="timeline-shell" id="session-timeline">
-        <svg class="timeline-lines" id="timeline-lines" aria-hidden="true"><path class="timeline-lines__path" id="timeline-path"></path><path class="timeline-lines__travel" id="timeline-travel"></path></svg>
+        <svg class="timeline-lines" id="timeline-lines" aria-hidden="true"><defs><linearGradient id="timeline-travel-gradient" x1="0" y1="0" x2="0" y2="24" gradientUnits="userSpaceOnUse" data-timeline-travel-gradient><stop offset="0" stop-opacity="0"></stop><stop offset=".5" stop-opacity=".85"></stop><stop offset="1" stop-opacity="0"></stop></linearGradient></defs><path class="timeline-lines__path" id="timeline-path"></path><path class="timeline-lines__travel" id="timeline-travel"></path></svg>
         <div class="session-list" id="session-list"><div class="timeline-empty">__('loading')</div></div>
       </div>
       <button type="button" class="timeline-load-more" id="session-load-more" hidden>__('load_earlier_sessions')</button>
@@ -142,8 +138,8 @@
       <button type="button" class="workspace-icon-btn" id="workspace-refresh" title="__('workspace_refresh')" aria-label="__('workspace_refresh')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
       </button>
-      <button type="button" class="workspace-icon-btn" id="workspace-close" title="__('workspace_close')" aria-label="__('workspace_close')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      <button type="button" class="workspace-icon-btn workbench-collapse" id="workspace-collapse" data-workbench-collapse title="__('sidebar_collapse')" aria-label="__('sidebar_collapse')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
       </button>
     </header>
     <div class="workspace-panel__body">
@@ -311,7 +307,7 @@
 
 <div class="settings-backdrop" id="settings-backdrop" hidden></div>
 <aside class="settings-drawer" id="settings-drawer" aria-hidden="true" aria-labelledby="settings-title">
-  <div class="settings-drawer__head"><div><h2 id="settings-title">__('settings')</h2><p>__('settings_global_hint')</p></div><button type="button" class="settings-drawer__close" id="settings-close" aria-label="__('close')">&times;</button></div>
+  <div class="settings-drawer__head"><div><h2 id="settings-title">__('settings')</h2><p>__('settings_global_hint')</p></div><button type="button" class="workbench-collapse" id="settings-collapse" data-workbench-collapse aria-label="__('sidebar_collapse')" title="__('sidebar_collapse')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg></button></div>
   <div class="settings-drawer__state" id="settings-state" role="status"></div>
   <form class="settings-form" id="settings-form">
     <section class="settings-group"><h3>__('settings_models_agents')</h3>
@@ -334,15 +330,9 @@
           <span class="theme-choice__body"><strong>__('settings_theme_auto')</strong><small>__('settings_theme_auto_hint')</small></span>
           <span class="theme-choice__check" aria-hidden="true">✓</span>
         </label>
-        <div class="theme-picker__group"><span class="theme-picker__label">__('settings_theme_dark_group')</span>
-          <div class="theme-picker__grid">
-            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="charcoal-copper"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#1d1c1b"></i><i style="--swatch:#34302c"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_charcoal_copper')</strong><small>__('theme_charcoal_copper_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
-          </div>
-        </div>
-        <div class="theme-picker__group"><span class="theme-picker__label">__('settings_theme_light_group')</span>
-          <div class="theme-picker__grid">
-            <label class="theme-choice"><input type="radio" name="appearanceTheme" value="ivory-morning"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#eee7dc"></i><i style="--swatch:#fffaf2"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_ivory_morning')</strong><small>__('theme_ivory_morning_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
-          </div>
+        <div class="theme-picker__palette-grid">
+          <label class="theme-choice"><input type="radio" name="appearanceTheme" value="charcoal-copper"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#1d1c1b"></i><i style="--swatch:#34302c"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_charcoal_copper')</strong><small>__('theme_charcoal_copper_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
+          <label class="theme-choice"><input type="radio" name="appearanceTheme" value="ivory-morning"><span class="theme-choice__swatches" aria-hidden="true"><i style="--swatch:#eee7dc"></i><i style="--swatch:#fffaf2"></i><i style="--swatch:#e97832"></i></span><span class="theme-choice__body"><strong>__('theme_ivory_morning')</strong><small>__('theme_ivory_morning_hint')</small></span><span class="theme-choice__check" aria-hidden="true">✓</span></label>
         </div>
       </fieldset>
       <label class="settings-field"><span>__('settings_density')</span><select id="setting-density"><option value="comfortable">__('settings_density_comfortable')</option><option value="compact">__('settings_density_compact')</option></select></label>
