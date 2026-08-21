@@ -3618,11 +3618,15 @@ function timelineAnchorForSelection(){return timelineGeometry.anchors.get(timeli
 function settleTimelineTravel(){
   cancelTimelineTravel();const anchor=timelineAnchorForSelection();if(!anchor){clearTimelineTravel();return;}positionTimelineTravel(anchor.length);
 }
+function syncTimelineOverflow(shell,list){
+  const bottomPadding=Number.parseFloat(getComputedStyle(shell).paddingBottom)||0,contentHeight=list.offsetTop+list.scrollHeight+bottomPadding,scrollable=contentHeight>shell.clientHeight+1;
+  shell.classList.toggle('timeline-shell--scrollable',scrollable);if(!scrollable&&shell.scrollTop)shell.scrollTop=0;return Math.max(shell.clientHeight,contentHeight);
+}
 function redrawTimeline(){
   const shell=$('#session-timeline'),list=$('#session-list'),svg=$('#timeline-lines'),path=$('#timeline-path'),travel=$('#timeline-travel');if(!shell||!list||!svg||!path||!travel||shell.clientWidth===0||shell.clientHeight===0)return;
   const shellRect=shell.getBoundingClientRect(),nodes=Array.from(shell.querySelectorAll('.timeline-node')).filter(node=>node.offsetParent!==null);
   const points=nodes.map(node=>{const dot=node.querySelector('.timeline-date__dot,.session-item__dot'),rect=dot?.getBoundingClientRect();return rect?{key:node.dataset.timelineKey,node,x:rect.left-shellRect.left+rect.width/2+shell.scrollLeft,y:rect.top-shellRect.top+rect.height/2+shell.scrollTop}:null;}).filter(Boolean);
-  const contentHeight=Math.max(shell.clientHeight,list.offsetTop+list.scrollHeight+12);svg.setAttribute('viewBox','0 0 '+Math.max(1,shell.clientWidth)+' '+Math.max(1,contentHeight));svg.style.height=contentHeight+'px';
+  const contentHeight=syncTimelineOverflow(shell,list);svg.setAttribute('viewBox','0 0 '+Math.max(1,shell.clientWidth)+' '+Math.max(1,contentHeight));svg.style.height=contentHeight+'px';
   if(!points.length){path.setAttribute('d','');travel.setAttribute('d','');timelinePathShape='';timelineGeometry={total:0,anchors:new Map()};timelineSettlePending=false;clearTimelineTravel();return;}
   let d;if(points.length===1){const point=points[0],half=TIMELINE_TRAVEL_SPAN/2;d='M '+point.x+' '+Math.max(0,point.y-half)+' L '+point.x+' '+(point.y+half);}else{d='M '+points[0].x+' '+points[0].y;for(let index=1;index<points.length;index++){const previous=points[index-1],current=points[index],bend=Math.max(10,Math.min(24,(current.y-previous.y)/2));d+=' C '+previous.x+' '+(previous.y+bend)+' '+current.x+' '+(current.y-bend)+' '+current.x+' '+current.y;}}
   const shapeChanged=d!==timelinePathShape;path.setAttribute('d',d);travel.setAttribute('d',d);const total=path.getTotalLength(),anchors=new Map();points.forEach(point=>anchors.set(point.key,{node:point.node,length:timelinePathPosition(path,point.y,total)}));timelineGeometry={total,anchors};timelinePathShape=d;

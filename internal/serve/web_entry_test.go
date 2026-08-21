@@ -311,15 +311,26 @@ func TestWorkspacePDFPreviewUsesPDFJS(t *testing.T) {
 	}
 }
 
-func TestSessionListKeepsScrollableFixedRows(t *testing.T) {
+func TestSessionListOnlyEnablesOverflowWhenNeeded(t *testing.T) {
 	css := string(baizeCSS)
 	for _, want := range []string{
-		`.timeline-shell{position:relative;min-height:0;flex:1;overflow-y:auto;`,
+		`.timeline-shell{position:relative;min-height:0;flex:1;overflow-y:hidden;`,
+		`.timeline-shell--scrollable{overflow-y:auto}`,
 		`.session-list{position:relative;z-index:1;display:flex;min-height:0;flex-direction:column;`,
 		`.session-item{position:relative;display:grid;`,
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("Baize stylesheet missing session list layout contract %q", want)
+		}
+	}
+	js := string(baizeJS)
+	for _, want := range []string{
+		`contentHeight>shell.clientHeight+1`,
+		`shell.classList.toggle('timeline-shell--scrollable',scrollable)`,
+		`if(!scrollable&&shell.scrollTop)shell.scrollTop=0`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("Baize session list overflow behavior missing %q", want)
 		}
 	}
 }
