@@ -104,3 +104,52 @@ func TestSettingsRevisionConflictAndSafeUpdate(t *testing.T) {
 		t.Fatal("pending settings were not applied after TurnDone")
 	}
 }
+
+func TestTaskErrorVisibilitySavesWithoutControllerRebuild(t *testing.T) {
+	writeSettingsTestConfig(t)
+	bc := NewBroadcaster()
+	root := t.TempDir()
+	ctrl := control.New(control.Options{Sink: bc, Runner: blockingRunner{}, Label: "model-a", ModelRef: "local/model-a", SessionDir: t.TempDir(), WorkspaceRoot: root})
+	server := New(ctrl, bc, config.ServeConfig{})
+	rebuilt := make(chan struct{}, 1)
+	server.rebuildController = func(_ context.Context, _ *control.Controller, ref string) (*control.Controller, error) {
+		rebuilt <- struct{}{}
+		return control.New(control.Options{Sink: bc, Label: "model-a", ModelRef: ref, SessionDir: ctrl.SessionDir(), WorkspaceRoot: root}), nil
+	}
+
+	initial, err := server.safeSettingsView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.Global.ShowTaskErrors {
+		t.Fatal("showTaskErrors must default to false")
+	}
+	enabled := true
+	payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, ShowTaskErrors: &enabled})
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	server.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("PATCH status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var updated settingsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Global.ShowTaskErrors || updated.Apply != "applied" {
+		t.Fatalf("updated settings = %#v", updated)
+	}
+	select {
+	case <-rebuilt:
+		t.Fatal("display-only setting rebuilt the controller")
+	case <-time.After(100 * time.Millisecond):
+	}
+	persisted, err := config.LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !persisted.Serve.ShowTaskErrors {
+		t.Fatal("show_task_errors was not persisted")
+	}
+}

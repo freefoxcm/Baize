@@ -105,10 +105,10 @@ type Message struct {
 	// persisted for Desktop/CLI/Serve cards and stripped by ModelMessages before
 	// any provider request so tool schemas and prompt-cache prefixes stay stable.
 	ToolExecution *ToolExecution `json:"tool_execution,omitempty"`
+	ToolFailed    bool           `json:"tool_failed,omitempty"`
 }
 
-// ToolExecution is host-local shell metadata mirrored from tool.ShellExecution.
-// Provider serializers must never emit this object on the wire.
+// ToolExecution is host-local shell metadata excluded from provider requests.
 type ToolExecution struct {
 	Kind           string `json:"kind,omitempty"`
 	Shell          string `json:"shell,omitempty"`

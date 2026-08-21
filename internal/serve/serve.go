@@ -1099,6 +1099,7 @@ type historyMessage struct {
 	ToolCallID string            `json:"toolCallId,omitempty"`
 	ToolName   string            `json:"toolName,omitempty"`
 	DurationMs int64             `json:"durationMs,omitempty"` // tool result wall-clock time
+	Failed     bool              `json:"failed,omitempty"`
 }
 
 func historyMessages(msgs []provider.Message, summaries ...map[string]*subagentExecutionSummary) []historyMessage {
@@ -1147,9 +1148,7 @@ func historyMessages(msgs []provider.Message, summaries ...map[string]*subagentE
 			}
 		}
 		if m.Role == provider.RoleTool {
-			hm.ToolCallID = m.ToolCallID
-			hm.ToolName = m.Name
-			hm.DurationMs = m.ToolDurationMs
+			populateToolHistoryMetadata(&hm, m)
 			// Sessions predating ToolDurationMs (older than the duration
 			// persistence change) have no recorded execution time; estimate it
 			// from the persisted CreatedAt delta between the tool result and

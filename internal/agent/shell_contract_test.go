@@ -46,6 +46,9 @@ func TestOrdinaryModeBlocksMixedMutationAndVerification(t *testing.T) {
 		if msg.ToolExecution.FailurePhase != tool.ShellPhasePreflight {
 			t.Fatalf("phase = %q", msg.ToolExecution.FailurePhase)
 		}
+		if !msg.ToolFailed {
+			t.Fatal("blocked tool result did not persist ToolFailed")
+		}
 		return
 	}
 	t.Fatal("tool result missing")

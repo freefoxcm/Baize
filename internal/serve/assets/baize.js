@@ -289,6 +289,8 @@ const __T = {
     'settings_subagent_model': 'Subagent model',
     'settings_subagent_effort': 'Subagent effort',
     'settings_execution': 'Execution',
+	'settings_show_task_errors': 'Show task error cards',
+	'settings_show_task_errors_hint': 'Failed tool and subagent cards are hidden by default. The task failure notice and operational or safety errors always remain visible.',
     'settings_default_approval': 'Default approval mode',
     'settings_new_sessions_only': 'Applies to new sessions only.',
     'settings_subagent_depth': 'Subagent depth',
@@ -677,6 +679,8 @@ const __T = {
     'settings_subagent_model': 'Subagent 模型',
     'settings_subagent_effort': 'Subagent 思考强度',
     'settings_execution': '执行',
+	'settings_show_task_errors': '显示任务错误卡',
+	'settings_show_task_errors_hint': '默认隐藏失败的工具与子代理卡片；任务失败提示及操作、安全类错误始终可见。',
     'settings_default_approval': '默认审批模式',
     'settings_new_sessions_only': '仅影响新会话。',
     'settings_subagent_depth': '子代理深度',
@@ -1255,6 +1259,7 @@ function setConnState(state) {
 //   {id, kind:'tool', name, args, output, err, status}
 //   {id, kind:'phase'|'notice'|'compaction'|'error', text, level?, detail?}
 let items = [];
+let showTaskErrors = false;
 let deliveryRecoveryActive = false;
 let nextItemId = 1;
 let liveAssistant = null; // assistant item currently streaming
@@ -1482,6 +1487,27 @@ function turnContainer(turn) {
 function registerTurnTool(t, tool) {
   t.tools.set(tool.id, tool);
 }
+function taskErrorHidden(tool) { return !showTaskErrors && !!tool?.failed; }
+function setToolCardVisibility(card, tool) {
+  if (card) card.hidden = taskErrorHidden(tool);
+}
+function updateAssistantTaskErrorVisibility(item) {
+  if (item?.kind !== 'assistant' || !item.dom?.root) return;
+  item.dom.root.hidden = !item.text && !item.reasoning && (item.tools || []).length > 0 && (item.tools || []).every(taskErrorHidden);
+}
+function setTaskErrorVisibility(value) {
+  showTaskErrors = !!value;
+  items.forEach(item => {
+    const tools = item.kind === 'assistant' ? (item.tools || []) : (item.kind === 'tool' ? [item] : []);
+    tools.forEach(tool => {
+      const card = item.kind === 'assistant' ? item.dom?.tools?.get(tool.id) : item.dom?.root;
+      setToolCardVisibility(card, tool);
+    });
+	updateAssistantTaskErrorVisibility(item);
+  });
+  turnEls.forEach(t => applyTurnFold(t));
+  items.forEach(updateTurnSummaryForItem);
+}
 // updateTurnSummaryForItem recomputes the turn's summary bar from the items
 // model (source of truth) — tool cards attached to a streaming assistant
 // never pass through appendItem, so the per-turn map alone would miss them.
@@ -1492,11 +1518,12 @@ function updateTurnSummaryForItem(it) {
   let thoughts = 0, running = false;
   for (const item of items) {
     if ((item.turn || 0) !== it.turn) continue;
-    if (item.kind === 'tool') { tools.push(item); if (item.status === 'running') running = true; }
+    if (item.kind === 'tool' && !taskErrorHidden(item)) { tools.push(item); if (item.status === 'running') running = true; }
     else if (item.kind === 'assistant') {
       if (item.tools) {
-        tools.push(...item.tools);
-        if (item.tools.some(t => t.status === 'running')) running = true;
+		const visibleTools = item.tools.filter(tool => !taskErrorHidden(tool));
+		tools.push(...visibleTools);
+		if (visibleTools.some(t => t.status === 'running')) running = true;
       }
       if (item.reasoning) thoughts++;
     }
@@ -1519,7 +1546,7 @@ function updateTurnSummary(t, tools, thoughts, running) {
 }
 function applyTurnFold(t) {
   t.el.querySelectorAll('.reasoning, .card').forEach(n => {
-    n.style.display = t.folded ? 'none' : '';
+	n.style.display = n.hidden || t.folded ? 'none' : '';
   });
   t.summary.classList.toggle('turn-summary--folded', !!t.folded);
 }
@@ -1582,6 +1609,7 @@ function renderItem(it) {
     if (it.reasoning) appendAssistantReasoning(it, d);
     if (it.text) appendAssistantText(it, d);
     (it.tools || []).forEach(t => { const card = buildToolCard(t); if (card) { d.appendChild(card); it.dom.tools.set(t.id, card); } });
+	updateAssistantTaskErrorVisibility(it);
     if (it.done) { const c = d.querySelector('.cursor'); if (c) c.remove(); }
     addMsgActions(it, d, { editable: false });
     return d;
@@ -2240,7 +2268,7 @@ function toolResultMeta(t, durMs) {
   const dur = durMs>0 ? fmtElapsed(durMs) : '';
   const name = String(t.name||'').toLowerCase();
   const isCmd = name==='bash'||name==='powershell'||name==='cmd'||name==='shell'||name==='terminal';
-  if (t.err) return dur;
+	if (t.failed || t.err) return dur;
   if (t.added||t.removed||t.diff) return '+'+(t.added||0)+' -'+(t.removed||0)+(dur?' · '+dur:'');
   if (isCmd) return dur;
   return (dur?dur+' · ':'') + lineCount(String(t.output||'')) + ' ' + __('tool_lines');
@@ -2280,6 +2308,8 @@ function appendSubagentSection(body,label,value,cls){
 function renderSubagentCard(card,tool){
   if(!card||!isSubagentTool(tool))return;
   const state=ensureSubagentState(tool);
+	if(state.phase==='failed')tool.failed=true;
+	setToolCardVisibility(card,tool);
   card.classList.add('card--subagent');
   const terminal=terminalSubagentPhase(state.phase);
   const tone=state.phase==='failed'?'danger':state.phase==='cancelled'?'danger':terminal?'success':'accent';
@@ -2335,13 +2365,14 @@ function buildToolCard(tool) {
   const card=el('div','card');
   card.id='tool-'+tool.id;
   card.dataset.open=isSubagentTool(tool)&&tool.status!=='done'?'true':'false';
-  const tone = tool.err ? 'danger' : (tool.status === 'done' || tool.status === 'running' ? (tool.status === 'done' ? 'success' : 'accent') : 'accent');
+  const failed = !!(tool.failed || tool.err);
+  const tone = failed ? 'danger' : (tool.status === 'done' || tool.status === 'running' ? (tool.status === 'done' ? 'success' : 'accent') : 'accent');
   card.dataset.tone = tone;
   card.dataset.toolArgs=String(tool.args||'');
   card.dataset.startedAt=String(Number(tool.startedAt||Date.now()));
   const head=el('div','card-head');
   const summary=toolArgsSummary(tool.args);
-  head.innerHTML='<span class="ico'+(tone==='accent'?' spin':'')+'">'+toolIcon(tone==='danger'?'danger':tone==='success'?'success':'accent')+'</span><div class="card-main"><div class="card-title"><span class="name">'+escHtml(tool.name||'tool')+'</span>'+(summary?'<span class="subject">'+escHtml(summary)+'</span>':'')+'</div><div class="card-meta"></div></div><span class="card-badge">'+escHtml(tool.err?__('tool_failed'):tool.status==='done'?__('tool_done'):__('tool_running'))+'</span><div class="card-actions"><button type="button" class="card-action card-copy" title="'+escAttr(__('tool_copy'))+'" aria-label="'+escAttr(__('tool_copy'))+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div>';
+  head.innerHTML='<span class="ico'+(tone==='accent'?' spin':'')+'">'+toolIcon(tone==='danger'?'danger':tone==='success'?'success':'accent')+'</span><div class="card-main"><div class="card-title"><span class="name">'+escHtml(tool.name||'tool')+'</span>'+(summary?'<span class="subject">'+escHtml(summary)+'</span>':'')+'</div><div class="card-meta"></div></div><span class="card-badge">'+escHtml(failed?__('tool_failed'):tool.status==='done'?__('tool_done'):__('tool_running'))+'</span><div class="card-actions"><button type="button" class="card-action card-copy" title="'+escAttr(__('tool_copy'))+'" aria-label="'+escAttr(__('tool_copy'))+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg></button><span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div>';
   const body=el('div','card-body');
   body.style.display='none';
   if (tool.diff) {
@@ -2360,11 +2391,12 @@ function buildToolCard(tool) {
   if(!tool.diff&&(tool.output||tool.err)){body.textContent=(tool.output||'')+(tool.err?('\n'+tool.err):'');}
   // History rebuilds create cards for tools that already finished; render the
   // result meta here the same way renderToolResult would for a live stream.
-  if (tool.status==='done' || tool.err) {
+  if (tool.status==='done' || failed) {
     const meta = head.querySelector('.card-meta');
     if (meta) meta.textContent = toolResultMeta(tool, tool.durationMs);
   }
   if(isSubagentTool(tool))renderSubagentCard(card,tool);
+	setToolCardVisibility(card,tool);
   return card;
 }
 function cardForTool(it, tool) {
@@ -2498,6 +2530,7 @@ function renderToolResult(tool) {
   if (!found) return;
   const { item: it, tool: t } = found;
   t.err = tool.err || '';
+	t.failed = !!tool.err;
   t.output = tool.output || '';
   t.status = tool.err ? 'failed' : 'done';
   t.durationMs = tool.durationMs;
@@ -2507,6 +2540,8 @@ function renderToolResult(tool) {
   if(tool.subagentSummary)t.subagentSummary=tool.subagentSummary;
   const card = cardForTool(it, t);
   if (!card) return;
+	setToolCardVisibility(card,t);
+	updateAssistantTaskErrorVisibility(it);
   const elapsed = Math.max(0, Date.now() - Number(card.dataset.startedAt || Date.now()));
   if(isSubagentTool(t)){
     const state=ensureSubagentState(t);
@@ -2585,6 +2620,7 @@ function renderToolProgress(tool) {
         const phase=String(tool.output||'');
         if(!SUBAGENT_PHASES.has(phase))return;
         state.phase=phase;
+		if(phase==='failed')t.failed=true;
         if(terminalSubagentPhase(phase)&&tool.durationMs)state.durationMs=Number(tool.durationMs);
         break;
       }
@@ -2593,7 +2629,7 @@ function renderToolProgress(tool) {
       case 'reasonix.subagent.notice': {const next=appendSubagentPreview(state.notice,tool.output,SUBAGENT_PROGRESS_LIMITS.notice);state.notice=next.value;state.truncated=state.truncated||next.truncated||!!tool.truncated;break;}
       default:return;
     }
-    const card=cardForTool(it,t);if(card){renderSubagentCard(card,t);if(terminalSubagentPhase(state.phase)&&subagentAutoCollapse()&&card.dataset.userOverride!=='true'){card.dataset.open='false';const body=card.querySelector('.card-body');if(body)body.style.display='none';}}
+	const card=cardForTool(it,t);if(card){renderSubagentCard(card,t);setToolCardVisibility(card,t);updateAssistantTaskErrorVisibility(it);if(terminalSubagentPhase(state.phase)&&subagentAutoCollapse()&&card.dataset.userOverride!=='true'){card.dataset.open='false';const body=card.querySelector('.card-body');if(body)body.style.display='none';}}
     updateTurnSummaryForItem(it);scrollDown();return;
   }
   const found = findTool(tool.id);
@@ -3432,10 +3468,12 @@ setInterval(fetchStatus,30000);
 // ── history ──
 function renderHistoryMessages(ms){
   if(!ms||ms.length===0){resetItems();hasVisibleHistory=false;showWelcome();updateActionAvailability();return false;}
+	const resultById=new Map();
+	ms.forEach(m=>{if(m.role==='tool'&&m.toolCallId&&!resultById.has(m.toolCallId))resultById.set(m.toolCallId,m);});
   const visible = ms.some(m => {
     if(m.role==='user')return !!m.content;
-    if(m.role==='assistant')return !!(m.content||m.reasoning||(m.toolCalls||[]).some(tc=>!hiddenTranscriptTool(tc.name)));
-    if(m.role==='tool')return !hiddenTranscriptTool(m.toolName)&&!!(m.content||m.toolCallId||m.toolName);
+	if(m.role==='assistant')return !!(m.content||m.reasoning||(m.toolCalls||[]).some(tc=>!hiddenTranscriptTool(tc.name)&&!taskErrorHidden(resultById.get(tc.id))));
+	if(m.role==='tool')return !taskErrorHidden(m)&&!hiddenTranscriptTool(m.toolName)&&!!(m.content||m.toolCallId||m.toolName);
     if(m.role==='final_readiness')return true;
     return false;
   });
@@ -3448,8 +3486,6 @@ function renderHistoryMessages(ms){
   resetItems();
   log.innerHTML='';
   if (welcome) log.appendChild(welcome);
-  const resultById=new Map();
-  ms.forEach(m=>{if(m.role==='tool'&&m.toolCallId&&!resultById.has(m.toolCallId))resultById.set(m.toolCallId,m);});
   const consumed=new Set();
   let seq=0;
   let histTurn=0; // /history has no turn ids; a user message opens a new turn
@@ -3475,8 +3511,8 @@ function renderHistoryMessages(ms){
       visibleCalls.forEach(tc=>{
         const id=tc.id||'hist-tool-'+(seq++);
         const result=resultById.get(tc.id);
-        const histTool={id,name:tc.name||'tool',args:String(tc.arguments||''),resolvedName:tc.resolvedName||'',capabilityId:tc.capabilityId||'',output:result?String(result.content||''):'',err:result?.err||'',status:result?'done':'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0),subagentSummary:tc.subagentSummary||null,profile:tc.subagentSummary?{model:tc.subagentSummary.model||'',effort:tc.subagentSummary.effort||''}:null};
-        if(tc.subagentSummary){const finalPreview=appendSubagentPreview('',histTool.output,SUBAGENT_PROGRESS_LIMITS.text);histTool.subagent={phase:tc.subagentSummary.status||'completed',reasoning:'',text:'',notice:'',truncated:finalPreview.truncated,startedAt:Number(tc.subagentSummary.startedAt||Date.now()),lastActivityAt:Number(tc.subagentSummary.endedAt||Date.now()),durationMs:Number(tc.subagentSummary.durationMs||0),finalOutput:finalPreview.value};}
+		const histTool={id,name:tc.name||'tool',args:String(tc.arguments||''),resolvedName:tc.resolvedName||'',capabilityId:tc.capabilityId||'',output:result?String(result.content||''):'',err:'',failed:!!result?.failed,status:result?(result.failed?'failed':'done'):'running',readOnly:false,durationMs:result?Number(result.durationMs||0):0,added:Number(tc.added||0),removed:Number(tc.removed||0),subagentSummary:tc.subagentSummary||null,profile:tc.subagentSummary?{model:tc.subagentSummary.model||'',effort:tc.subagentSummary.effort||''}:null};
+		if(tc.subagentSummary){const finalPreview=appendSubagentPreview('',histTool.output,SUBAGENT_PROGRESS_LIMITS.text);histTool.subagent={phase:histTool.failed?'failed':(tc.subagentSummary.status||'completed'),reasoning:'',text:'',notice:'',truncated:finalPreview.truncated,startedAt:Number(tc.subagentSummary.startedAt||Date.now()),lastActivityAt:Number(tc.subagentSummary.endedAt||Date.now()),durationMs:Number(tc.subagentSummary.durationMs||0),finalOutput:finalPreview.value};}
         addToolAudit(histTool,capabilityAuditEntry(histTool));
         it.tools.push(histTool);
         if(tc.id)consumed.add(tc.id);
@@ -3489,7 +3525,7 @@ function renderHistoryMessages(ms){
       if(m.toolCallId&&consumed.has(m.toolCallId))return;
       if(hiddenTranscriptTool(m.toolName))return;
       const id=m.toolCallId||'hist-tool-'+(seq++);
-      const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:m.err||'',status:m.err?'failed':'done',durationMs:Number(m.durationMs||0),dom:null,turn:histTurn||++histTurn};
+	  const it={id,kind:'tool',name:m.toolName||'tool',args:'',output:m.content||'',err:'',failed:!!m.failed,status:m.failed?'failed':'done',durationMs:Number(m.durationMs||0),dom:null,turn:histTurn||++histTurn};
       items.push(it);
       const d=renderItem(it);if(d)appendItem(it,d);
     }
@@ -3523,7 +3559,10 @@ function reloadHistory() {
     fetchStatus(); // re-sync running/goal/context after the rebuild
   });
 }
-reloadHistory();
+async function loadInitialTaskErrorVisibility(){
+  try{const response=await fetch('/settings');if(!response.ok)return;const view=await response.json();showTaskErrors=!!view?.global?.showTaskErrors;}catch{}
+}
+loadInitialTaskErrorVisibility().finally(reloadHistory);
 
 // ── session list ──
 let sessionCount=0,sessionsNextCursor='',sessionsTotal=0,sessionsSearchTimer=null;
@@ -4799,6 +4838,7 @@ function fillModelSetting(select,models,value,allowEmpty){
 function populateSettings(view){
   settingsSnapshot=view;settingsRevision=view.revision||'';const value=view.global||{};const models=value.models||[];
   fillModelSetting($('#setting-default-model'),models,value.defaultModel,false);fillModelSetting($('#setting-planner-model'),models,value.plannerModel,true);fillModelSetting($('#setting-subagent-model'),models,value.subagentModel,true);
+	const taskErrors=$('#setting-show-task-errors');if(taskErrors)taskErrors.checked=!!value.showTaskErrors;setTaskErrorVisibility(!!value.showTaskErrors);
   Object.entries(value).forEach(([name,val])=>{const field=settingsForm.elements.namedItem(name);if(field&&field.tagName!=='SELECT'&&field.tagName!=='INPUT')return;if(field&&name!=='defaultModel'&&name!=='plannerModel'&&name!=='subagentModel')field.value=String(val);});
   syncThemePicker(storedThemePreference());
   $('#setting-density').value=storageValue('baize-density','comfortable');
@@ -4821,7 +4861,7 @@ function runtimeSettingsPayload(){
   const data=new FormData(settingsForm);const payload={revision:settingsRevision};
   ['defaultModel','plannerModel','subagentModel','subagentEffort','defaultApprovalMode','reasoningLanguage'].forEach(name=>payload[name]=String(data.get(name)||''));
   ['maxSubagentDepth','maxSubagentConcurrency','maxParallelWriters'].forEach(name=>payload[name]=Number(data.get(name)));
-  payload.compactRatio=Number(data.get('compactRatio'));return payload;
+	payload.compactRatio=Number(data.get('compactRatio'));payload.showTaskErrors=$('#setting-show-task-errors').checked;return payload;
 }
 function saveAppearanceSettings(){
   const selected=document.querySelector('input[name="appearanceTheme"]:checked');
@@ -4829,6 +4869,7 @@ function saveAppearanceSettings(){
 }
 $$('input[name="appearanceTheme"]').forEach(field=>field.addEventListener('change',saveAppearanceSettings));
 ['setting-density','setting-reasoning-display','setting-subagent-preview','setting-subagent-collapse'].forEach(id=>{const field=$('#'+id);if(field)field.addEventListener('change',saveAppearanceSettings);});
+$('#setting-show-task-errors')?.addEventListener('change',event=>setTaskErrorVisibility(event.target.checked));
 settingsForm.addEventListener('input',event=>{if(event.target?.name&&event.target.name!=='appearanceTheme')settingsDirty=true;});
 settingsForm.addEventListener('change',event=>{if(event.target?.name&&event.target.name!=='appearanceTheme')settingsDirty=true;});
 settingsForm.onsubmit=async event=>{

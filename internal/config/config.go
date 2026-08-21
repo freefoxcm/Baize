@@ -954,10 +954,10 @@ type BotConnectionSessionMapping struct {
 
 // ServeConfig controls the HTTP serve frontend security settings.
 type ServeConfig struct {
+	ShowTaskErrors bool `toml:"show_task_errors"`
 	// AuthMode selects the authentication mode for the HTTP serve frontend.
 	// "none" (default): no authentication.
-	// "token": a pre-shared token in the URL query string.
-	// "password": a login page with bcrypt password verification.
+	// "token": pre-shared URL token; "password": bcrypt-backed login page.
 	AuthMode string `toml:"auth_mode"`
 	// Token is a pre-shared token for auth_mode = "token". When empty, a
 	// cryptographically random token is generated at startup and printed.

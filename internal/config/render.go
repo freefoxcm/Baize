@@ -90,7 +90,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	}
 
 	if scope != RenderScopeProject {
-		b.WriteString("[desktop]\n")
+		renderServeConfig(&b, c.Serve)
 		if lang := c.DesktopLanguage(); lang != "" {
 			fmt.Fprintf(&b, "language = %q   # desktop UI language; empty/auto = browser/OS auto-detect\n", lang)
 		} else {
