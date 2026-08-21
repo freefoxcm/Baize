@@ -34,6 +34,7 @@ func TestTaskErrorVisibilityWebContract(t *testing.T) {
 	source := baizeWebSource()
 	for _, want := range []string{
 		`id="setting-show-task-errors"`,
+		`默认隐藏失败工具/子代理卡；任务失败提示、操作与安全错误始终可见。`,
 		`showTaskErrors = false`,
 		`setToolCardVisibility(card,tool);`,
 		`const visibleCalls=allCalls.filter(tc=>!hiddenTranscriptTool(tc.name));`,

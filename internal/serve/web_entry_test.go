@@ -175,6 +175,52 @@ func TestServeWebUIStreamsAndManagesAttachments(t *testing.T) {
 	}
 }
 
+func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
+	html := string(indexHTML)
+	js := string(baizeJS)
+	css := string(baizeCSS)
+	settings := strings.Index(html, `id="settings-form"`)
+	execution := strings.Index(html, `__('settings_execution')`)
+	floor := strings.Index(html, `id="quality-floor-select"`)
+	appearance := strings.Index(html, `__('settings_appearance')`)
+	taskErrors := strings.Index(html, `id="setting-show-task-errors"`)
+	attachments := strings.Index(html, `class="settings-group attachment-storage"`)
+	if settings < 0 || execution < settings || floor < execution || appearance < floor || taskErrors < appearance || attachments < taskErrors {
+		t.Fatalf("settings controls are not ordered as execution floor, appearance error visibility, attachment storage")
+	}
+	if strings.Count(html, `id="quality-floor-select"`) != 1 {
+		t.Fatal("quality floor must have exactly one settings-only entry")
+	}
+	actions := strings.Index(html, `class="attachment-storage__actions"`)
+	actionsEnd := -1
+	if actions >= 0 {
+		actionsEnd = strings.Index(html[actions:], `</div>`)
+	}
+	if actions < attachments || actionsEnd < 0 || !strings.Contains(html[actions:actions+actionsEnd], `id="attachments-refresh"`) || !strings.Contains(html[actions:actions+actionsEnd], `id="attachments-clear"`) {
+		t.Fatal("attachment refresh and clear actions must share the storage header")
+	}
+	for _, marker := range []string{
+		`qualityFloorDraft=qualityFloorSelect.value==='delivery'?'delivery':'standard'`,
+		`qualityFloorSelect.disabled=floorDisabled;`,
+		`if(qualityFloorDraft!==qualityFloor){await requestQualityFloor(qualityFloorDraft)`,
+		`await rollbackFloor();`,
+		`settingsState(__('settings_conflict'),'warn');return;`,
+		`collapseWorkbench({restoreFocus:true})`,
+	} {
+		if !strings.Contains(js, marker) {
+			t.Errorf("settings save flow missing %q", marker)
+		}
+	}
+	for _, marker := range []string{
+		`.attachment-storage__actions{display:flex;`,
+		`.settings-check--task-errors strong{white-space:nowrap}`,
+	} {
+		if !strings.Contains(css, marker) {
+			t.Errorf("settings stylesheet missing %q", marker)
+		}
+	}
+}
+
 func TestServeModelSwitchRefreshesProviderIdentity(t *testing.T) {
 	source := string(baizeJS)
 	for _, want := range []string{
@@ -269,7 +315,7 @@ func TestSessionListKeepsScrollableFixedRows(t *testing.T) {
 	css := string(baizeCSS)
 	for _, want := range []string{
 		`.timeline-shell{position:relative;min-height:0;flex:1;overflow-y:auto;`,
-		`.session-list{position:relative;z-index:1;display:flex;min-height:100%;flex-direction:column;`,
+		`.session-list{position:relative;z-index:1;display:flex;min-height:0;flex-direction:column;`,
 		`.session-item{position:relative;display:grid;`,
 	} {
 		if !strings.Contains(css, want) {
