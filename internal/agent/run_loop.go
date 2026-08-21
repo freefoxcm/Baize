@@ -624,7 +624,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 	if len(unavailableContextTools) > 0 && state.contextToolRepairs > 0 {
 		msg := fmt.Sprintf("blocked: context-unavailable tools were called again after the repair instruction: %s", strings.Join(unavailableContextTools, ", "))
 		for _, call := range calls {
-			a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
+			a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name, ToolFailed: true})
 		}
 		if hasVisibleFinalAnswer(text) {
 			return a.handleFinalResponse(ctx, state, text, reasoning, usage)
@@ -654,6 +654,9 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 			ToolCallID:     call.ID,
 			Name:           call.Name,
 			ToolDurationMs: batch.durations[i],
+		}
+		if i < len(batch.outcomes) {
+			msg.ToolFailed = batch.outcomes[i].errMsg != "" || batch.outcomes[i].blocked
 		}
 		// Content is the stable bounded provider form. Full originals remain in
 		// local RawContent and enter model context only through explicit paging.
@@ -729,7 +732,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 
 func (a *Agent) pairUnexecutedGraceCalls(calls []provider.ToolCall, msg string) {
 	for _, call := range calls {
-		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
+		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name, ToolFailed: true})
 	}
 }
 

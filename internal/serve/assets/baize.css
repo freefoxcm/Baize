@@ -944,6 +944,7 @@ input,textarea{font:inherit;color:inherit}
 .settings-field-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .settings-field-grid .settings-field{display:flex;flex-direction:column;align-items:stretch;gap:5px}
 .settings-check{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--fg-2);font-size:12px}
+.settings-check>span{display:flex;flex-direction:column;gap:2px}.settings-check strong{color:var(--fg);font-weight:600}.settings-check small{color:var(--fg-3);line-height:1.4}
 .settings-actions{position:sticky;bottom:-20px;display:flex;justify-content:flex-end;gap:8px;margin:0 -18px -20px;padding:12px 18px;background:color-mix(in srgb,var(--panel) 94%,transparent);border-top:1px solid var(--border);backdrop-filter:blur(8px)}
 .settings-save{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 :root[data-density="compact"] .msg,:root[data-density="compact"] .msg--user{padding-top:5px;padding-bottom:5px}

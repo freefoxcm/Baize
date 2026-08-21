@@ -34,6 +34,7 @@ type safeSettings struct {
 	MaxParallelWriters     int      `json:"maxParallelWriters"`
 	CompactRatio           float64  `json:"compactRatio"`
 	ReasoningLanguage      string   `json:"reasoningLanguage"`
+	ShowTaskErrors         bool     `json:"showTaskErrors"`
 	Models                 []string `json:"models"`
 }
 
@@ -58,6 +59,7 @@ type settingsPatch struct {
 	MaxParallelWriters     *int     `json:"maxParallelWriters,omitempty"`
 	CompactRatio           *float64 `json:"compactRatio,omitempty"`
 	ReasoningLanguage      *string  `json:"reasoningLanguage,omitempty"`
+	ShowTaskErrors         *bool    `json:"showTaskErrors,omitempty"`
 }
 
 func (s *Server) settingsView(w http.ResponseWriter, _ *http.Request) {
@@ -106,6 +108,7 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := config.LoadForEdit(path)
+	before := safeSettingsFromConfig(cfg)
 	if err := applySafeSettingsPatch(cfg, patch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -116,7 +119,9 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	unlocked()
 	locked = false
-	s.queueOrApplySettings()
+	if runtimeSettingsChanged(before, safeSettingsFromConfig(cfg)) {
+		s.queueOrApplySettings()
+	}
 	view, err := s.safeSettingsView()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -139,6 +144,9 @@ func (s *Server) applySettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func applySafeSettingsPatch(cfg *config.Config, patch settingsPatch) error {
+	if patch.ShowTaskErrors != nil {
+		cfg.Serve.ShowTaskErrors = *patch.ShowTaskErrors
+	}
 	if err := applySafeModelSettings(cfg, patch); err != nil {
 		return err
 	}
@@ -161,6 +169,19 @@ func applySafeSettingsPatch(cfg *config.Config, patch settingsPatch) error {
 		}
 	}
 	return nil
+}
+
+func runtimeSettingsChanged(before, after safeSettings) bool {
+	return before.DefaultModel != after.DefaultModel ||
+		before.PlannerModel != after.PlannerModel ||
+		before.SubagentModel != after.SubagentModel ||
+		before.SubagentEffort != after.SubagentEffort ||
+		before.DefaultApprovalMode != after.DefaultApprovalMode ||
+		before.MaxSubagentDepth != after.MaxSubagentDepth ||
+		before.MaxSubagentConcurrency != after.MaxSubagentConcurrency ||
+		before.MaxParallelWriters != after.MaxParallelWriters ||
+		before.CompactRatio != after.CompactRatio ||
+		before.ReasoningLanguage != after.ReasoningLanguage
 }
 
 func applySafeModelSettings(cfg *config.Config, patch settingsPatch) error {
@@ -294,7 +315,8 @@ func safeSettingsFromConfig(cfg *config.Config) safeSettings {
 		MaxSubagentDepth:       agent.NormalizeMaxSubagentDepth(cfg.Agent.MaxSubagentDepth),
 		MaxSubagentConcurrency: total, MaxParallelWriters: writers,
 		CompactRatio: cfg.Agent.CompactRatio, ReasoningLanguage: reasoningLanguage,
-		Models: models,
+		ShowTaskErrors: cfg.Serve.ShowTaskErrors,
+		Models:         models,
 	}
 }
 
@@ -326,6 +348,9 @@ func settingsOverrides(global, effective safeSettings) []string {
 	}
 	if global.ReasoningLanguage != effective.ReasoningLanguage {
 		out = append(out, "reasoningLanguage")
+	}
+	if global.ShowTaskErrors != effective.ShowTaskErrors {
+		out = append(out, "showTaskErrors")
 	}
 	return out
 }

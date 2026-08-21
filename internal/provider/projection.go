@@ -19,7 +19,7 @@ func ProjectionMessages(msgs []Message) []Message { return projectMessages(msgs,
 func projectMessages(msgs []Message, keepExecution bool) []Message {
 	needsCopy := false
 	for _, m := range msgs {
-		if m.LocalOnly || m.RawContent != "" || m.ProviderContent != "" || m.DecisionReceipt != nil || len(m.DecisionReceipts) > 0 || (m.ToolExecution != nil && !keepExecution) {
+		if m.LocalOnly || m.RawContent != "" || m.ProviderContent != "" || m.DecisionReceipt != nil || len(m.DecisionReceipts) > 0 || ((m.ToolFailed || m.ToolExecution != nil) && !keepExecution) {
 			needsCopy = true
 			break
 		}
@@ -42,6 +42,7 @@ func projectMessages(msgs []Message, keepExecution bool) []Message {
 		if !keepExecution {
 			// Local shell metadata must never enter provider request bytes.
 			candidate.ToolExecution = nil
+			candidate.ToolFailed = false
 		}
 		out = append(out, candidate)
 	}
