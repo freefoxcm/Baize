@@ -289,8 +289,9 @@ const __T = {
     'settings_subagent_model': 'Subagent model',
     'settings_subagent_effort': 'Subagent effort',
     'settings_execution': 'Execution',
+	'settings_quality_floor_hint': 'Current session only. Applied when settings are saved.',
 	'settings_show_task_errors': 'Show task error cards',
-	'settings_show_task_errors_hint': 'Failed tool and subagent cards are hidden by default. The task failure notice and operational or safety errors always remain visible.',
+	'settings_show_task_errors_hint': 'Hide failed tool/subagent cards; task failures and operational or safety errors stay visible.',
     'settings_default_approval': 'Default approval mode',
     'settings_new_sessions_only': 'Applies to new sessions only.',
     'settings_subagent_depth': 'Subagent depth',
@@ -679,8 +680,9 @@ const __T = {
     'settings_subagent_model': 'Subagent 模型',
     'settings_subagent_effort': 'Subagent 思考强度',
     'settings_execution': '执行',
+	'settings_quality_floor_hint': '仅影响当前会话，保存设置后生效。',
 	'settings_show_task_errors': '显示任务错误卡',
-	'settings_show_task_errors_hint': '默认隐藏失败的工具与子代理卡片；任务失败提示及操作、安全类错误始终可见。',
+	'settings_show_task_errors_hint': '默认隐藏失败工具/子代理卡；任务失败提示、操作与安全错误始终可见。',
     'settings_default_approval': '默认审批模式',
     'settings_new_sessions_only': '仅影响新会话。',
     'settings_subagent_depth': '子代理深度',
@@ -829,7 +831,7 @@ const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
 const modebar = $('#modebar');
-const qualityFloorbar = $('#quality-floorbar');
+const qualityFloorSelect = $('#quality-floor-select');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
 const welcome = $('#welcome');
@@ -855,7 +857,7 @@ const __authReady = bootstrapFragmentToken();
 window.fetch = (...args) => __authReady.then(() => __nativeFetch(...args));
 
 // ── state ──
-let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask', qualityFloor = 'standard';
+let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask', qualityFloor = 'standard', qualityFloorDraft = 'standard';
 let goalMode = false, goalActive = false, goalText = '';
 let imageInputEnabled = null;
 let draftAttachments = [];
@@ -1184,7 +1186,8 @@ function updateRunStrip() {
   // Desktop parity: the approval modebar stays usable while running, but is
   // disabled while a decision surface (approval/ask card) owns the footer.
   modebar.classList.toggle('composer-modebar--disabled', waitingPrompt !== null);
-  qualityFloorbar.classList.toggle('composer-floorbar--disabled', running || waitingPrompt !== null);
+  const floorDisabled=running||waitingPrompt!==null;
+  qualityFloorSelect.disabled=floorDisabled;
   if (!on) { runStripText.textContent = ''; runStripAnnounce.textContent = ''; return; }
   let stable = null;
   if (retryStatus) {
@@ -3445,6 +3448,7 @@ function fetchStatus(){
     planMode=!!s.plan;
     toolApprovalMode=s.toolApprovalMode || ((s.autoApproveTools??s.bypass)?'yolo':'ask');
     qualityFloor=s.qualityFloor==='delivery'?'delivery':'standard';
+    if(!settingsDirty)qualityFloorDraft=qualityFloor;
     bypassMode=toolApprovalMode==='yolo';
     if(!bypassMode&&toolApprovalMode==='auto')yoloRestoreMode='auto';
     updateModeButtons();
@@ -4155,8 +4159,7 @@ function updateModeButtons(){
   const mb = $('#modebar');
   mb.dataset.mode = cur;
   mb.querySelectorAll('.composer-modebar__item').forEach(b => b.classList.toggle('is-active', b.dataset.mode === cur));
-  qualityFloorbar.dataset.floor=qualityFloor;
-  qualityFloorbar.querySelectorAll('.composer-floorbar__item').forEach(b=>b.classList.toggle('is-active',b.dataset.floor===qualityFloor));
+  qualityFloorSelect.value=qualityFloorDraft;
 }
 function updateGoalUI(){
   updateModeButtons();
@@ -4171,11 +4174,9 @@ function updateGoalUI(){
   updateAttachmentAvailability();
 }
 async function setToolApprovalMode(mode){toolApprovalMode=mode;bypassMode=mode==='yolo';updateModeButtons();await post('/tool-approval-mode',{mode});}
-async function setQualityFloor(floor){
-  if(running||waitingPrompt||floor===qualityFloor)return;
-  const previous=qualityFloor;qualityFloor=floor;updateModeButtons();
-  try{const response=await post('/quality-floor',{floor});if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));}
-  catch(error){qualityFloor=previous;updateModeButtons();showNotice(String(error&&error.message||error),'warn');}
+async function requestQualityFloor(floor){
+  const response=await post('/quality-floor',{floor});
+  if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));
 }
 async function setPlan(on){planMode=on;updateModeButtons();await post('/plan',{on});}
 async function cycleMode(){if(goalMode){goalMode=false;updateGoalUI();return;}await setPlan(!planMode);setTimeout(fetchStatus,200);}
@@ -4270,7 +4271,7 @@ document.addEventListener('click',e=>{if(taskModeMenu.style.display!=='none'&&!e
 $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
   b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
-qualityFloorbar.querySelectorAll('.composer-floorbar__item').forEach(b=>{b.onclick=()=>void setQualityFloor(b.dataset.floor);});
+qualityFloorSelect.onchange=()=>{if(running||waitingPrompt)return;qualityFloorDraft=qualityFloorSelect.value==='delivery'?'delivery':'standard';settingsDirty=true;updateModeButtons();};
 $('#goal-chip').onclick=()=>toggleGoalMode();
 $('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(async response=>{if(!response.ok){showNotice((await response.text()).trim()||__('error_loading'),'warn');return;}log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();sessionFilter='';const search=$('#session-search');if(search)search.value='';loadSessions();updateActionAvailability();fetchStatus();});};
 // model switcher popover (desktop ModelSwitcher)
@@ -4823,6 +4824,7 @@ async function clearManagedAttachments(){
 function openSettings(){
   if(!ordinaryOverlayAllowed())return;
   closeWorkspacePanel({restoreFocus:false});closeOrdinaryModals();
+  if(!settingsDirty){qualityFloorDraft=qualityFloor;updateModeButtons();}
   settingsDrawer.classList.add('settings-drawer--open');setSurfaceHidden(settingsDrawer,false);activateWorkbench('settings',{toggle:false});settingsButton.setAttribute('aria-expanded','true');
   if(!settingsDirty)loadSettings();loadAttachments();
 }
@@ -4876,12 +4878,24 @@ settingsForm.onsubmit=async event=>{
   event.preventDefault();const payload=runtimeSettingsPayload();
   if(payload.defaultApprovalMode==='yolo'&&settingsSnapshot?.global?.defaultApprovalMode!=='yolo'&&!window.confirm(__('settings_yolo_confirm')))return;
   saveAppearanceSettings();settingsState(__('settings_applying'));
+  const previousFloor=qualityFloor;
+  let floorApplied=false;
+  const rollbackFloor=async()=>{
+    await requestQualityFloor(previousFloor);qualityFloor=previousFloor;qualityFloorDraft=previousFloor;floorApplied=false;updateModeButtons();
+  };
   try{
+    if(qualityFloorDraft!==qualityFloor){await requestQualityFloor(qualityFloorDraft);qualityFloor=qualityFloorDraft;floorApplied=true;updateModeButtons();}
     const response=await fetch('/settings',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    if(response.status===409){populateSettings(await response.json());settingsState(__('settings_conflict'),'warn');return;}
+    if(response.status===409){const view=await response.json();populateSettings(view);if(floorApplied){try{await rollbackFloor();}catch(error){fetchStatus();settingsState(__('settings_conflict')+' '+String(error&&error.message||error),'danger');return;}}settingsState(__('settings_conflict'),'warn');return;}
     if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));
-    const view=await response.json();populateSettings(view);if(view.apply==='applied')settingsState(__('settings_applied'));else if(view.apply==='pending')settingsState(__('settings_pending'),'warn');
-  }catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}
+    const view=await response.json();populateSettings(view);qualityFloorDraft=qualityFloor;updateModeButtons();
+    const message=view.apply==='pending'?__('settings_pending'):__('settings_applied');const tone=view.apply==='pending'?'warn':'';
+    settingsState(message,tone);showNotice(message,tone);collapseWorkbench({restoreFocus:true});
+  }catch(error){
+    let message=error instanceof Error?error.message:String(error);
+    if(floorApplied){try{await rollbackFloor();}catch(rollbackError){fetchStatus();message+='; '+String(rollbackError&&rollbackError.message||rollbackError);}}
+    settingsState(message,'danger');
+  }
 };
 $('#settings-retry').onclick=async()=>{try{const response=await post('/settings/apply',{});if(!response.ok&&response.status!==202)throw new Error((await response.text()).trim()||('HTTP '+response.status));await loadSettings();}catch(error){settingsState(error instanceof Error?error.message:String(error),'danger');}};
 settingsButton.onclick=()=>workbenchMode==='settings'&&settingsDrawer.classList.contains('settings-drawer--open')&&!sidebarCollapsed?collapseWorkbench():openSettings();if(settingsBackdrop)settingsBackdrop.onclick=()=>closeSettings({restoreFocus:true});
