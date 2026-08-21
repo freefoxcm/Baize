@@ -161,6 +161,8 @@ type metricsSink struct {
 	clock         func() time.Time
 }
 
+var _ event.OptionalSinkCapabilities = (*metricsSink)(nil)
+
 func (s *metricsSink) now() time.Time {
 	if s.clock != nil {
 		return s.clock()
@@ -418,7 +420,6 @@ func (s *metricsSink) RecordDelegationAudit(a evidence.DelegationAudit) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.m.SubagentRuns++
 	if a.Depth > 1 {
 		s.m.SubagentNestedRuns++
@@ -449,6 +450,8 @@ func (s *metricsSink) RecordDelegationAudit(a evidence.DelegationAudit) {
 			s.m.DuplicateWorkPaths++
 		}
 	}
+	s.mu.Unlock()
+	event.RecordDelegationAudit(s.inner, a)
 }
 
 func (s *metricsSink) RecordReadinessAudit(a evidence.ReadinessAudit) {
@@ -456,7 +459,6 @@ func (s *metricsSink) RecordReadinessAudit(a evidence.ReadinessAudit) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.m.ReadinessChecks++
 	switch a.Result {
 	case evidence.ReadinessAllowed:
@@ -479,6 +481,15 @@ func (s *metricsSink) RecordReadinessAudit(a evidence.ReadinessAudit) {
 	s.m.ReadinessMissingSignoff += a.MissingSignoff
 	s.m.ReadinessMissingActionEvidence += a.MissingActionEvidence
 	s.m.ReadinessMissingMutation += a.MissingMutation
+	s.mu.Unlock()
+	event.RecordReadinessAudit(s.inner, a)
+}
+
+func (s *metricsSink) RecordAnchorSafetyAudit(a event.AnchorSafetyAudit) {
+	if s == nil {
+		return
+	}
+	event.RecordAnchorSafetyAudit(s.inner, a)
 }
 
 func (s *metricsSink) RecordProtocolRecovery(a event.ProtocolRecoveryAudit) {
@@ -502,6 +513,38 @@ func (s *metricsSink) RecordProtocolRecovery(a event.ProtocolRecoveryAudit) {
 	}
 	s.mu.Unlock()
 	event.RecordProtocolRecovery(s.inner, a)
+}
+
+func (s *metricsSink) RecordTurnCompletion() {
+	event.RecordTurnCompletion(s.inner)
+}
+
+func (s *metricsSink) RecordContractShadow(a event.ContractShadowAudit) {
+	event.RecordContractShadow(s.inner, a)
+}
+
+func (s *metricsSink) RecordCompletionReport(a event.CompletionReportAudit) {
+	event.RecordCompletionReport(s.inner, a)
+}
+
+func (s *metricsSink) RecordMemoryRecall(a event.MemoryRecallAudit) {
+	event.RecordMemoryRecall(s.inner, a)
+}
+
+func (s *metricsSink) RecordDelegationAdmission(a event.DelegationAdmissionAudit) {
+	event.RecordDelegationAdmission(s.inner, a)
+}
+
+func (s *metricsSink) RecordOutcomeProgress(sample evidence.OutcomeSample) {
+	event.RecordOutcomeProgress(s.inner, sample)
+}
+
+func (s *metricsSink) RecordWorkspaceMutation(m event.WorkspaceMutation) {
+	event.RecordWorkspaceMutation(s.inner, m)
+}
+
+func (s *metricsSink) RecordRunBudget(sample event.RunBudgetSample) {
+	event.RecordRunBudget(s.inner, sample)
 }
 
 // MergeCapabilityAuditCounters copies capability counters into RunMetrics.

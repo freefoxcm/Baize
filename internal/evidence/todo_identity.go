@@ -61,6 +61,9 @@ func sameTodoIdentity(a, b TodoItem) bool {
 }
 
 func sameTodoMatch(todo TodoItem, match TodoStepMatch) bool {
+	if todo.StepID != "" && match.StepID != "" {
+		return todo.StepID == match.StepID
+	}
 	return sameStepText(todo.Content, match.Content) || sameStepText(todo.ActiveForm, match.ActiveForm)
 }
 

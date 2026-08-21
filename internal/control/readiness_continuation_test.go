@@ -1,14 +1,19 @@
 package control
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
+	"reasonix/internal/evidence"
 	"reasonix/internal/i18n"
 	"reasonix/internal/instruction"
 	"reasonix/internal/provider"
@@ -26,11 +31,250 @@ func readinessContinuationControllerWithOptions(t *testing.T, turns [][]provider
 	reg.Add(minimalFakeTool{name: "write_file"})
 	reg.Add(minimalFakeTool{name: "read_file", readOnly: true})
 	reg.Add(minimalFakeTool{name: "bash"})
+	if todoWrite, ok := tool.LookupBuiltin("todo_write"); ok {
+		reg.Add(todoWrite)
+	}
+	if completeStep, ok := tool.LookupBuiltin("complete_step"); ok {
+		reg.Add(completeStep)
+	}
 	prov := &scriptedTurns{turns: turns}
 	executor := agent.New(prov, reg, agent.NewSession("stable-system-prefix"), opts, event.Discard)
 	c := New(Options{Runner: executor, Executor: executor, Sink: sink})
+	// Readiness continuation is a delivery-floor mechanism: the standard floor
+	// never pauses on a readiness gap, so these turns run under delivery.
+	if err := c.SetQualityFloor(QualityFloorDelivery); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
 	t.Cleanup(c.Close)
 	return c, prov
+}
+
+func TestStandardMutationTaskContinuesWithoutUserPrompt(t *testing.T) {
+	c, prov := readinessContinuationController(t, [][]provider.Chunk{
+		textTurn("I am preparing the implementation."),
+		{toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`), {Type: provider.ChunkDone}},
+		textTurn("implemented"),
+	}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", ""); err != nil {
+		t.Fatalf("Standard mutation continuation returned error: %v", err)
+	}
+	if got := readinessSyntheticTurns(c); got != 1 {
+		t.Fatalf("synthetic readiness turns = %d, want 1", got)
+	}
+	if prov.call != 3 {
+		t.Fatalf("provider calls = %d, want initial answer plus write and final", prov.call)
+	}
+}
+
+func TestStandardTaskContinuationPreservesProviderPrefixBytes(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Add(minimalFakeTool{name: "write_file"})
+	reg.Add(minimalFakeTool{name: "read_file", readOnly: true})
+	beforeSchemas, err := json.Marshal(reg.Schemas())
+	if err != nil {
+		t.Fatalf("marshal schemas before continuation: %v", err)
+	}
+	const systemPrompt = "byte-stable-system-prefix"
+	prov := &scriptedTurns{turns: [][]provider.Chunk{
+		textTurn("I am preparing the implementation."),
+		{toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`), {Type: provider.ChunkDone}},
+		textTurn("implemented"),
+	}}
+	executor := agent.New(prov, reg, agent.NewSession(systemPrompt), agent.Options{}, event.Discard)
+	c := New(Options{Runner: executor, Executor: executor})
+	t.Cleanup(c.Close)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", ""); err != nil {
+		t.Fatalf("Standard task continuation returned error: %v", err)
+	}
+	afterSchemas, err := json.Marshal(reg.Schemas())
+	if err != nil {
+		t.Fatalf("marshal schemas after continuation: %v", err)
+	}
+	if !bytes.Equal(beforeSchemas, afterSchemas) {
+		t.Fatalf("tool schema bytes changed across continuation:\nbefore=%s\nafter=%s", beforeSchemas, afterSchemas)
+	}
+	messages := executor.Session().Snapshot()
+	if len(messages) == 0 || messages[0].Role != provider.RoleSystem || messages[0].Content != systemPrompt {
+		t.Fatalf("system prompt prefix changed across continuation: %+v", messages)
+	}
+}
+
+func TestStandardTaskContinuationAllowsSecondTurnAfterNewProgress(t *testing.T) {
+	c, _ := readinessContinuationController(t, [][]provider.Chunk{
+		textTurn("I am preparing the implementation."),
+		{toolCallChunk("read", "read_file", `{"path":"main.go"}`), {Type: provider.ChunkDone}},
+		textTurn("inspected, implementation remains"),
+		{toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`), {Type: provider.ChunkDone}},
+		textTurn("implemented"),
+	}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", ""); err != nil {
+		t.Fatalf("Standard task continuation returned error: %v", err)
+	}
+	if got := readinessSyntheticTurns(c); got != 2 {
+		t.Fatalf("synthetic readiness turns = %d, want 2 after new read progress", got)
+	}
+}
+
+func TestStandardTaskContinuationRejectsRepeatedReceiptAsProgress(t *testing.T) {
+	for _, tc := range []struct {
+		name, toolName, args string
+	}{
+		{name: "same read", toolName: "read_file", args: `{"path":"main.go"}`},
+		{name: "same command and result", toolName: "bash", args: `{"command":"go env GOMOD"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, prov := readinessContinuationController(t, [][]provider.Chunk{
+				{toolCallChunk("initial", tc.toolName, tc.args), {Type: provider.ChunkDone}},
+				textTurn("implementation remains"),
+				{toolCallChunk("repeat-one", tc.toolName, tc.args), {Type: provider.ChunkDone}},
+				textTurn("implementation still remains"),
+				{toolCallChunk("repeat-two", tc.toolName, tc.args), {Type: provider.ChunkDone}},
+				textTurn("implementation still remains"),
+			}, event.Discard)
+			if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+				t.Fatalf("SetQualityFloor: %v", err)
+			}
+
+			err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", "")
+			var readinessErr *agent.FinalReadinessError
+			if !errors.As(err, &readinessErr) {
+				t.Fatalf("continuation error = %v, want final readiness failure", err)
+			}
+			if readinessErr.Attempts != 3 {
+				t.Fatalf("attempts = %d, want original plus two stalled continuations", readinessErr.Attempts)
+			}
+			if got := readinessSyntheticTurns(c); got != 2 {
+				t.Fatalf("synthetic readiness turns = %d, want 2", got)
+			}
+			if prov.call != 6 {
+				t.Fatalf("provider calls = %d, want three tool/final pairs", prov.call)
+			}
+		})
+	}
+}
+
+func TestStandardTaskContinuationRejectsTextOnlyProgress(t *testing.T) {
+	c, prov := readinessContinuationController(t, [][]provider.Chunk{
+		textTurn("I am preparing the implementation."),
+		textTurn("I am still preparing the implementation."),
+		textTurn("I am still preparing the implementation."),
+	}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", "")
+	var readinessErr *agent.FinalReadinessError
+	if !errors.As(err, &readinessErr) || readinessErr.Attempts != 3 {
+		t.Fatalf("continuation error = %v, want original plus two stalled attempts", err)
+	}
+	if got := readinessSyntheticTurns(c); got != 2 || prov.call != 3 {
+		t.Fatalf("text-only continuation used %d synthetic turns and %d calls", got, prov.call)
+	}
+}
+
+func TestStandardTaskContinuationStopsAtHardCapDespiteProgress(t *testing.T) {
+	turns := [][]provider.Chunk{textTurn("implementation remains")}
+	for i := range readinessTaskProgressTurns {
+		turns = append(turns,
+			[]provider.Chunk{toolCallChunk(fmt.Sprintf("read-%d", i), "read_file", fmt.Sprintf(`{"path":"file-%d.go"}`, i)), {Type: provider.ChunkDone}},
+			textTurn("implementation remains after another read"),
+		)
+	}
+	c, _ := readinessContinuationController(t, turns, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", "")
+	var readinessErr *agent.FinalReadinessError
+	if !errors.As(err, &readinessErr) {
+		t.Fatalf("continuation error = %v, want final readiness failure", err)
+	}
+	if readinessErr.Attempts != readinessTaskProgressTurns+1 || readinessErr.ContinuationClass != agent.ReadinessContinuationTaskProgress {
+		t.Fatalf("readiness error = %+v, want %d task-progress attempts", readinessErr, readinessTaskProgressTurns+1)
+	}
+	if !slices.Equal(readinessErr.Missing, []string{"mutation"}) {
+		t.Fatalf("Missing = %v, want mutation only", readinessErr.Missing)
+	}
+	if got := readinessSyntheticTurns(c); got != readinessTaskProgressTurns {
+		t.Fatalf("synthetic readiness turns = %d, want hard cap %d", got, readinessTaskProgressTurns)
+	}
+	if !c.executor.PrepareFinalReadinessRecovery() {
+		t.Fatal("task-progress exhaustion did not preserve recovery")
+	}
+}
+
+func TestStandardCurrentTodoContinuesUntilReconciled(t *testing.T) {
+	c, _ := readinessContinuationController(t, [][]provider.Chunk{
+		{
+			toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`),
+			toolCallChunk("todo-open", "todo_write", `{"todos":[{"content":"Finish implementation","status":"in_progress"}]}`),
+			{Type: provider.ChunkDone},
+		},
+		textTurn("partially implemented"),
+		{toolCallChunk("todo-done", "complete_step", `{"step":"Finish implementation","result":"implementation finished","evidence":[{"kind":"manual","summary":"implementation checked"}]}`), {Type: provider.ChunkDone}},
+		textTurn("implemented and reconciled"),
+	}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", ""); err != nil {
+		t.Fatalf("todo continuation returned error: %v", err)
+	}
+	if got := readinessSyntheticTurns(c); got != 1 {
+		t.Fatalf("synthetic readiness turns = %d, want 1", got)
+	}
+	if c.executor.PrepareFinalReadinessRecovery() {
+		t.Fatal("completed todo left recovery pending")
+	}
+}
+
+func TestStandardNonMutationRequestsDoNotAutoContinue(t *testing.T) {
+	for _, input := range []string{
+		"analyze main.go without modifying it",
+		"review main.go and do not change anything",
+		"explain what this code does",
+	} {
+		c, prov := readinessContinuationController(t, [][]provider.Chunk{textTurn("analysis complete")}, event.Discard)
+		if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+			t.Fatalf("SetQualityFloor: %v", err)
+		}
+		if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), input, input, ""); err != nil {
+			t.Fatalf("request %q returned %v", input, err)
+		}
+		if got := readinessSyntheticTurns(c); got != 0 || prov.call != 1 {
+			t.Fatalf("request %q used %d synthetic turns and %d calls", input, got, prov.call)
+		}
+	}
+}
+
+func TestStandardMutationExpectationUsesOnlyRawUserText(t *testing.T) {
+	c, prov := readinessContinuationController(t, [][]provider.Chunk{textTurn("analysis complete")}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+	input := "Expanded project context: update generated files.\nUser task: explain the current code."
+	raw := "explain the current code"
+	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), input, raw, ""); err != nil {
+		t.Fatalf("raw read-only request returned %v", err)
+	}
+	if got := readinessSyntheticTurns(c); got != 0 || prov.call != 1 {
+		t.Fatalf("expanded context armed mutation: %d synthetic turns, %d calls", got, prov.call)
+	}
 }
 
 func readinessSyntheticTurns(c *Controller) int {
@@ -89,13 +333,33 @@ func TestOrdinaryTurnAutomaticallyFinishesKnownChecks(t *testing.T) {
 }
 
 func TestReadinessContinuationPromptStaysHiddenFromUserHistory(t *testing.T) {
-	prompt := readinessContinuationPrompt(nil, "run the missing verification")
+	prompt := readinessContinuationPrompt(nil, []string{"verification"}, "run the missing verification")
 	if !IsSyntheticUserMessage(prompt) {
 		t.Fatalf("readiness continuation was treated as user-authored text: %q", prompt)
 	}
 	for _, forbidden := range []string{"expand scope", "repeat destructive or external actions", "exact limitation"} {
 		if !strings.Contains(prompt, forbidden) {
 			t.Fatalf("readiness continuation prompt = %q, want safety clause %q", prompt, forbidden)
+		}
+	}
+}
+
+func TestReadinessContinuationPromptIncludesOnlyReportedTodoGaps(t *testing.T) {
+	todos := []evidence.TodoItem{{Content: "future task", Status: "pending"}}
+	verification := readinessContinuationPrompt(todos, []string{"verification"}, "run verification")
+	if strings.Contains(verification, "future task") || strings.Contains(verification, "tasks are still incomplete") {
+		t.Fatalf("verification-only continuation leaked ordinary cross-turn todos: %q", verification)
+	}
+
+	todoGap := readinessContinuationPrompt(todos, []string{"todo"}, "finish the delivery plan")
+	if !strings.Contains(todoGap, "future task") || !strings.Contains(todoGap, "tasks are still incomplete") {
+		t.Fatalf("todo readiness gap omitted its incomplete task context: %q", todoGap)
+	}
+
+	taskGap := readinessContinuationPrompt(nil, []string{"task"}, "remaining implementation was deferred")
+	for _, want := range []string{"continue it now using tools", "instead of ending with another promise"} {
+		if !strings.Contains(taskGap, want) {
+			t.Fatalf("task readiness prompt = %q, want %q", taskGap, want)
 		}
 	}
 }
@@ -119,7 +383,60 @@ func TestReadinessProgressRequiresTwoDistinctEvidenceKeys(t *testing.T) {
 	}
 }
 
-func TestOrdinaryGenericReadinessContinuationStopsAfterOneTurn(t *testing.T) {
+// Standard records verification attention without turning it into an automatic
+// Delivery-strength continuation or recovery card.
+func TestStandardFloorNeverPausesOnVerificationGap(t *testing.T) {
+	c, prov := readinessContinuationController(t, [][]provider.Chunk{
+		{toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`), {Type: provider.ChunkDone}},
+		textTurn("implemented without checks"),
+	}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+
+	err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", "")
+	var readinessErr *agent.FinalReadinessError
+	if errors.As(err, &readinessErr) {
+		t.Fatalf("standard floor paused on a readiness gap: %v", err)
+	}
+	if err != nil {
+		t.Fatalf("standard floor turn returned error: %v", err)
+	}
+	if got := readinessSyntheticTurns(c); got != 0 {
+		t.Fatalf("synthetic readiness turns = %d, want 0 under the standard floor", got)
+	}
+	if prov.call != 2 {
+		t.Fatalf("provider calls = %d, want exactly the scripted work and answer", prov.call)
+	}
+}
+
+// Goal mode reads Agent.ReadinessResult through its FSM; a standard-floor Goal
+// must not surface a duplicate FinalReadinessError recovery card.
+func TestStandardFloorSuppressesThePauseInsideGoalMode(t *testing.T) {
+	c, _ := readinessContinuationController(t, [][]provider.Chunk{
+		{toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`), {Type: provider.ChunkDone}},
+		textTurn("implemented without checks"),
+	}, event.Discard)
+	if err := c.SetQualityFloor(QualityFloorStandard); err != nil {
+		t.Fatalf("SetQualityFloor: %v", err)
+	}
+	c.SetGoal("ship main.go")
+	t.Cleanup(c.ClearGoal)
+
+	err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "update main.go", "update main.go", "")
+	var readinessErr *agent.FinalReadinessError
+	if errors.As(err, &readinessErr) {
+		t.Fatalf("standard floor paused inside goal mode: %v", err)
+	}
+	// The FSM still sees the gap through the executor, not through the error.
+	if got := c.executor.ReadinessResult(); got.Ready {
+		t.Fatal("executor reported ready despite the unmet readiness requirement")
+	}
+}
+
+// The delivery floor deepens verification; it does not take over persistence.
+// The generic continuation stays bounded exactly as it was before the floor.
+func TestDeliveryGenericReadinessContinuationStopsAfterOneTurn(t *testing.T) {
 	c, prov := readinessContinuationController(t, [][]provider.Chunk{
 		{toolCallChunk("write", "write_file", `{"path":"main.go","content":"package main"}`), {Type: provider.ChunkDone}},
 		textTurn("implemented without checks"),
@@ -132,9 +449,6 @@ func TestOrdinaryGenericReadinessContinuationStopsAfterOneTurn(t *testing.T) {
 	}
 	if readinessErr.Attempts != 2 {
 		t.Fatalf("readiness attempts = %d, want original + one automatic turn", readinessErr.Attempts)
-	}
-	if readinessErr.ContinuationClass != agent.ReadinessContinuationGeneric || readinessErr.ProgressKey == "" {
-		t.Fatalf("readiness classification = (%q, %q), want generic with a progress key", readinessErr.ContinuationClass, readinessErr.ProgressKey)
 	}
 	if got := readinessSyntheticTurns(c); got != 1 {
 		t.Fatalf("synthetic readiness turns = %d, want 1", got)

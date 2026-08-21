@@ -192,8 +192,33 @@ func (c *Catalog) refreshCounts(ctx context.Context) {
 	c.status.RecoveryBranches = branches
 	c.status.RecoveryDiverged = diverged
 	c.status.CleanupEligible = cleanup
+	c.status.SourceCount = total
 	c.status.Revision = c.revision.Load()
 	c.statusMu.Unlock()
+}
+
+func (c *Catalog) markRepair(reason string, at int64) {
+	if c == nil || strings.TrimSpace(reason) == "" {
+		return
+	}
+	if at <= 0 {
+		at = time.Now().UnixMilli()
+	}
+	c.statusMu.Lock()
+	c.status.RepairReason = strings.TrimSpace(reason)
+	c.status.LastRepairAt = at
+	c.statusMu.Unlock()
+}
+
+// MarkRepairReason records a lifecycle-level repair cause (for example, a
+// clean index-generation cutover) without touching the authoritative session
+// files. Integrity checks use the internal helper so they can attach their
+// timestamp at the point of detection.
+func (c *Catalog) MarkRepairReason(reason string) {
+	if c == nil {
+		return
+	}
+	c.markRepair(reason, c.opts.Now().UnixMilli())
 }
 
 func normalizeScope(scope, root string) (string, string) {
@@ -307,6 +332,14 @@ func (c *Catalog) UpsertSession(ctx context.Context, record SessionRecord) error
 }
 
 func (c *Catalog) upsertSessions(ctx context.Context, records []SessionRecord, generations map[string]int64, reason string) error {
+	return c.upsertSessionsWithNotification(ctx, records, generations, reason, true)
+}
+
+func (c *Catalog) upsertSessionsWithoutNotification(ctx context.Context, records []SessionRecord, generations map[string]int64, reason string) error {
+	return c.upsertSessionsWithNotification(ctx, records, generations, reason, false)
+}
+
+func (c *Catalog) upsertSessionsWithNotification(ctx context.Context, records []SessionRecord, generations map[string]int64, reason string, notify bool) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -392,6 +425,10 @@ func (c *Catalog) upsertSessions(ctx context.Context, records []SessionRecord, g
 		if record.TopicID != "" {
 			affected[TopicKey{Scope: record.Scope, WorkspaceRoot: record.WorkspaceRoot, TopicID: record.TopicID}] = struct{}{}
 		}
+		if err := updateFoldedTopicTombstones(ctx, tx, previous, record, c.opts.Now().UnixMilli()); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		roots[record.WorkspaceRoot] = struct{}{}
 	}
 	for key := range affected {
@@ -408,7 +445,11 @@ func (c *Catalog) upsertSessions(ctx context.Context, records []SessionRecord, g
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	c.publishRevision(revision, mapKeys(roots), reason)
+	if notify {
+		c.publishRevision(revision, mapKeys(roots), reason)
+	} else {
+		c.rememberRevision(revision)
+	}
 	c.refreshCounts(ctx)
 	return nil
 }
@@ -487,13 +528,17 @@ func bumpRevision(ctx context.Context, tx *sql.Tx) (uint64, error) {
 }
 
 func (c *Catalog) publishRevision(revision uint64, roots []string, reason string) {
+	c.rememberRevision(revision)
+	if c.opts.OnRevision != nil {
+		c.opts.OnRevision(revision, roots, reason)
+	}
+}
+
+func (c *Catalog) rememberRevision(revision uint64) {
 	c.revision.Store(revision)
 	c.statusMu.Lock()
 	c.status.Revision = revision
 	c.statusMu.Unlock()
-	if c.opts.OnRevision != nil {
-		c.opts.OnRevision(revision, roots, reason)
-	}
 }
 
 func mapKeys(values map[string]struct{}) []string {

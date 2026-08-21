@@ -130,6 +130,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	// budgets) lives in taskRuntime and is reconciled there.
 	a.turn = turnRuntime{}
 	a.turn.automaticReadinessContinuation = automaticReadinessContinuationFromContext(ctx)
+	a.turn.mutationExpected = mutationExpectedFromContext(ctx)
 	a.resetStructuralRunGuards()
 	scope, scoped := DeliveryExecutionScopeFromContext(ctx)
 	preserveEvidence, readinessRecovered := a.beginFinalReadinessRecovery()
@@ -539,7 +540,8 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		return true, nil
 	}
 	readiness := a.finalReadinessCheckFor()
-	if state.graceRound && (readiness.reason != "" || !hasVisibleFinalAnswer(text)) {
+	controlReadiness := a.finalReadinessControlProjection(readiness, text)
+	if state.graceRound && (controlReadiness.reason != "" || !hasVisibleFinalAnswer(text)) {
 		a.contextManager().ObserveUsage(usage)
 		return false, a.gracePause(state)
 	}
@@ -550,21 +552,22 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return false, a.gracePause(state)
 	}
-	if readiness.reason != "" {
+	if readiness.reason != "" || controlReadiness.reason != "" {
 		// The host owns the concrete missing requirements. Return them to the
 		// controller when automatic continuation is armed (or for the existing
-		// strict/Goal path). Unarmed ordinary agents retain their Partial
-		// contract and do not unexpectedly change the direct Agent API.
-		if a.turn.automaticReadinessContinuation || a.closedLoopActive() || readiness.incompleteTodos > 0 || readiness.missingSignoff > 0 || readiness.missingActionEvidence > 0 {
+		// strict/Goal path). Standard receives only the task-progress control
+		// projection; the complete observed facts still feed its readiness audit.
+		if controlReadiness.reason != "" && a.readinessPauseActive(controlReadiness) &&
+			(a.turn.automaticReadinessContinuation || a.closedLoopActive() || controlReadiness.missingSignoff > 0 || controlReadiness.missingActionEvidence > 0) {
 			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
 			a.pending.finalReadinessRecovery = true
-			a.persistFinalReadinessRecovery(readiness.missingIDs())
+			a.persistFinalReadinessRecovery(controlReadiness.missingIDs())
 			return false, &FinalReadinessError{
 				Attempts:          1,
-				Reason:            readiness.reason,
-				Missing:           readiness.missingIDs(),
-				ContinuationClass: readiness.continuationClass(),
-				ProgressKey:       readiness.progressSignature(),
+				Reason:            controlReadiness.reason,
+				Missing:           controlReadiness.missingIDs(),
+				ContinuationClass: controlReadiness.continuationClass(),
+				ProgressKey:       a.finalReadinessProgressKey(controlReadiness),
 			}
 		}
 		event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
@@ -652,8 +655,8 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 			Name:           call.Name,
 			ToolDurationMs: batch.durations[i],
 		}
-		// Content is the old-reader-safe bounded form. Full originals ride on
-		// RawContent and are promoted only on the new provider request copy.
+		// Content is the stable bounded provider form. Full originals remain in
+		// local RawContent and enter model context only through explicit paging.
 		if i < len(batch.outcomes) && batch.outcomes[i].rawOutput != "" && batch.outcomes[i].rawOutput != results[i] {
 			msg.RawContent = batch.outcomes[i].rawOutput
 		}

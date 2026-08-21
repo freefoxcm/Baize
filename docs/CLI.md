@@ -437,7 +437,9 @@ use the terminal paste shortcut because the remote process cannot read the local
 clipboard; `/mouse` restores the terminal's native right-click menu. Image paste
 is application-owned: use `Ctrl+V` on macOS/Linux, `Alt+V` on Windows, or
 `/paste-image`; the footer shows `Pasting image…` until the attachment token is
-ready.
+ready. Where the terminal forwards that shortcut instead of pasting itself, a
+clipboard holding no image falls back to a text paste, so the key never swallows
+plain text.
 
 ## In-session commands
 

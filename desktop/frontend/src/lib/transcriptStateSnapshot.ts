@@ -1,4 +1,4 @@
-import type { StateSnapshot } from "react-virtuoso";
+import type { StateSnapshot, VirtuosoHandle } from "react-virtuoso";
 
 /**
  * One captured Virtuoso state snapshot bound to the row key sequence it was
@@ -10,6 +10,14 @@ export type TranscriptStateSnapshot = {
   keys: readonly string[];
   snapshot: StateSnapshot;
 };
+
+/** Read Virtuoso's live measured tree and scrollTop synchronously. */
+export function captureTranscriptVirtuosoState(handle: VirtuosoHandle | null): StateSnapshot | null {
+  if (!handle) return null;
+  let state: StateSnapshot | null = null;
+  handle.getState((snapshot) => { state = snapshot; });
+  return state;
+}
 
 /**
  * Returns a captured snapshot only for the exact row sequence it measured.

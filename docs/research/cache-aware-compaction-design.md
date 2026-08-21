@@ -22,7 +22,7 @@ canonical transcript (Session.Messages，普通维护永不改写)
     +-- model-visible context projection / checkpoint
     |       system + one structured summary + recent 16% tail
     |
-    +-- compatibility tool storage (32KB Content + full RawContent)
+    +-- stable provider tool view (≤32KB Content) + local full RawContent
     |
     +-- cache state (warm/cold/unknown，仅成本与观测)
 ```
@@ -83,7 +83,7 @@ stable system / early prefix
 
 ### Tool-result compatibility storage
 
-工具结果创建时把兼容字段 `Content` 限制在约 32KB，完整原文进 `RawContent`。新版本在低压普通请求中临时提升 `RawContent`，因此模型看到全文；只有达到压力阈值或 overflow 才安装 4096/marker/1024 的持久 prune projection。manual `/compact` 不自动 prune。
+工具结果创建时把 provider 可见字段 `Content` 固定限制在 32KB 内，完整原文进本地 `RawContent`。普通 sampling、stream retry、summary 与 projection replay 始终使用同一份有界 `Content`，不再因完整结果大小改变旧请求前缀。模型需要全文时，显式通过稳定 `use_capability` 代理调用 `session:tool_result`，以 UTF-8 字节 offset 分页读取；页面本身保持在单工具输出上限内。只有达到压力阈值或 overflow 时，维护 projection 才可进一步安装 4096/marker/1024 prune，并产生已有的缓存变更诊断。manual `/compact` 不自动 prune。
 
 ## 六、Provider 与输出预算
 
@@ -99,6 +99,8 @@ stable system / early prefix
 | 首次跨过 compact_ratio | 先 prune；必要时前缀变为 system+summary+tail，一次预期 miss |
 | checkpoint 安装后继续对话 | 稳定 prefix 利于 hit；generation 作用域避免重复摘要 |
 | cold resume | 只记 cache 状态，不因 TTL 重写历史 |
+| 大工具结果（低于阈值） | 首次只发送 ≤32KB `Content`；后续旧消息逐字节不变，`RawContent` 大小不线性增加 miss |
+| 显式回读完整结果 | 只将请求的 16–24KiB 页面追加给模型，不自动改写历史前缀 |
 
 ## 八、验证与烟雾
 
@@ -113,7 +115,8 @@ stable system / early prefix
 1. 配置结构体仍可读旧 soft/snip/force 键，加载时清零并迁移删除
 2. sidecar 仍可解码旧 prune/native 字段后忽略
 3. `PruneStaleToolResults` / `SnipStaleToolResults` 保留为 no-op API，避免旧调用点 panic
-4. `Content + RawContent` 双字段继续保证新旧版本都能安全读取同一 session
+4. `Content + RawContent` 双字段继续保证新旧版本都能安全读取同一 session；旧版本可能重新提升 `RawContent`，但不会损坏数据
+5. 旧 promoted-RawContent sidecar 只有在哈希精确匹配历史形式时才反向归一化为当前 bounded hash；无法证明时只丢弃 projection body，canonical 与维护 receipt 保留
 
 ## 十、明确未做
 

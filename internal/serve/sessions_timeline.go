@@ -73,9 +73,7 @@ func (s *Server) timelineSessions(w http.ResponseWriter, r *http.Request) {
 		items = append(items, *draft)
 	}
 	remaining := limit - len(items)
-	if remaining > len(saved) {
-		remaining = len(saved)
-	}
+	remaining = min(remaining, len(saved))
 	items = append(items, saved[:remaining]...)
 	page := timelineSessionPage{Items: items, Total: total}
 	if remaining < len(saved) && remaining > 0 {

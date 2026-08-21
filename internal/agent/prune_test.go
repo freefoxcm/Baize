@@ -48,7 +48,7 @@ func TestPruneAndSnipAreNoOps(t *testing.T) {
 	}
 }
 
-func TestBelowThresholdSamplingPromotesFullToolRawContentWithoutProjection(t *testing.T) {
+func TestBelowThresholdSamplingKeepsBoundedToolContentWithoutProjection(t *testing.T) {
 	full := strings.Repeat("完整结果", 10_000)
 	bounded := "legacy bounded result"
 	sess := &Session{Messages: []provider.Message{
@@ -62,8 +62,8 @@ func TestBelowThresholdSamplingPromotesFullToolRawContentWithoutProjection(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := req.req.Messages[3].Content; got != full {
-		t.Fatalf("provider tool result runes=%d, want full %d", len([]rune(got)), len([]rune(full)))
+	if got := req.req.Messages[3].Content; got != bounded {
+		t.Fatalf("provider tool result = %q, want bounded content", got)
 	}
 	if a.currentProjectionVersion() != 0 {
 		t.Fatalf("below-threshold request installed projection version %d", a.currentProjectionVersion())
@@ -218,7 +218,7 @@ func TestSnipStrategyStillBuildsBoundedCompatibilityContent(t *testing.T) {
 	}
 }
 
-func TestModelInputMessagesPromotesOnlyToolRawContent(t *testing.T) {
+func TestModelInputMessagesKeepsBoundedToolContent(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleUser, Content: "display user", RawContent: "raw user"},
 		{Role: provider.RoleTool, Content: "bounded", RawContent: "complete tool result", ToolCallID: "call-1"},
@@ -228,8 +228,8 @@ func TestModelInputMessagesPromotesOnlyToolRawContent(t *testing.T) {
 	if got[0].Content != "display user" {
 		t.Fatalf("user content = %q, want display form", got[0].Content)
 	}
-	if got[1].Content != "complete tool result" {
-		t.Fatalf("tool content = %q, want promoted RawContent", got[1].Content)
+	if got[1].Content != "bounded" {
+		t.Fatalf("tool content = %q, want bounded Content", got[1].Content)
 	}
 	if got[1].RawContent != "" {
 		t.Fatalf("provider-bound RawContent = %q, want empty", got[1].RawContent)

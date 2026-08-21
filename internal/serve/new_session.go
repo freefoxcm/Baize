@@ -44,6 +44,10 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, sessionInUseError(err), http.StatusConflict)
 		return
 	}
+	if err := persistQualityFloorFor(cur); err != nil {
+		http.Error(w, "persist quality floor: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -62,12 +66,19 @@ func (s *Server) newSessionWithModelLocked(ctx context.Context, cur control.Sess
 	newCtrl.EnableInteractiveApproval()
 	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
 	newCtrl.SetToolApprovalMode(defaultApprovalMode())
+	_ = newCtrl.SetQualityFloor(cur.QualityFloor())
 	if err := s.rebindSessionLeaseFor(newCtrl.SessionPath(), newCtrl); err != nil {
 		newCtrl.Close()
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
 			return fmt.Errorf("new session: %s", sessionInUseError(err))
 		}
 		return fmt.Errorf("new session: unable to secure replacement session")
+	}
+	if err := persistQualityFloorFor(newCtrl); err != nil {
+		oldCtrl, _ := cur.(*control.Controller)
+		_ = s.rebindSessionLeaseFor(cur.SessionPath(), oldCtrl)
+		newCtrl.Close()
+		return fmt.Errorf("persist quality floor: %w", err)
 	}
 
 	s.mu.Lock()

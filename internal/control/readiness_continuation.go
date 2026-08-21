@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"reasonix/internal/agent"
@@ -15,6 +16,8 @@ import (
 const (
 	readinessGenericTurns        = 1
 	readinessHighConfidenceTurns = 2
+	readinessTaskProgressTurns   = 12
+	readinessTaskProgressStalls  = 2
 )
 
 func readinessContinuationBudget(class agent.ReadinessContinuationClass) int {
@@ -23,6 +26,8 @@ func readinessContinuationBudget(class agent.ReadinessContinuationClass) int {
 		return readinessGenericTurns
 	case agent.ReadinessContinuationHighConfidence:
 		return readinessHighConfidenceTurns
+	case agent.ReadinessContinuationTaskProgress:
+		return readinessTaskProgressTurns
 	default:
 		return 0
 	}
@@ -103,6 +108,7 @@ func (o *turnOrchestrator) continueUntilReady(ctx context.Context, turnErr error
 	initialAttempts := max(initial.Attempts, 1)
 	automaticTurns := 0
 	previousProgress := initial.ProgressKey
+	stalledTaskTurns := 0
 	for automaticTurns < budget {
 		var readinessErr *agent.FinalReadinessError
 		if !errors.As(turnErr, &readinessErr) || readinessErr == nil {
@@ -120,10 +126,26 @@ func (o *turnOrchestrator) continueUntilReady(ctx context.Context, turnErr error
 		if readinessContinuationBudget(readinessErr.ContinuationClass) == 0 {
 			return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
 		}
-		if automaticTurns > 0 && !readinessMadeProgress(previousProgress, readinessErr.ProgressKey) {
-			return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
+		if automaticTurns > 0 {
+			madeProgress := readinessMadeProgress(previousProgress, readinessErr.ProgressKey)
+			if initial.ContinuationClass == agent.ReadinessContinuationTaskProgress {
+				if madeProgress {
+					stalledTaskTurns = 0
+				} else {
+					stalledTaskTurns++
+				}
+				if stalledTaskTurns >= readinessTaskProgressStalls {
+					return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
+				}
+			} else if !madeProgress {
+				return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
+			}
 		}
-		prompt := readinessContinuationPrompt(o.c.goalTodos(), readinessErr.Reason)
+		todos := o.c.goalTodos()
+		if readinessErr.ContinuationClass == agent.ReadinessContinuationTaskProgress && o.c.executor != nil {
+			todos = o.c.executor.CurrentTaskTodoState()
+		}
+		prompt := readinessContinuationPrompt(todos, readinessErr.Missing, readinessErr.Reason)
 		if prompt == "" {
 			return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
 		}
@@ -134,6 +156,21 @@ func (o *turnOrchestrator) continueUntilReady(ctx context.Context, turnErr error
 			return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
 		}
 		o.c.notice(i18n.M.ReadinessContinuing)
+		// Notice delivery is an observable boundary: an interactive frontend may
+		// enqueue new user work while handling it. Re-check immediately before the
+		// synthetic run so that work wins without consuming the recovery action.
+		if err := ctx.Err(); err != nil {
+			o.c.executor.RestoreFinalReadinessRecoveryPreparation()
+			return err
+		}
+		if o.c.CancelRequested() {
+			o.c.executor.RestoreFinalReadinessRecoveryPreparation()
+			return context.Canceled
+		}
+		if o.c.hasPendingUserWork() {
+			o.c.executor.RestoreFinalReadinessRecoveryPreparation()
+			return finalReadinessWithAttempts(turnErr, initialAttempts+automaticTurns)
+		}
 		previousProgress = readinessErr.ProgressKey
 		nextErr := o.runOrchestratedTurn(ctx, orchestratedTurn{
 			input: prompt, raw: prompt, synthetic: true,
@@ -159,15 +196,22 @@ func (o *turnOrchestrator) continueUntilReady(ctx context.Context, turnErr error
 // readinessContinuationPrompt states only host-observed missing work. It is an
 // append-only user turn, leaving the system prompt and tool-schema cache prefix
 // unchanged.
-func readinessContinuationPrompt(todos []evidence.TodoItem, reason string) string {
+func readinessContinuationPrompt(todos []evidence.TodoItem, missing []string, reason string) string {
 	var parts []string
-	if incomplete := evidence.IncompleteTodos(todos); len(incomplete) > 0 {
+	if slices.Contains(missing, "mutation") {
+		parts = append(parts, "no successful state change has been observed for the requested modification; continue implementing it. If the requested state is already satisfied, verify that with tools and state the host-observed basis")
+	}
+	if incomplete := evidence.IncompleteTodos(todos); slices.Contains(missing, "todo") && len(incomplete) > 0 {
 		var b strings.Builder
 		b.WriteString("these tasks are still incomplete:")
 		for _, todo := range incomplete {
 			fmt.Fprintf(&b, "\n  - %s (%s)", todo.Content, todo.Status)
 		}
+		b.WriteString("\n  Reconcile work already completed with todo_write; otherwise continue the remaining items.")
 		parts = append(parts, b.String())
+	}
+	if slices.Contains(missing, "task") {
+		parts = append(parts, "the last response explicitly deferred remaining implementation work; continue it now using tools instead of ending with another promise to act. If no work remains, verify that with tools and state the host-observed basis")
 	}
 	if reason = strings.TrimSpace(reason); reason != "" {
 		parts = append(parts, reason)

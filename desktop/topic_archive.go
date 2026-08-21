@@ -361,11 +361,11 @@ func (a *App) discardUnusedTransientBlankSessions(dirs []string, keepPath string
 				continue
 			}
 			meta, hasMeta, _ := agent.LoadBranchMeta(path)
-			discardTransientBlankSessionArtifacts(path)
-			if hasMeta && !transientTopicHasSibling(siblingDirs, path, meta) {
+			removed := discardTransientBlankSessionArtifacts(path)
+			if removed && hasMeta && !transientTopicHasSibling(siblingDirs, path, meta) {
 				cleanupTransientBlankTopicRegistration(meta)
 			}
-			if a != nil {
+			if removed && a != nil {
 				a.removeSessionCatalogPath(path, "transient_blank_discarded")
 			}
 		}

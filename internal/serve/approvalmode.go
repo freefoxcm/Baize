@@ -142,5 +142,6 @@ func (s *Server) switchSession(trimmed string) error {
 		return err
 	}
 	applySessionApprovalModeFor(ctrl, ctrl.SessionPath())
+	applySessionQualityFloorFor(ctrl, ctrl.SessionPath())
 	return nil
 }

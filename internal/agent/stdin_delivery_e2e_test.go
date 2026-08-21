@@ -54,6 +54,7 @@ func TestE2EArtifactDeliveryCompletesAfterManifestReadAndTrustedVerification(t *
 	reg := evidenceRegistry()
 	reg.Add(fakeReadFileTool{})
 	verify := "python -B -E -m unittest discover -s .reasonix/skills/_shared -p test_delivery_artifacts.py"
+	fullVerify := "python -m pytest"
 	prov := &scriptedProvider{name: "artifact-delivery", turns: [][]provider.Chunk{
 		{toolCallChunk("criteria", "todo_write", `{"todos":[{"content":"生成报告","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
 		{toolCallChunk("spec", "write_file", `{"path":"reports/demo/report-spec.json"}`), {Type: provider.ChunkDone}},
@@ -61,7 +62,8 @@ func TestE2EArtifactDeliveryCompletesAfterManifestReadAndTrustedVerification(t *
 		{toolCallChunk("read-spec", "read_file", `{"path":"reports/demo/report-spec.json"}`), {Type: provider.ChunkDone}},
 		{toolCallChunk("read-manifest", "read_file", `{"path":"reports/demo/artifact-manifest.json"}`), {Type: provider.ChunkDone}},
 		{toolCallChunk("verify", "bash", `{"command":"`+verify+`","stdin":"{\"manifest\":\"reports/demo/artifact-manifest.json\"}","execution_scope":"scratch"}`), {Type: provider.ChunkDone}},
-		{toolCallChunk("signoff", "complete_step", `{"step":"生成报告","result":"报告已复读并验证","evidence":[{"kind":"verification","summary":"manifest 与实际产物一致","command":"`+verify+`"},{"kind":"files","summary":"已复读最终规范和 manifest","paths":["reports/demo/report-spec.json","reports/demo/artifact-manifest.json"]}]}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("full-verify", "bash", `{"command":"`+fullVerify+`","execution_scope":"scratch"}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("signoff", "complete_step", `{"step":"生成报告","result":"报告已复读并验证","evidence":[{"kind":"verification","summary":"manifest 与实际产物一致","command":"`+verify+`"},{"kind":"verification","summary":"完整验证通过","command":"`+fullVerify+`"},{"kind":"files","summary":"已复读最终规范和 manifest","paths":["reports/demo/report-spec.json","reports/demo/artifact-manifest.json"]}]}`), {Type: provider.ChunkDone}},
 		{{Type: provider.ChunkText, Text: "报告已生成并验证。"}, {Type: provider.ChunkDone}},
 	}}
 	a := New(prov, reg, NewSession(""), Options{}, event.Discard)

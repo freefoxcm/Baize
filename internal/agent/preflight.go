@@ -129,7 +129,7 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	if a.sess.conversation != nil {
 		msgs, preRepair = a.sess.conversation.projectionValidationMessages()
 	}
-	needsNormalization := migrateBoundedCoveredPrefixHash(&st, msgs)
+	needsNormalization := migratePromotedCoveredPrefixHash(&st, msgs)
 	a.sess.compactionMu.Lock()
 	key := a.currentPromptCacheKeyLocked()
 	normalized, keyOK := lineageKeyCompatible(st.PromptCacheKey, key)

@@ -13,6 +13,8 @@ type inboxEventSink struct {
 	c     *Controller
 }
 
+var _ event.OptionalSinkCapabilities = (*inboxEventSink)(nil)
+
 func (s *inboxEventSink) Emit(e event.Event) {
 	if s == nil {
 		return
@@ -59,6 +61,13 @@ func (s *inboxEventSink) RecordReadinessAudit(a evidence.ReadinessAudit) {
 		return
 	}
 	event.RecordReadinessAudit(s.inner, a)
+}
+
+func (s *inboxEventSink) RecordAnchorSafetyAudit(a event.AnchorSafetyAudit) {
+	if s == nil {
+		return
+	}
+	event.RecordAnchorSafetyAudit(s.inner, a)
 }
 
 func (s *inboxEventSink) RecordContractShadow(a event.ContractShadowAudit) {
@@ -117,4 +126,25 @@ func (s *inboxEventSink) RecordProtocolRecovery(a event.ProtocolRecoveryAudit) {
 		return
 	}
 	event.RecordProtocolRecovery(s.inner, a)
+}
+
+func (s *inboxEventSink) RecordDelegationAudit(a evidence.DelegationAudit) {
+	if s == nil {
+		return
+	}
+	event.RecordDelegationAudit(s.inner, a)
+}
+
+func (s *inboxEventSink) RecordWorkspaceMutation(m event.WorkspaceMutation) {
+	if s == nil {
+		return
+	}
+	event.RecordWorkspaceMutation(s.inner, m)
+}
+
+func (s *inboxEventSink) RecordRunBudget(sample event.RunBudgetSample) {
+	if s == nil {
+		return
+	}
+	event.RecordRunBudget(s.inner, sample)
 }

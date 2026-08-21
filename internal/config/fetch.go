@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"reasonix/internal/provider"
 	"reasonix/internal/provider/openai"
 )
 
@@ -45,7 +46,7 @@ func (e *ProviderEntry) FetchModels(ctx context.Context) ([]string, error) {
 			AuthMode: authMode,
 		})
 		if err == nil {
-			return models, nil
+			return provider.FilterOfficialOpenCodeGoModels(e.Kind, e.BaseURL, models), nil
 		}
 		lastErr = err
 		if !openai.IsModelFetchEndpointMiss(err) && firstHardErr == nil {
@@ -74,12 +75,12 @@ func modelFetchAuthMode(e *ProviderEntry) openai.ModelFetchAuthMode {
 // URLs collapse to a single /v1/models candidate because that /v1 route is complete.
 func BuildModelFetchURLs(baseURL, override string) ([]string, error) {
 	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		if canonical, ok := openai.CanonicalTokenRhythmModelsURL(trimmed); ok {
+		if canonical, ok := canonicalVendorModelsURL(trimmed); ok {
 			return []string{canonical}, nil
 		}
 		return []string{trimmed}, nil
 	}
-	if canonical, ok := openai.CanonicalTokenRhythmModelsURL(baseURL); ok {
+	if canonical, ok := canonicalVendorModelsURL(baseURL); ok {
 		return []string{canonical}, nil
 	}
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
@@ -100,6 +101,15 @@ func BuildModelFetchURLs(baseURL, override string) ([]string, error) {
 		candidates = append(candidates, root+"/models", root+"/v1/models")
 	}
 	return uniqueStrings(candidates), nil
+}
+
+// canonicalVendorModelsURL rewrites official vendor bases whose documented
+// form differs from the OpenAI-compatible shape (Token Rhythm, StepFun step_plan).
+func canonicalVendorModelsURL(raw string) (string, bool) {
+	if canonical, ok := openai.CanonicalTokenRhythmModelsURL(raw); ok {
+		return canonical, true
+	}
+	return openai.CanonicalStepFunPlanModelsURL(raw)
 }
 
 func endsWithVersionSegment(raw string) bool {

@@ -47,9 +47,9 @@ type Message struct {
 	// Content is the provider-visible conversation content. Keeping this legacy
 	// field provider-visible preserves replay for older CLI/Desktop releases.
 	Content string `json:"content,omitempty"`
-	// RawContent holds the full original when it differs from Content. The agent
-	// promotes tool RawContent in current requests and projection hashes, while
-	// bounded Content keeps session files safe for older readers.
+	// RawContent holds the full local original when it differs from Content.
+	// Provider projections always strip it; bounded Content is the stable wire
+	// representation and keeps session files safe for older readers.
 	RawContent string `json:"raw_content,omitempty"`
 	// ProviderContent is a transitional field written by early Context Engine v2
 	// builds. Loaders migrate it into Content/RawContent before normal use.

@@ -80,9 +80,6 @@ func (a *Agent) pruneToolResultsToProjectionLocked(trigger string) (bool, error)
 			continue
 		}
 		source := projected[i].Content
-		if projected[i].RawContent != "" {
-			source = projected[i].RawContent
-		}
 		if projected[i].ProviderContent != "" {
 			source = projected[i].ProviderContent
 		}

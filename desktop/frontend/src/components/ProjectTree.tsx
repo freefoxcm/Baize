@@ -10,8 +10,10 @@ import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
-import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeWithoutTopic, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type ProjectTreeVariant, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
+import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeTopicRecoveryCopyCount, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type ProjectTreeVariant, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
+import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
+export * from "../lib/projectTreePresentation";
 import type { ProjectNode, SessionCatalogStatus } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
@@ -24,7 +26,7 @@ import { Tooltip } from "./Tooltip";
 import { WorktreeBadge } from "./WorktreeBadge";
 import { useProjectCreation } from "./useProjectCreation";
 import { useProjectTreeRuntimeProjection } from "../lib/useProjectTreeRuntimeProjection";
-import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRows, applyProjectOrder, manualTopicOrder, projectTreeProjectRoots, reorderedProjectRoots, useProjectTreeOrganization, type ProjectDropPosition } from "./ProjectTreeOrganization";
+import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRows, applyProjectOrder, projectTreeProjectRoots, reorderedProjectRoots, useProjectTreeOrganization, type ProjectDropPosition } from "./ProjectTreeOrganization";
 
 interface ProjectTreeProps {
   activeScope?: string;
@@ -65,11 +67,6 @@ type WorkbenchHeaderMenu = "more" | "add" | null;
 type CollapseSnapshot = {
   expanded: Set<string>;
   manuallyCollapsed: Set<string>;
-};
-
-type PinnedTreeSections = {
-  pinned: ProjectNode[];
-  projects: ProjectNode[];
 };
 
 const READ_ACTIVITY_KEY = "projectTree:readActivity";
@@ -174,104 +171,6 @@ export function defaultExpandedProjectTreeKeys(
   return activeSessionAncestorKeys(nodes, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath);
 }
 
-function topicSortValue(node: ProjectNode, sortMode: WorkbenchSortMode): number {
-  if (sortMode === "created") return node.createdAt || node.lastActivityAt || 0;
-  return topicActivityTime(node);
-}
-
-function projectSortValue(node: ProjectNode, sortMode: WorkbenchSortMode): number {
-  return asArray(node.children).reduce((max, child) => {
-    if (!isTopicNode(child)) return max;
-    return Math.max(max, topicSortValue(child, sortMode));
-  }, 0);
-}
-
-function sortWorkbenchChildren(children: ProjectNode[], sortMode: WorkbenchSortMode): ProjectNode[] {
-  return [...children].sort((a, b) => {
-    if (!isTopicNode(a) || !isTopicNode(b)) return 0;
-    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
-    const manualOrder = manualTopicOrder(a, b);
-    if (manualOrder !== 0) return manualOrder;
-    return topicSortValue(b, sortMode) - topicSortValue(a, sortMode);
-  });
-}
-
-function arrangeWorkbenchTree(nodes: ProjectNode[], organizeMode: WorkbenchOrganizeMode, sortMode: WorkbenchSortMode): ProjectNode[] {
-  const arranged = nodes.map((node) => {
-    if (node.kind !== "project" && node.kind !== "global_folder") return node;
-    return { ...node, children: sortWorkbenchChildren(asArray(node.children), sortMode) };
-  });
-  if (organizeMode === "project") return arranged;
-  const mode = organizeMode === "recent" ? "updated" : sortMode;
-  return [...arranged].sort((a, b) => {
-    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
-    return projectSortValue(b, mode) - projectSortValue(a, mode);
-  });
-}
-
-// Classic keeps the user's manual project order but sorts topics inside each
-// folder, so row order matches the activity time shown in the meta line
-// instead of the persisted insertion order.
-export function arrangeClassicProjectTree(nodes: ProjectNode[], sortMode: WorkbenchSortMode): ProjectNode[] {
-  return arrangeWorkbenchTree(nodes, "project", sortMode);
-}
-
-// Classic folders preview only the first few topics; the rest sit behind a
-// show-more toggle so one busy project cannot push the others out of view.
-export const CLASSIC_TOPIC_PREVIEW_LIMIT = 5;
-
-export function classicTopicWindow(children: ProjectNode[], showAll: boolean): { visible: ProjectNode[]; hiddenCount: number } {
-  if (showAll || children.length <= CLASSIC_TOPIC_PREVIEW_LIMIT) return { visible: children, hiddenCount: 0 };
-  return {
-    visible: children.slice(0, CLASSIC_TOPIC_PREVIEW_LIMIT),
-    hiddenCount: children.length - CLASSIC_TOPIC_PREVIEW_LIMIT,
-  };
-}
-
-export function splitPinnedProjectTree(
-  nodes: ProjectNode[],
-  sortMode: WorkbenchSortMode,
-  includePinnedProjects = true,
-): PinnedTreeSections {
-  const pinnedTopics: ProjectNode[] = [];
-  const pinnedProjects: ProjectNode[] = [];
-  const projects: ProjectNode[] = [];
-
-  for (const node of nodes) {
-    if (!node) continue;
-    const isFolder = node.kind === "project" || node.kind === "global_folder";
-    if (!isFolder) {
-      if (node.pinned) pinnedTopics.push(node);
-      else projects.push(node);
-      continue;
-    }
-
-    if (includePinnedProjects && node.pinned && node.kind === "project") {
-      pinnedProjects.push(node);
-      continue;
-    }
-
-    const children = asArray(node.children);
-    const nextChildren: ProjectNode[] = [];
-    for (const child of children) {
-      if (isTopicNode(child) && child.pinned) {
-        pinnedTopics.push(child);
-        continue;
-      }
-      nextChildren.push(child);
-    }
-    projects.push({ ...node, children: nextChildren });
-  }
-
-  pinnedTopics.sort((a, b) => topicSortValue(b, sortMode) - topicSortValue(a, sortMode));
-  pinnedProjects.sort((a, b) => projectSortValue(b, sortMode) - projectSortValue(a, sortMode));
-
-  return {
-    pinned: [...pinnedTopics, ...pinnedProjects],
-    projects,
-  };
-}
-
 // Global rows use the same project tree recipe; the fallback supplies their non-workspace accent.
 function projectAccentStyle(color?: string, fallbackValue?: string): CSSProperties | undefined {
   const value = projectColorValue(color) || fallbackValue;
@@ -354,9 +253,11 @@ export function ProjectTree({
   const latestRevisionRef = useRef(0);
   const [organizationRevision, setOrganizationRevision] = useState(0);
   const topicRevisionRef = useRef<Record<string, number>>({});
+  const topicCompletePageRef = useRef<Record<string, { signature: string; revision: number }>>({});
   const [catalogStatus, setCatalogStatus] = useState<SessionCatalogStatus>({
     state: "opening", revision: 0, indexed: 0, total: 0, repairPending: 0,
   });
+  const rebuildingCatalogRef = useRef(false);
   const [topicPageState, setTopicPageState] = useState<Record<string, { nextCursor?: string; loading: boolean }>>({});
   const topicPageStateRef = useRef(topicPageState);
   const updateTopicPageState = useCallback((key: string, next: { nextCursor?: string; loading: boolean }) => {
@@ -461,6 +362,8 @@ export function ProjectTree({
     const cursor = append ? pageState?.nextCursor ?? "" : "";
     if (append && !cursor) return;
     const sortMode = creationTopics ? "updated" : workbenchSortModeRef.current;
+    const limit = timeFilter === "10" ? 10 : timeFilter === "20" ? 20 : 50;
+    const requestSignature = projectTreeTopicPageSignature(query, timeFilter, sortMode, limit);
     // Last-query-wins: stale completions cannot overwrite a newer first page.
     const seq = (topicLoadSeqRef.current[key] ?? 0) + 1;
     topicLoadSeqRef.current[key] = seq;
@@ -470,7 +373,7 @@ export function ProjectTree({
         scope: project.kind === "global_folder" ? "global" : "project",
         workspaceRoot: project.kind === "global_folder" ? "" : project.root ?? "",
         cursor,
-        limit: timeFilter === "10" ? 10 : timeFilter === "20" ? 20 : 50,
+        limit,
         query: query.trim(),
         timeFilter: timeFilter === "10" || timeFilter === "20" || timeFilter === "all" ? "" : timeFilter,
         sortMode,
@@ -482,11 +385,21 @@ export function ProjectTree({
       }
       topicRevisionRef.current[key] = Math.max(topicRevisionRef.current[key] ?? 0, page.revision);
       const items = projectTreeWithoutTopics(asArray(page.items), currentArchiveTombstones());
+      const completeBaseline = topicCompletePageRef.current[key];
+      const preserveCompletePage = page.complete === false && completeBaseline?.signature === requestSignature;
+      if (page.complete !== false) {
+        topicCompletePageRef.current[key] = { signature: requestSignature, revision: page.revision };
+      }
       setTree((current) => applyRuntimeProjection(current.map((node) => {
         if (node.key !== key) return node;
-        return { ...node, children: mergeProjectTopicPage(asArray(node.children), items, append) };
+        const children = preserveCompletePage
+          ? mergeIncompleteProjectTopicPage(asArray(node.children), items)
+          : mergeProjectTopicPage(asArray(node.children), items, append);
+        return children === node.children ? node : { ...node, children };
       })));
-      updateTopicPageState(key, { nextCursor: page.nextCursor, loading: false });
+      updateTopicPageState(key, preserveCompletePage
+        ? { ...topicPageStateRef.current[key], loading: false }
+        : { nextCursor: page.nextCursor, loading: false });
     } catch {
       if (topicLoadSeqRef.current[key] !== seq) return;
       updateTopicPageState(key, { ...topicPageStateRef.current[key], loading: false });
@@ -547,11 +460,26 @@ export function ProjectTree({
     }
   }, [applyRuntimeProjection]);
   refreshRef.current = refresh;
+
   const { addingProject, handleAddProject, openBlankProjectFlow, blankProjectFlow } = useProjectCreation({
     onAddProject,
     onRefresh: refresh,
     showToast,
   });
+
+  const rebuildSessionCatalog = useCallback(async () => {
+    if (rebuildingCatalogRef.current || catalogStatus.canRebuild === false) return;
+    rebuildingCatalogRef.current = true;
+    try {
+      await app.RebuildSessionCatalog();
+      showToast(t("projectTree.rebuildCatalog"), "info");
+      void refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), "error", { durationMs: 6000 });
+    } finally {
+      rebuildingCatalogRef.current = false;
+    }
+  }, [catalogStatus.canRebuild, refresh, showToast, t]);
 
   useEffect(() => {
     treeRef.current = tree;
@@ -573,7 +501,12 @@ export function ProjectTree({
   }, [refresh, refreshSignal]);
 
   useEffect(() => onProjectTreeChangedV2((event) => {
-    if (!projectTreeRevisionIsFresh(latestRevisionRef.current, event.revision)) return;
+    // A stale or missed revision means the tree may have drifted from the
+    // catalog; refetch the full snapshot instead of dropping the event.
+    if (!projectTreeRevisionIsFresh(latestRevisionRef.current, event.revision)) {
+      void refresh();
+      return;
+    }
     latestRevisionRef.current = Math.max(latestRevisionRef.current, event.revision);
     if (event.reason === "metadata") setOrganizationRevision((current) => Math.max(current, event.revision));
     void app.GetSessionCatalogStatus().then(setCatalogStatus).catch(() => {});
@@ -857,6 +790,8 @@ export function ProjectTree({
     try {
       if (onRenameTopic) await onRenameTopic(topicId, title);
       else await app.RenameTopic(topicId, title);
+      // Paint the new label immediately; the catalog event round-trip can lag.
+      setTree((current) => applyRuntimeProjection(projectTreeWithTopicTitle(current, topicId, title)));
       await refresh();
       if (!onRenameTopic) await onTopicsChanged?.();
     } catch (err) {
@@ -1138,7 +1073,9 @@ export function ProjectTree({
       const accentStyle = projectAccentStyle(node.projectColor, scope === "global" ? "var(--project-tree-global-accent)" : undefined);
       const active = topicIsActive(node, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath);
       const label = (node.label || node.topicId || "Untitled").replace(/^●\s*/, "");
-      // Ordinary list never advertises recovery copies; History owns that view.
+      // Recovery copies stay folded behind the canonical row; the row only
+      // advertises how many converged, and History owns the full list (#8525).
+      const recoveryCopyCount = projectTreeTopicRecoveryCopyCount(node);
       const activityAt = node.lastActivityAt || node.createdAt || 0;
       // Every variant is a single-line row with the activity time on the right;
       // classic moved there too so turns and the exact date live in the hover
@@ -1164,7 +1101,12 @@ export function ProjectTree({
       const imSourceLabel = imSource?.label || "";
       const imSourceTitle = imSourceLabel ? t("msg.fromIm", { source: imSourceLabel }) : "";
       const imSourcePlatform = (imSource?.platform || "im").replace(/[^a-z0-9_-]/gi, "").toLowerCase() || "im";
-      const title = [node.preview || "", label, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
+      const recoveryLabel = node.recoveryState === "recovery_only"
+        ? t("projectTree.recoveryOnly")
+        : node.recovered
+          ? t("projectTree.recovered")
+          : "";
+      const title = [node.preview || "", label, recoveryLabel, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
       const topicMenuOpen = !isSessionNode && menuTopic === topicId;
       const pinned = Boolean(node.pinned);
       const pinLabel = t(pinned ? "projectTree.unpinTopic" : "projectTree.pinTopic");
@@ -1299,6 +1241,7 @@ export function ProjectTree({
             <span className="project-tree__topic-copy">
               <span className="project-tree__topic-heading">
                 <span className="project-tree__topic-label">{label}</span>
+                {recoveryLabel && <span className="project-tree__topic-recovery" title={recoveryLabel}>{recoveryLabel}</span>}
                 {imSource && (
                   <span
                     className={`project-tree__topic-im project-tree__topic-im--${imSourcePlatform}`}
@@ -1311,6 +1254,14 @@ export function ProjectTree({
                 )}
                 {!compactTopics && statusLabel && (!classicTopics || status === "paused" || status === "awaiting_delivery" || status === "error") && (
                   <span className={`project-tree__topic-status project-tree__topic-status--${status}`}>{statusLabel}</span>
+                )}
+                {recoveryCopyCount > 0 && (
+                  <span
+                    className="project-tree__topic-recovery-copies"
+                    title={t("projectTree.recoveryCopies", { count: recoveryCopyCount })}
+                  >
+                    {t("projectTree.recoveryCopies", { count: recoveryCopyCount })}
+                  </span>
                 )}
               </span>
             </span>
@@ -1639,6 +1590,23 @@ export function ProjectTree({
     const backendPage = topicPageState[key];
     const renderFolderChildren = () => {
       if (!hasChildren) {
+        // While the first topic page is still loading (cold start, catalog
+        // reconcile in flight), show a skeleton instead of a blank folder or
+        // a premature "no topics" placeholder.
+        if (backendPage?.loading) {
+          return (
+            <div className={`project-tree__children${isExpanded ? " project-tree__children--expanded" : ""}`}>
+              <div className="project-tree__children-inner">
+                <div className="project-tree__skeleton" style={{ paddingLeft: 14 + (depth + 1) * 16 }} aria-hidden="true">
+                  <span className="project-tree__skeleton-bar" />
+                  <span className="project-tree__skeleton-bar project-tree__skeleton-bar--short" />
+                  <span className="project-tree__skeleton-bar" />
+                  <span className="project-tree__skeleton-bar project-tree__skeleton-bar--short" />
+                </div>
+              </div>
+            </div>
+          );
+        }
         if (!classicTopics) return null;
         return (
           <div className={`project-tree__children${isExpanded ? " project-tree__children--expanded" : ""}`}>
@@ -2180,9 +2148,16 @@ export function ProjectTree({
           />
         </label>
       )}
-      {(catalogStatus.state === "opening" || catalogStatus.state === "rebuilding" || catalogStatus.repairPending > 0) && (
+      {(catalogStatus.state === "opening" || catalogStatus.state === "rebuilding" || catalogStatus.repairPending > 0 || (catalogStatus.unindexedTargetCount ?? 0) > 0 || Boolean(catalogStatus.lastError)) && (
         <div className="project-tree__catalog-progress" role="status">
-          {t("projectTree.indexingProgress", { done: catalogStatus.indexed, total: catalogStatus.total || "?" })}
+          <span>{catalogStatus.lastError
+            ? t("projectTree.rebuildCatalog")
+            : t("projectTree.indexingProgress", { done: catalogStatus.indexed, total: catalogStatus.total || "?" })}</span>
+          {catalogStatus.canRebuild !== false && catalogStatus.state !== "rebuilding" && (
+            <button type="button" className="project-tree__catalog-rebuild" onClick={() => void rebuildSessionCatalog()}>
+              {t("projectTree.rebuildCatalog")}
+            </button>
+          )}
         </div>
       )}
       {compactTopics ? (
@@ -2195,7 +2170,10 @@ export function ProjectTree({
               <>
                 {pinnedTreeSections.pinned.length > 0 && (
                   <div className="project-tree__section project-tree__section--pinned">
-                    <div className="project-tree__section-title">{t("projectTree.pinnedTitle")}</div>
+                    <div className="project-tree__section-title project-tree__section-title--pinned">
+                      <Pin size={14} className="project-tree__section-title-icon" aria-hidden="true" />
+                      <span>{t("projectTree.pinnedTitle")}</span>
+                    </div>
                     {pinnedTreeSections.pinned.map((node) => renderNode(node, 0, "pinned"))}
                   </div>
                 )}

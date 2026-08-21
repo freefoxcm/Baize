@@ -65,8 +65,9 @@ func RequiresAssistantReasoningReplay(p Provider, m Message) bool {
 }
 
 // EmptyReasoningFallbackPolicy is optionally implemented by providers whose
-// wire protocol accepts an explicit empty reasoning field for assistant tool
-// turns. Anthropic thinking blocks do not have that fallback.
+// wire protocol accepts an assistant tool turn without provider-issued
+// reasoning, either as an explicit empty field or by omitting an optional
+// reasoning item. Anthropic thinking blocks do not have that fallback.
 type EmptyReasoningFallbackPolicy interface {
 	AllowsEmptyReasoningFallback() bool
 }

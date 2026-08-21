@@ -130,6 +130,51 @@ const benchGiantTurnHistory = (): HistoryMessage[] => {
   return benchToolTurn(1, 1000, "Single-turn sweep complete.");
 };
 
+const benchReportedLongTurnHistory = (): HistoryMessage[] => {
+  // Sanitized reproduction of the reported shape: one user turn, 70 tool
+  // results, and 44 separately measured assistant blocks. Keeping the height
+  // distribution matters; no user content or exported session data is used.
+  const messages: HistoryMessage[] = [
+    { role: "user", content: "Inspect the workspace, apply the changes, and verify the result." },
+  ];
+  for (let block = 0; block < 44; block += 1) {
+    const callCount = block < 26 ? 2 : 1;
+    const toolCalls: HistoryToolCall[] = [];
+    for (let call = 0; call < callCount; call += 1) {
+      const id = `reported-block-${block}-call-${call}`;
+      toolCalls.push({
+        id,
+        name: block % 3 === 0 ? "bash" : "read_file",
+        arguments: JSON.stringify(block % 3 === 0
+          ? { command: `pnpm test --filter reported-${block}-${call}` }
+          : { path: `src/reported/section-${block}-${call}.ts` }),
+        resolvedReadOnly: block % 3 !== 0,
+        subject: `reported section ${block + 1}.${call + 1}`,
+      });
+    }
+    messages.push({
+      role: "assistant",
+      content: [
+        `### Verification block ${block + 1}`,
+        "",
+        `Processed the deterministic fixture section ${block + 1}.`,
+        "",
+        ...Array.from({ length: 2 + (block % 5) }, (_, row) => `- check ${row + 1}: stable measurement ${block}-${row}`),
+      ].join("\n"),
+      reasoning: `Planning verification block ${block + 1}.`,
+      toolCalls,
+    });
+    messages.push(...toolCalls.map((toolCall, call) => ({
+      role: "tool" as const,
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      content: benchToolOutput(block + 1, call),
+    })));
+  }
+  messages.push({ role: "assistant", content: "Reported long turn complete." });
+  return messages;
+};
+
 // Ref-resolution storm fixture (#8657): the newest page of a long session
 // carries many ref-replaced fields, so opening the session fires a paced
 // stream of history_items_patch invalidations — the exact load that used to
@@ -186,6 +231,8 @@ export function benchTopicHistory(topicId: string): HistoryMessage[] | undefined
       return benchFixture("small", benchSmallHistory);
     case "topic_bench_giant_turn":
       return benchFixture("giant", benchGiantTurnHistory);
+    case "topic_bench_reported_long_turn":
+      return benchFixture("reported-long-turn", benchReportedLongTurnHistory);
     case "topic_bench_storm":
       return benchFixture("storm", benchStormHistory);
     default:

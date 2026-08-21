@@ -15,9 +15,9 @@ func init() { tool.RegisterBuiltin(todoWrite{}) }
 
 // todoWrite records the agent's running task list. It has no host side effects —
 // the full list lives in the call's args (the model re-sends it whole on every
-// update), which a frontend renders as a checklist. Execute just validates the
-// shape and acks with a count, so the model gets a stable confirmation. The agent
-// keeps one item in_progress at a time and flips each to completed as it finishes.
+// update), which a frontend renders as a checklist. Execute validates serial
+// shape and stable identities, then acks with a count. Progress is not a
+// delivery receipt: complete_step remains the optional evidence sign-off.
 type todoWrite struct{}
 
 type todoItem struct {
@@ -167,19 +167,20 @@ func verifyTodoCurrentContinuity(ctx context.Context, todos []todoItem) error {
 	if len(previous) == 0 {
 		return nil
 	}
-	// The single current item must survive the rewrite. In a layered phase this
-	// is either its active sub-step or, after all children finish, the phase
-	// header waiting for final sign-off.
+	next := toEvidenceTodos(todos)
+	if len(next) == 0 {
+		return fmt.Errorf("current todo cannot be cleared while the plan is active; get host approval to replace the plan")
+	}
 	for i, todo := range previous {
 		if strings.TrimSpace(todo.Status) != "in_progress" {
 			continue
 		}
-		match, found := evidence.MatchTodoIdentity(todo, toEvidenceTodos(todos))
+		match, found := evidence.MatchTodoIdentity(todo, next)
 		if !found {
-			return fmt.Errorf("current todo %d %q cannot be removed or replaced while it is in_progress; complete it with complete_step before changing the remaining list", i+1, todo.Content)
+			return fmt.Errorf("current todo %d %q cannot be removed or replaced while it is in_progress; mark it completed or get host approval to replace the plan", i+1, todo.Content)
 		}
 		if match.Status == "pending" || match.Status == "" {
-			return fmt.Errorf("current todo %d %q cannot move back to pending; keep it in_progress or complete it with complete_step", i+1, todo.Content)
+			return fmt.Errorf("current todo %d %q cannot move back to pending; keep it in_progress, mark it completed, or get host approval to replace the plan", i+1, todo.Content)
 		}
 	}
 	return nil
@@ -196,7 +197,7 @@ func verifyCompletedTodoPositions(ctx context.Context, todos []todoItem) error {
 		}
 		match, found := evidence.MatchTodoIdentity(toEvidenceTodo(todo), previous)
 		if !found || match.Index != i+1 {
-			return fmt.Errorf("completed todo %d %q cannot be inserted, duplicated, or reordered; preserve the completed prefix and sign off the current item with complete_step", i+1, todo.Content)
+			return fmt.Errorf("completed todo %d %q cannot be inserted, duplicated, or reordered; preserve the completed prefix", i+1, todo.Content)
 		}
 	}
 	if len(evidence.IncompleteTodos(previous)) > 0 && !evidence.PreservesCompletedTodoPositions(previous, toEvidenceTodos(todos)) {

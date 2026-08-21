@@ -99,6 +99,7 @@ dom.window.__REASONIX_TRANSCRIPT_SCROLL_WRITE__ = (write) => { scrollWrites.push
 
 // Terminal-state capture: Transcript wires this into session diagnostics.
 const terminals: TranscriptRecoveryTerminal[] = [];
+const rowMeasurements: Array<{ rowKey: string; kind: TranscriptRow["kind"]; height: number; width: number }> = [];
 
 const rectAt = (top: number) => ({ top, bottom: top + 100, height: 100, left: 0, right: 800, width: 800, x: 0, y: top, toJSON: () => ({}) });
 
@@ -107,7 +108,12 @@ const rowElement = scrollElement.querySelector<HTMLElement>(".transcript__row")!
 scrollElement.getBoundingClientRect = () => rectAt(0);
 rowElement.getBoundingClientRect = () => rectAt(200);
 Object.defineProperty(scrollElement, "clientHeight", { configurable: true, value: 100 });
-Object.defineProperty(scrollElement, "scrollHeight", { configurable: true, value: 500 });
+let scrollExtent = 500;
+Object.defineProperty(scrollElement, "scrollHeight", { configurable: true, get: () => scrollExtent });
+Object.defineProperty(scrollElement, "scrollTop", { configurable: true, writable: true, value: 0 });
+Object.defineProperty(scrollElement, "offsetWidth", { configurable: true, value: 800 });
+Object.defineProperty(scrollElement, "clientWidth", { configurable: true, value: 780 });
+Object.defineProperty(scrollElement, "clientLeft", { configurable: true, value: 0 });
 
 const item: Item = { kind: "assistant", id: "a", text: "answer", reasoning: "", streaming: false };
 const baseRows: TranscriptRow[] = [{ kind: "answer", key: "row-a", item }];
@@ -122,7 +128,12 @@ let stubSnapshot: StateSnapshot | null = null;
 const virtuosoHandle = {
   scrollBy: () => { scrollByCalls += 1; },
   scrollToIndex: () => { scrollToIndexCalls += 1; },
-  scrollTo: () => { scrollToCalls += 1; },
+  // Browser semantics: an offset write clamps against the current extent.
+  scrollTo: (options?: { top?: number }) => {
+    scrollToCalls += 1;
+    const top = options?.top ?? 0;
+    scrollElement.scrollTop = Math.max(0, Math.min(scrollExtent - scrollElement.clientHeight, top));
+  },
   getState: (callback: (state: StateSnapshot) => void) => {
     if (stubSnapshot) callback(stubSnapshot);
   },
@@ -130,9 +141,10 @@ const virtuosoHandle = {
 let arbiter: ReturnType<typeof useTranscriptScrollArbiter> | undefined;
 let integrity: ReturnType<typeof useTranscriptLayoutIntegrity> | undefined;
 
-function Probe({ surfaceKey, rows = baseRows }: { surfaceKey: string; rows?: TranscriptRow[] }) {
+function Probe({ surfaceKey, rows = baseRows, layoutWidth = 800 }: { surfaceKey: string; rows?: TranscriptRow[]; layoutWidth?: number }) {
   const scroll = useTranscriptScrollArbiter({
     onRecoveryTerminal: (terminal) => { terminals.push(terminal); },
+    onItemMeasured: (rowKey, kind, height, width) => { rowMeasurements.push({ rowKey, kind, height, width }); },
   });
   const layout = useTranscriptLayoutIntegrity({
     surfaceKey,
@@ -146,6 +158,8 @@ function Probe({ surfaceKey, rows = baseRows }: { surfaceKey: string; rows?: Tra
     retryRecoveryRequest: scroll.retryRecoveryRequest,
     lastGoodAnchorRef: scroll.lastGoodAnchorRef,
     captureStateSnapshot: scroll.captureStateSnapshot,
+    layoutTransientRef: scroll.layoutTransientRef,
+    layoutWidth,
   });
   arbiter = scroll;
   integrity = layout;
@@ -177,8 +191,160 @@ const root = createRoot(dom.window.document.getElementById("root")!);
 await act(async () => root.render(<Probe surfaceKey="surface-a" />));
 await act(async () => {
   (arbiter!.virtuosoRef as { current: VirtuosoHandle | null }).current = virtuosoHandle;
+});
+
+// A first-mount bottom request may race the Virtuoso scroller ref. It must not
+// strand the blank watchdog in a permanent layout-transient state.
+await act(async () => arbiter?.scrollToBottom());
+check(
+  arbiter?.layoutTransientRef.current === false,
+  "a pre-scroller tail request cannot strand layout-transient suppression",
+);
+
+await act(async () => {
   arbiter!.scrollerRef(scrollElement);
 });
+
+// itemSize is the measurement source of truth. data-known-size may still hold
+// the estimate Virtuoso started from, so the cache callback must receive the
+// returned DOM height instead.
+rowElement.dataset.rowKind = "answer";
+rowElement.dataset.knownSize = "291";
+rowElement.getBoundingClientRect = () => ({ ...rectAt(200), height: 632, bottom: 832, width: 960, right: 960 });
+rowMeasurements.length = 0;
+arbiter?.itemSize(rowElement, "offsetHeight");
+check(
+  rowMeasurements.length === 1
+    && rowMeasurements[0].rowKey === "row-a"
+    && rowMeasurements[0].kind === "answer"
+    && rowMeasurements[0].height === 632
+    && rowMeasurements[0].width === 960,
+  "itemSize publishes the real DOM height instead of data-known-size",
+);
+rowElement.getBoundingClientRect = () => rectAt(200);
+
+// The native extent is authoritative even when Virtuoso reports a stale
+// logical atBottom value after delayed row measurement.
+scrollElement.scrollTop = 400;
+await act(async () => arbiter?.atBottomStateChange(false));
+check(arbiter?.isAtBottom === true, "physical bottom overrides a stale Virtuoso atBottom=false report");
+
+// A nested code/tool scrollport owns the wheel until it reaches its edge.
+// Capturing the event on Transcript must not release tail-follow early.
+const nestedScroller = dom.window.document.createElement("div");
+nestedScroller.style.overflowY = "auto";
+Object.defineProperty(nestedScroller, "clientHeight", { configurable: true, value: 100 });
+Object.defineProperty(nestedScroller, "scrollHeight", { configurable: true, value: 300 });
+Object.defineProperty(nestedScroller, "scrollTop", { configurable: true, writable: true, value: 50 });
+rowElement.appendChild(nestedScroller);
+await act(async () => arbiter?.reset());
+let nestedWheelAccepted = true;
+await act(async () => {
+  nestedWheelAccepted = arbiter?.onWheelIntent({
+    ctrlKey: false,
+    deltaX: 0,
+    deltaY: -40,
+    target: nestedScroller,
+  } as React.WheelEvent<HTMLElement>) ?? true;
+});
+check(!nestedWheelAccepted && arbiter?.modeRef.current === "tail-follow", "a scrollable nested surface keeps wheel ownership");
+nestedScroller.scrollTop = 0;
+await act(async () => {
+  nestedWheelAccepted = arbiter?.onWheelIntent({
+    ctrlKey: false,
+    deltaX: 0,
+    deltaY: -40,
+    target: nestedScroller,
+  } as React.WheelEvent<HTMLElement>) ?? false;
+});
+check(nestedWheelAccepted && arbiter?.modeRef.current === "manual", "a nested edge hands wheel ownership to the transcript");
+nestedScroller.remove();
+
+// A queued confirmation belongs to the surface that requested it. Resetting
+// before its frame runs must prevent the old request from writing the new one.
+scrollToCalls = 0;
+scrollElement.scrollTop = 0;
+await act(async () => arbiter?.scrollToBottom());
+check(scrollToCalls === 1, "bottom request performs its immediate native-extent write");
+await act(async () => arbiter?.reset());
+await flushFrames();
+check(scrollToCalls === 1, "a reset invalidates the previous surface's queued tail confirmation");
+
+// A jump-bottom transaction suppresses the blank watchdog while WebView2 and
+// Virtuoso are still exchanging scroll/measurement frames. The diagnostic
+// packages showed the old watchdog rebuilding inside this exact window.
+const keyBeforeJumpBlank = integrity?.resetKey;
+await act(async () => arbiter?.scrollToBottom());
+await triggerWatchdogRebuild();
+check(integrity?.resetKey === keyBeforeJumpBlank, "jump-bottom transients cannot trigger a blank size-tree rebuild");
+await advanceClock(350);
+
+// Tail-follow is a persistent mode, not a six-frame retry window. As long as
+// growth keeps arriving (streaming), each height notification re-arms another
+// coalesced convergence and the view keeps landing on the current bottom.
+scrollToCalls = 0;
+await act(async () => arbiter?.scrollToBottom());
+for (let i = 0; i < 14; i += 1) {
+  scrollExtent += 200;
+  await advanceClock(40);
+  await act(async () => arbiter?.followGrowingTail());
+  await flushFrames();
+}
+for (let i = 0; i < 4; i += 1) await flushFrames();
+check(scrollToCalls > 6, `tail convergence remains live beyond the former six-frame budget (${scrollToCalls} writes)`);
+check(
+  scrollElement.scrollTop === scrollExtent - scrollElement.clientHeight,
+  "sustained growth still lands on the physical bottom after the burst ends",
+);
+
+// ── Reduced-motion flicker filter (#9028/#9089): layout churn alternates the
+// extent between two values on consecutive frames. A tail displacement must
+// survive a full frame before the writer acts, so pure oscillation earns zero
+// writes; once the churn settles off-bottom, one write reconverges.
+const churnBase = scrollExtent;
+scrollToCalls = 0;
+for (let i = 0; i < 8; i += 1) {
+  scrollExtent = i % 2 === 0 ? churnBase + 700 : churnBase;
+  await act(async () => arbiter?.followGrowingTail());
+  await flushFrames();
+}
+check(scrollToCalls === 0, `alternating-extent churn earns zero tail writes (${scrollToCalls})`);
+check(arbiter?.modeRef.current === "tail-follow", "churn does not revoke tail ownership");
+scrollExtent = churnBase + 700;
+await act(async () => arbiter?.followGrowingTail());
+for (let i = 0; i < 4; i += 1) await flushFrames();
+check(
+  scrollElement.scrollTop === scrollExtent - scrollElement.clientHeight,
+  "a settled post-churn displacement reconverges on the physical bottom",
+);
+check(scrollToCalls >= 1 && scrollToCalls <= 2, `post-churn convergence costs at most two writes (${scrollToCalls})`);
+
+// Replay the returned Windows trace: several different extents become visible
+// while one explicit jump owns the viewport. The writer may respond immediately
+// and perform one final correction, but must not write once per intermediate
+// height.
+scrollToCalls = 0;
+scrollExtent = 5_154;
+scrollElement.scrollTop = 0;
+await act(async () => arbiter?.scrollToBottom());
+for (const extent of [3_467, 6_785, 7_728, 5_525, 4_869]) {
+  scrollExtent = extent;
+  scrollElement.scrollTop = Math.min(scrollElement.scrollTop, scrollExtent - scrollElement.clientHeight);
+  await act(async () => arbiter?.followGrowingTail());
+  await flushFrames();
+}
+await advanceClock(240);
+for (let i = 0; i < 6; i += 1) await flushFrames();
+check(scrollToCalls <= 2, `one jump-bottom transaction emits at most two effective writes (${scrollToCalls})`);
+check(
+  scrollElement.scrollTop === scrollExtent - scrollElement.clientHeight,
+  `the bounded jump-bottom transaction still converges on the final native bottom (${scrollElement.scrollTop}/${scrollExtent - scrollElement.clientHeight})`,
+);
+
+scrollExtent = 500;
+scrollElement.scrollTop = 400;
+await act(async () => arbiter?.deliverScroll());
+
 await act(async () => integrity?.scheduleBlankViewportCheck());
 await switchSurface("surface-b");
 check(integrity?.resetKey === "surface-b:0", "surface switch cancels the previous blank-viewport watchdog");
@@ -212,11 +378,26 @@ check(scrollByCalls === 0, "invalidated anchor stops the restore correction loop
 check(scrollToIndexCalls === 0, "invalidated anchor never re-aims at the stale row");
 check(scrollToBottomCalls === 1, "a reset without an anchor settles at the bottom");
 
-// ── Blank-recovery cooldown: immediate re-blank is blocked, a persistent
-// blank past the cooldown earns another rebuild
+// ── Blank-recovery generation: the same geometry may hard-reset only once.
+// A real row-set or width change opens one new bounded recovery opportunity.
 await advanceClock(2_100);
 await triggerWatchdogRebuild();
-check(integrity?.resetKey === "surface-c:3", "a later blank rebuilds the size tree again");
+check(integrity?.resetKey === "surface-c:2", "the same broken layout generation cannot enter a reset loop");
+check(integrity?.safeMode === true, "a repeatedly blank generation enters one bounded measurement probe instead of another remount");
+const safeModeResetKey = integrity?.resetKey;
+rowElement.getBoundingClientRect = () => rectAt(0);
+await flushBlankCheck();
+check(integrity?.safeMode === false && integrity?.resetKey === safeModeResetKey,
+  "a healthy measured viewport exits the bounded probe without remounting");
+rowElement.getBoundingClientRect = () => rectAt(200);
+await triggerWatchdogRebuild();
+check(integrity?.safeMode === false && integrity?.resetKey === safeModeResetKey,
+  "an exhausted generation cannot re-enter its measurement probe");
+let recoveryRows = [...baseRows, { kind: "answer", key: "generation-1", item: { ...item, id: "generation-1" } } satisfies TranscriptRow];
+await act(async () => root.render(<Probe surfaceKey="surface-c" rows={recoveryRows} />));
+check(integrity?.safeMode === false, "a real layout generation change exits the automatic measurement fallback");
+await triggerWatchdogRebuild();
+check(integrity?.resetKey === "surface-c:3", "a changed row generation earns one new rebuild");
 await act(async () => integrity?.handleItemsRendered(1));
 // Let the in-flight restore converge: place the anchor row at its target
 // offset so the correction loop settles within two stable frames (real DOMs
@@ -233,7 +414,11 @@ check(integrity?.resetKey === "surface-c:3", "blank recovery within the cooldown
 check(scrollByCalls === 0, "cooldown-blocked blank check performs no correction");
 await advanceClock(2_100);
 await triggerWatchdogRebuild();
-check(integrity?.resetKey === "surface-c:4", "a blank that persists past the cooldown earns another rebuild");
+check(integrity?.resetKey === "surface-c:3", "the revised generation also refuses a second hard reset");
+recoveryRows = [...recoveryRows, { kind: "answer", key: "generation-2", item: { ...item, id: "generation-2" } } satisfies TranscriptRow];
+await act(async () => root.render(<Probe surfaceKey="surface-c" rows={recoveryRows} />));
+await triggerWatchdogRebuild();
+check(integrity?.resetKey === "surface-c:4", "the next real layout generation can recover once");
 await act(async () => integrity?.handleItemsRendered(1));
 rowElement.getBoundingClientRect = () => rectAt(0);
 for (let i = 0; i < 10; i += 1) await flushFrames();
@@ -374,6 +559,7 @@ strayRow.className = "transcript__row";
 strayRow.dataset.rowKey = "row-stray";
 strayRow.getBoundingClientRect = () => rectAt(600);
 scrollElement.appendChild(strayRow);
+await act(async () => root.render(<Probe surfaceKey="surface-f" layoutWidth={960} />));
 await triggerWatchdogRebuild();
 const watchdogLocation = integrity?.restoreLocation;
 check(
@@ -483,6 +669,10 @@ check(
 let otherWriteOk = true;
 await act(async () => { otherWriteOk = arbiter?.writeOffset("jump", 5) ?? true; });
 check(!otherWriteOk, "non-selection writes stay rejected in selection mode");
+scrollToIndexCalls = 0;
+await act(async () => arbiter?.setMode("manual", "question-navigation"));
+await act(async () => arbiter?.scrollToDataIndex(5));
+check(scrollToIndexCalls === 1, "question navigation emits one indexed jump after its explicit selection cleanup");
 
 // ── T6: a snapshot captured before the keyed remount restores when the row
 // keys still match, and is discarded when they do not.
@@ -532,6 +722,37 @@ await act(async () => integrity?.handleItemsRendered(1));
 await flushFrames();
 check(scrollToBottomCalls === scrollToBottomBeforeSnapshot + 2, "a disjoint snapshot-less first mount settles at the bottom");
 stubSnapshot = null;
+
+// A 10,000-row generation gets only one keyed reset and one bounded probe.
+const longRows: TranscriptRow[] = Array.from({ length: 10_000 }, (_, index) => ({
+  kind: "answer", key: `long-${index}`,
+  item: { ...item, id: `long-${index}` },
+}));
+await switchSurface("surface-long", longRows);
+await act(async () => arbiter?.releaseTailFollow());
+await advanceClock(2_100);
+const longResetBefore = integrity?.resetKey;
+await triggerWatchdogRebuild();
+const longResetAfter = integrity?.resetKey;
+check(longResetAfter !== longResetBefore, "a 10,000-row generation spends its single hard-reset budget");
+await act(async () => integrity?.invalidateAnchors());
+await act(async () => integrity?.handleItemsRendered(1));
+await triggerWatchdogRebuild();
+check(integrity?.safeMode === true, "long-history recovery keeps the probe independent of total row count");
+for (let frame = 0; frame < 3; frame += 1) await flushFrames();
+check(integrity?.safeMode === false,
+  "an unsuccessful long-history probe exits without another range or scroll event");
+for (let cycle = 0; cycle < 3; cycle += 1) await triggerWatchdogRebuild();
+check(integrity?.resetKey === longResetAfter && integrity?.safeMode === false,
+  "repeated blank cycles cannot remount or re-enter the probe after the generation budget is exhausted");
+const nextLongRows = [...longRows.slice(0, -1), { kind: "answer" as const, key: "long-next-generation",
+  item: { ...item, id: "long-next-generation" } }];
+await act(async () => root.render(<Probe surfaceKey="surface-long" rows={nextLongRows} />));
+check(integrity?.safeMode === false, "a changed 10,000-row generation resets the probe state");
+await advanceClock(2_100);
+const nextGenerationResetBefore = integrity?.resetKey;
+await triggerWatchdogRebuild();
+check(integrity?.resetKey !== nextGenerationResetBefore, "a changed 10,000-row generation receives a fresh hard-reset budget");
 
 await act(async () => root.unmount());
 Date.now = originalDateNow;

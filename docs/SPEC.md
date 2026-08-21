@@ -257,9 +257,9 @@ when the sole automatic threshold is crossed.
   `agent.compact_ratio` (default **0.80**; presets 0.70 / 0.80 / 0.85; range
   0.65–0.85).
   `triggerTokens = floor(context_window × compact_ratio)`.
-- **Below the trigger** the model receives complete tool `RawContent` from a
-  temporary request projection; no sidecar is written. Durable `Content` remains
-  bounded for older Reasonix readers.
+- **Below the trigger** ordinary requests remain append-only and no sidecar is
+  written. Every provider request uses the durable, bounded tool `Content`;
+  local `RawContent` is never promoted into sampling, retry, summary, or replay.
 - **At the trigger** one singleflight maintenance transaction first persistently
   prunes every tool result over 8192 Unicode code points to `4096 head +
   "[... tool result middle pruned ...]" + 1024 tail`. If this clears pressure,
@@ -296,10 +296,12 @@ when the sole automatic threshold is crossed.
     the physical remainder. A negative value force-omits optional wire limits;
     if the known auto budget no longer fits, Reasonix compacts instead of
     overriding that choice.
-- Canonical tool storage remains backward compatible: `Content` is a stable
-  ≤32KB form and `RawContent` holds the full original. New request projections
-  promote tool `RawContent` below pressure; prune projections never rewrite either
-  canonical field. Older supported readers therefore remain bounded.
+- Canonical tool storage remains backward compatible: `Content` is the stable
+  provider-visible ≤32KB form and `RawContent` holds the full local original.
+  Full results are returned to the model only after an explicit paged
+  `use_capability` call to `session:tool_result`; sampling, stream retry, summary,
+  and projection replay all use the same bounded `Content`. Prune projections
+  never rewrite either canonical field. Older supported readers remain bounded.
 - Automatic maintenance is planned once in `ContextManager.Prepare` from the
   current projection plus the append-only canonical tail. The canonical
   transcript is never rewritten. Subsequent thresholds merge
@@ -726,11 +728,14 @@ registry to that claim before the child runs:
 - after the run, the host compares the mutations it recorded against the claim
   and reports any outside path to the parent in the sub-agent's host receipts.
 
-Omitting `write_paths` is not an unscoped writer: the run claims the whole
-workspace and therefore serialises against every other writer claim. That claim
-is a scheduling boundary only — inside the workspace nothing is refused, because
-no concurrent writer can hold an overlapping claim at the same time. Writes that
-leave the workspace are still reported as claim violations.
+Omitting `write_paths` is not an unscoped writer: the run starts by claiming
+the whole workspace, so it cannot start beside another writer. After it has
+only performed path-bound writes, the scheduler reservation shrinks to those
+files and a parent (or sibling) may write elsewhere. A `bash` or MCP workspace
+mutation makes the claim whole-workspace again. Directory claims may start
+together; they serialize only when they realize the same file. Enforcement
+still uses the declared bound — sandbox/`AllowsPath` do not shrink. Writes
+that leave the workspace are still reported as claim violations.
 
 Declaring paths is what buys parallelism; it costs `bash` on hosts where the OS
 sandbox cannot enforce write roots.

@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/transcript-state-snapshot.test.ts
 
-import type { StateSnapshot } from "react-virtuoso";
-import { resolveTranscriptStateSnapshot } from "../lib/transcriptStateSnapshot";
+import type { StateSnapshot, VirtuosoHandle } from "react-virtuoso";
+import { captureTranscriptVirtuosoState, resolveTranscriptStateSnapshot } from "../lib/transcriptStateSnapshot";
 
 let passed = 0;
 let failed = 0;
@@ -17,6 +17,12 @@ function check(condition: unknown, label: string) {
 }
 
 console.log("\ntranscript state snapshot");
+
+const liveSnapshot = { ranges: [{ startIndex: 0, endIndex: 1, size: 100 }], scrollTop: 42 } as StateSnapshot;
+const fakeHandle = { getState: (callback: (snapshot: StateSnapshot) => void) => callback(liveSnapshot) } as VirtuosoHandle;
+check(captureTranscriptVirtuosoState(null) === null, "a missing Virtuoso handle has no snapshot");
+check(captureTranscriptVirtuosoState(fakeHandle) === liveSnapshot,
+  "snapshot capture returns Virtuoso's synchronous measured state");
 
 const base: StateSnapshot = {
   scrollTop: 420,

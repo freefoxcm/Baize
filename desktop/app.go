@@ -143,8 +143,11 @@ type App struct {
 	catalogReconcileMu   sync.Mutex
 	catalogReconcileJobs map[string]*desktopCatalogReconcileJob
 	// Test-only deterministic boundary, set before concurrent requests.
-	catalogReconcileHook     func(sessioncatalog.DirectoryTarget)
-	catalogReconcileDoneHook func(sessioncatalog.DirectoryTarget)
+	catalogReconcileHook func(sessioncatalog.DirectoryTarget)
+	// projectTreeCatalogRefreshHook is test-only: it proves runtime-only
+	// navigation never falls back to the broad catalog refresh path.
+	projectTreeCatalogRefreshHook func()
+	catalogReconcileDoneHook      func(sessioncatalog.DirectoryTarget)
 	// catalogRegisteredProjectRoots bounds activation-triggered discovery to
 	// once per project per process. Failed pre-catalog attempts are removed so
 	// a later activation retries after the asynchronous catalog opens.
@@ -294,6 +297,7 @@ type App struct {
 	desktopLocale       atomic.Int32
 	trayReady           bool
 	tray                *desktopTray
+	desktopShell        desktopShellRuntimeState
 	hangWatchdogMu      sync.Mutex
 	hangWatchdogCancel  context.CancelFunc
 
@@ -372,10 +376,17 @@ type App struct {
 	// never a rewritten or later same-version retry.
 	healthyUpdateCreatedAt     string
 	healthyUpdateTransactionID string
-	// startupReady records that the window reached domReady so LKG config
-	// snapshots and update health are only committed after a real UI boot.
+	// startupReady records that React rendered and the Wails bridge heartbeat
+	// succeeded. DOM navigation alone is not application health.
 	startupReady     atomic.Bool
 	webView2Recovery *webView2RecoveryCoordinator
+}
+
+type desktopShellRuntimeState struct {
+	coordinator   *desktopShellCoordinator
+	linuxRecovery *linuxWebKitRecoveryCoordinator
+	trayState     string
+	trayReason    string
 }
 
 type skillRootsCache struct {
@@ -412,7 +423,10 @@ func NewApp() *App {
 		remoteWindows:        newRemoteWindowRegistry(),
 		remoteWindowOwnerID:  newRemoteWindowOwnerID(),
 	}
+	a.desktopShell.trayState = "probing"
 	a.webView2Recovery = newWebView2RecoveryCoordinator(a)
+	a.desktopShell.linuxRecovery = newLinuxWebKitRecoveryCoordinator(a)
+	a.desktopShell.coordinator = newDesktopShellCoordinator(a)
 	a.workspaceHub = newWorkspaceChangeHub(a)
 	a.terminals = newTerminalManager(a)
 	a.botBridge = a.newBotBridge()
@@ -444,6 +458,7 @@ func (a *App) startup(ctx context.Context) {
 	initializeLifecycleDiagnostics(a)
 	a.startWindowsWebView2StartupFallback(ctx)
 	a.webView2Recovery.startGuidance(ctx)
+	a.desktopShell.coordinator.start(ctx)
 	a.lifecycle.tracker.markAsync("ready")
 	if a.remoteWindowTicket != "" {
 		// Remote web window child: no local tabs, tray, heartbeat, providers,
@@ -453,7 +468,6 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	installSystemQuitHook()
-	a.startTray()
 	a.enableDeferredRebuildRetry()
 	a.startHistoryIndexMigration()
 	a.goSafe("repairDesktopIconIntegration", func() {
@@ -512,6 +526,11 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		a.backgroundMaximised.Store(a.lastKnownMaximised())
 		a.saveWindowStateSync()
 		a.snapshotAllTabs()
+		if a.desktopShell.coordinator != nil {
+			return a.desktopShell.coordinator.hideToBackground(ctx, func() bool {
+				return backgroundCloseUsesApplicationHide(goruntime.GOOS) || a.isTrayReady()
+			})
+		}
 		hideForBackground(ctx)
 		return true
 	}
@@ -623,20 +642,6 @@ func hideForBackground(ctx context.Context) {
 	runtime.WindowHide(ctx)
 }
 
-func showFromBackground(ctx context.Context, wasMaximised bool) {
-	if backgroundCloseUsesApplicationHide(goruntime.GOOS) {
-		runtime.Show(ctx)
-	}
-	plan := backgroundRestorePlanFor(goruntime.GOOS, wasMaximised)
-	if plan.maximiseBeforeShow {
-		runtime.WindowMaximise(ctx)
-	}
-	runtime.WindowShow(ctx)
-	if plan.unminimiseAfterShow {
-		runtime.WindowUnminimise(ctx)
-	}
-}
-
 func backgroundCloseUsesApplicationHide(goos string) bool {
 	return goos == "darwin"
 }
@@ -717,10 +722,13 @@ func (a *App) restoreOrBuildTabs() {
 			}
 			tab.model = entry.Model
 			tab.effort = cloneStringPtr(entry.Effort)
-			// Execution modes are gone: old agentPreset/tokenMode entries are
-			// parsed for compatibility but never applied. The tab keeps the
-			// pinned dual-write compat value.
-			tab.tokenMode = boot.TokenModeFull
+			// The role entry seeds the quality floor: delivery (and legacy
+			// delivery labels) raise it; light folds to standard.
+			if entry.QualityFloor == control.QualityFloorDelivery {
+				tab.qualityFloor = control.QualityFloorDelivery
+			} else {
+				tab.qualityFloor = ""
+			}
 			tab.mode = persistedTabMode(entry.Mode)
 			// Validate the persisted goal against the session's goal-state
 			// sidecar: a typed /new or /clear rotates the session through the
@@ -822,7 +830,7 @@ func (a *App) createTabEntryWithID(scope, workspaceRoot, topicID, id string) *Wo
 		TopicTitle:       topicTitleForTab(scope, workspaceRoot, topicID),
 		topicTitleSource: loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID),
 		model:            model,
-		tokenMode:        boot.TokenModeFull,
+		qualityFloor:     "",
 		mode:             tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
 		toolApprovalMode: toolApprovalMode,
 		disabledMCP:      map[string]ServerView{},
@@ -855,9 +863,8 @@ func (a *App) shutdown(context.Context) {
 }
 
 // domReady is called (via OnDomReady) after the webview finishes loading its DOM
-// but before the window is shown (StartHidden). It restores the saved window
-// position and size, then calls WindowShow so the user never sees the default
-// size/position flash.
+// but before the StartHidden window is presented. It restores saved geometry,
+// then delegates presentation to the platform-aware shell coordinator.
 func (a *App) domReady(_ context.Context) {
 	// JSC has installed its lazy signal handlers by this point. Restore the
 	// SA_ONSTACK flags required by Go; this is a no-op outside Linux.
@@ -867,7 +874,9 @@ func (a *App) domReady(_ context.Context) {
 		a.domReadyRemoteWindow()
 		return
 	}
-	a.webView2Recovery.reportReady()
+	if a.desktopShell.coordinator != nil {
+		a.desktopShell.coordinator.markDOMReady()
+	}
 
 	state, ok := loadWindowState()
 	if ok {
@@ -897,10 +906,19 @@ func (a *App) domReady(_ context.Context) {
 	}
 
 	if ok && state.Maximised {
-		runtime.WindowMaximise(a.ctx)
+		if goruntime.GOOS == "windows" {
+			// Preserve the established Windows maximise -> show ordering through
+			// the unified presentation plan without appending SW_RESTORE.
+			a.backgroundMaximised.Store(true)
+		} else {
+			runtime.WindowMaximise(a.ctx)
+		}
 	}
 
-	runtime.WindowShow(a.ctx)
+	a.showMainWindowFrom("startup_dom_ready")
+}
+
+func (a *App) completeFrontendStartup() {
 	a.markDesktopHealthy()
 	ctx := a.ctx
 	a.goSafe("recordHealthyConfig", func() {
@@ -929,10 +947,25 @@ func (a *App) domReady(_ context.Context) {
 // native navigation completed; this bound call additionally proves that React
 // and the Wails bridge are responsive after a renderer reload.
 func (a *App) ReportDesktopWebViewReady() {
-	if a == nil || a.webView2Recovery == nil {
+	if a == nil || a.shuttingDown.Load() || a.forceQuit.Load() {
 		return
 	}
-	a.webView2Recovery.reportReady()
+	if a.webView2Recovery != nil {
+		a.webView2Recovery.reportReady()
+	}
+	a.reportLinuxWebKitFrontendReady()
+	if a.desktopShell.coordinator != nil {
+		first, healthy := a.desktopShell.coordinator.markFrontendHeartbeat(time.Now())
+		if first {
+			a.goSafe("startDesktopTrayAfterFrontendReady", func() { a.startTray() })
+		}
+		if healthy {
+			if a.desktopShell.linuxRecovery != nil {
+				a.desktopShell.linuxRecovery.frontendHealthy()
+			}
+			a.completeFrontendStartup()
+		}
+	}
 }
 
 func (a *App) commitPendingUpdateHealth() error {
@@ -1936,10 +1969,12 @@ func (a *App) NewSessionForTab(tabID string) error {
 	if ctrl == nil {
 		return a.workspaceNotReadyErr(tab)
 	}
-	// Tab is already blank — just persist and skip the new-session dance.
+	// Tab is already blank — skip rotation, but still apply the configured
+	// default. A reused empty tab otherwise keeps the previous session's
+	// provider after a default-model change (#9080).
 	if !controllerHasActiveRuntimeWork(ctrl) && !messagesHaveConversationContent(ctrl.History()) {
 		a.persistTabSessionPath(tab, ctrl.SessionPath())
-		return nil
+		return a.applyNewSessionDefaultModel(tab)
 	}
 
 	if err := ctrl.NewSession(); err != nil {
@@ -1957,7 +1992,26 @@ func (a *App) NewSessionForTab(tabID string) error {
 	a.persistTabSessionPath(tab, ctrl.SessionPath())
 	a.invalidatePromptHistoryCache()
 	a.emitProjectTreeChangedForSessionDirs(ctrl.SessionDir())
-	return nil
+	return a.applyNewSessionDefaultModel(tab)
+}
+
+// applyNewSessionDefaultModel makes a freshly rotated or reused blank session
+// obey the same default as EnsureBlankTab. Existing conversations keep their
+// saved model until the user starts a new one.
+func (a *App) applyNewSessionDefaultModel(tab *WorkspaceTab) error {
+	if tab == nil {
+		return nil
+	}
+	a.mu.RLock()
+	scope := tab.Scope
+	root := tab.WorkspaceRoot
+	a.mu.RUnlock()
+	if strings.TrimSpace(scope) != "project" {
+		scope = "global"
+		root = ""
+	}
+	defaultModel, _ := desktopNewSessionDefaults(scope, root)
+	return a.alignReusableBlankTabModel(tab, defaultModel)
 }
 
 func (a *App) assignFreshSessionTopic(tab *WorkspaceTab) {
@@ -2928,6 +2982,8 @@ func channelDisplayName(provider, domain string) string {
 		return "WeChat"
 	case "qq":
 		return "QQ"
+	case "dingtalk":
+		return "DingTalk"
 	default:
 		return provider
 	}
@@ -3312,7 +3368,7 @@ func (a *App) openTransientBlankRuntime(scope, workspaceRoot string) error {
 		topicTitleSource: topicTitleSourceAuto,
 		SessionPath:      sessionPath,
 		model:            model,
-		tokenMode:        boot.TokenModeFull,
+		qualityFloor:     "",
 		mode:             tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo),
 		toolApprovalMode: toolApprovalMode,
 		disabledMCP:      map[string]ServerView{},
@@ -3586,12 +3642,27 @@ func (a *App) ResumeSessionForTab(tabID, path string) ([]HistoryMessage, error) 
 	return a.HistoryForTab(tab.ID), nil
 }
 
+// validateChannelSessionPath 校验 bot/channel 会话路径：channel 会话可能位于
+// 当前 controller 的 session dir（project scope）或全局 session dir
+// （global scope），单 tab 无法同时覆盖两者，因此都放行。
+func validateChannelSessionPath(ctrlDir, path string) (string, string, error) {
+	if p, b, err := validateSessionPath(ctrlDir, path); err == nil {
+		return p, b, nil
+	}
+	if globalDir := config.SessionDir(); globalDir != "" && globalDir != ctrlDir {
+		if p, b, err := validateSessionPath(globalDir, path); err == nil {
+			return p, b, nil
+		}
+	}
+	return validateSessionPath(ctrlDir, path)
+}
+
 func (a *App) OpenChannelSessionForTab(tabID, path string) ([]HistoryMessage, error) {
 	tab, ctrl := a.tabAndCtrlByID(tabID)
 	if tab == nil || ctrl == nil {
 		return []HistoryMessage{}, fmt.Errorf("tab is not ready")
 	}
-	sessionPath, _, err := validateSessionPath(controllerSessionDir(ctrl), path)
+	sessionPath, _, err := validateChannelSessionPath(controllerSessionDir(ctrl), path)
 	if err != nil {
 		return nil, err
 	}
@@ -3613,7 +3684,7 @@ func (a *App) OpenChannelSessionPageForTab(tabID, path string, limit int) (Histo
 	if tab == nil || ctrl == nil {
 		return HistoryPage{}, fmt.Errorf("tab is not ready")
 	}
-	sessionPath, _, err := validateSessionPath(controllerSessionDir(ctrl), path)
+	sessionPath, _, err := validateChannelSessionPath(controllerSessionDir(ctrl), path)
 	if err != nil {
 		return HistoryPage{}, err
 	}
@@ -10017,12 +10088,14 @@ func (a *App) SetAgentPreset(preset string) error {
 // the legacy argument, does not require an idle tab, saves no mode, rebuilds
 // no agent, and always succeeds with the deprecation notice.
 func (a *App) SetAgentPresetForTab(tabID, preset string) error {
-	_ = boot.NormalizeAgentPreset(preset)
+	normalized, err := boot.NormalizeAgentPresetErr(preset)
+	if err != nil {
+		return err
+	}
 	if tab := a.tabByID(tabID); tab == nil && strings.TrimSpace(tabID) != "" {
 		return fmt.Errorf("tab %q not found", tabID)
 	}
-	a.noticeForTab(strings.TrimSpace(tabID), SetAgentPresetDeprecatedNotice)
-	return nil
+	return a.SetQualityFloorForTab(tabID, normalized)
 }
 
 // persistTabTokenMode persists the deprecated dual-write compatibility values
@@ -10034,7 +10107,6 @@ func (a *App) persistTabTokenMode(tab *WorkspaceTab) {
 		return
 	}
 	a.mu.Lock()
-	tab.tokenMode = boot.TokenModeFull
 	a.saveTabsLocked()
 	a.mu.Unlock()
 	_ = a.saveTabSessionMetaForCurrentSession(tab)

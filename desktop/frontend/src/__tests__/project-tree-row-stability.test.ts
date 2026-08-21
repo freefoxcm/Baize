@@ -24,5 +24,15 @@ assert.match(
   /:root\[data-theme-style\] \.sidebar--workbench \.project-tree__topic\s*\{[^}]*height:\s*34px;/s,
   "workbench topic rows keep a fixed height",
 );
+assert.match(
+  styles,
+  /\.project-tree__group-input\s*\{[^}]*font-size:\s*inherit;/s,
+  "group rename inputs keep the group title font size",
+);
+assert.doesNotMatch(
+  styles,
+  /\.project-tree__group-input\s*\{[^}]*font-size:\s*11px;/s,
+  "group rename inputs cannot restore the old smaller font size",
+);
 
 console.log("  PASS  project tree row stability contract");

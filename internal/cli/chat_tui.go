@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	"reasonix/internal/billing"
 	"reasonix/internal/boot"
 	"reasonix/internal/command"
+	turncomp "reasonix/internal/completion"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
@@ -274,9 +276,16 @@ type chatTUI struct {
 	copyNoticeText string
 	copyNoticeSeq  int
 	// clipboardImagePending keeps the footer honest while the platform clipboard
-	// is being decoded and prevents repeated Ctrl+V presses from attaching the
-	// same image multiple times before the first read completes.
-	clipboardImagePending bool
+	// is being decoded. clipboardImageRequests counts shortcuts coalesced into the
+	// probe: an image attaches once, while a text fallback preserves every press.
+	clipboardImagePending  bool
+	clipboardImageRequests int
+
+	// terminalPasteSeq counts bracketed pastes delivered by the terminal.
+	// clipboardImageTerminalPasteSeq snapshots it when an image probe starts, so a
+	// terminal that pastes text itself is never pasted into twice.
+	terminalPasteSeq               uint64
+	clipboardImageTerminalPasteSeq uint64
 
 	// The user bubble is echoed to scrollback immediately on Enter (bubbleStartIdx
 	// marks where in the transcript it landed). It stays "un-sendable" until the
@@ -1255,36 +1264,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, finalize(m, cmds)
 
 	case tea.PasteMsg:
-		m.followComposerCursor()
-		pasteBefore := m.input.Value()
-		if m.state != tuiRunning && m.attachPastedImages(msg.Content) {
-			if shouldClearWideInputChange(pasteBefore, m.input.Value()) {
-				cmds = append(cmds, tea.ClearScreen)
-			}
-			return m, finalize(m, cmds)
-		}
-		if m.validComposerSelection() && !m.composerSel.empty() {
-			inputBeforeSelection = pasteBefore
-			m.deleteComposerSelection()
-		}
-		if ref, ok := pastedFileRef(msg.Content); ok {
-			m.input.InsertString(ref + " ")
-			m.growInputToFit()
-			m.updateCompletion()
-			if shouldClearWideInputChange(pasteBefore, m.input.Value()) {
-				cmds = append(cmds, tea.ClearScreen)
-			}
-			return m, finalize(m, cmds)
-		}
-		if !m.chooserTyping() && m.pendingApproval == nil && m.rewind == nil && m.resumePick == nil && m.mcp == nil && m.clearConfirm == nil && m.mcpImport == nil && m.skillPick == nil && m.shouldFoldPaste(msg.Content) {
-			m.insertFoldedPaste(msg.Content)
-			m.growInputToFit()
-			m.updateCompletion()
-			if shouldClearWideInputChange(pasteBefore, m.input.Value()) {
-				cmds = append(cmds, tea.ClearScreen)
-			}
-			return m, finalize(m, cmds)
-		}
+		return m.applyComposerPaste(msg, true)
 
 	case tea.KeyPressMsg:
 		// Any keystroke dismisses a finished selection (copy is a right-click),
@@ -2038,8 +2018,23 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.startTurnWithRaw(sent, msg.display, msg.restore, msg.display))
 
 	case clipboardImageMsg:
+		requests := max(m.clipboardImageRequests, 1)
 		m.clipboardImagePending = false
+		m.clipboardImageRequests = 0
 		if msg.err != nil {
+			// An empty image clipboard is the normal case for a text paste on
+			// terminals that hand Ctrl+V to the application instead of pasting
+			// themselves. Fall through to text rather than blocking the paste.
+			if errors.Is(msg.err, control.ErrNoClipboardImage) {
+				// Skip the fallback when the terminal already delivered a
+				// bracketed paste for this key press; it owns the paste and
+				// pasting again would duplicate the text.
+				pending := pendingClipboardTextPastes(requests, m.clipboardImageTerminalPasteSeq, m.terminalPasteSeq)
+				if pending > 0 {
+					cmds = append(cmds, pasteClipboardTextGuarded(m.terminalPasteSeq, pending))
+				}
+				break
+			}
 			m.notice(fmt.Sprintf(i18n.M.ClipboardImagePasteFailedFmt, msg.err))
 			break
 		}
@@ -2061,10 +2056,14 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.text == "" {
 			break
 		}
-		// Re-enter through the canonical paste path so selection replacement,
-		// folded blocks, file references, completion, and wide-cell repainting
-		// behave exactly like the terminal's bracketed-paste event.
-		return m.update(tea.PasteMsg{Content: msg.text})
+		count := 1
+		if msg.pending > 0 {
+			count = pendingClipboardTextPastes(msg.pending, msg.terminalPasteSeq, m.terminalPasteSeq)
+			if count == 0 {
+				break
+			}
+		}
+		return m.applyComposerPasteCount(tea.PasteMsg{Content: msg.text}, false, count)
 
 	case clipboardCopyMsg:
 		if msg.statusHint && msg.seq != m.copyNoticeSeq {
@@ -3726,16 +3725,27 @@ func formatCompletionSummaryLine(c *event.CompletionSummaryInfo) string {
 	return line
 }
 
-func completionSummaryNeedsAttention(c *event.CompletionSummaryInfo) bool {
+func completionSummaryNeedsAttention(c *event.CompletionSummaryInfo, floor string) bool {
 	if c == nil {
 		return false
 	}
-	verdict := strings.ToLower(strings.TrimSpace(c.Verdict))
-	review := strings.ToLower(strings.TrimSpace(c.Review))
-	return verdict == "partial" || verdict == "blocked" ||
-		c.ChecksFailed > 0 || c.ChecksSuppressed > 0 ||
-		review == "warned" || review == "failed" || review == "unavailable" ||
-		len(c.GapKinds) > 0 || c.ConstraintDegraded
+	if strings.TrimSpace(c.Floor) != "" {
+		return c.Attention
+	}
+	return turncomp.NeedsAttention(turncomp.AttentionInput{
+		Verdict:            c.Verdict,
+		ChecksFailed:       c.ChecksFailed,
+		GapKinds:           c.GapKinds,
+		Floor:              floor,
+		RequiredSuppressed: c.ChecksSuppressed > 0,
+	})
+}
+
+func (m chatTUI) ctrlQualityFloor() string {
+	if m.ctrl == nil {
+		return ""
+	}
+	return m.ctrl.QualityFloor()
 }
 
 func completionSummaryWarning(c *event.CompletionSummaryInfo) string {
@@ -4484,7 +4494,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 
 	case event.CompletionSummary:
 		if e.Completion != nil {
-			if completionSummaryNeedsAttention(e.Completion) {
+			if completionSummaryNeedsAttention(e.Completion, m.ctrlQualityFloor()) {
 				m.finalizeStreamed()
 				m.commitLine(fmt.Sprintf("  ! %s", completionSummaryWarning(e.Completion)))
 			}

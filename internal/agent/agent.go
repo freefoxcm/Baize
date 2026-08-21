@@ -30,15 +30,15 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/sessiontemp"
 	"reasonix/internal/shellparse"
 	"reasonix/internal/taskcontract"
 	"reasonix/internal/tool"
 	"reasonix/internal/workspacelease"
 )
 
-// maxToolOutputBytes keeps Content readable by older Reasonix versions.
-// RawContent retains the complete result and new request projections promote it
-// until pressure-time pruning installs a durable bounded view.
+// maxToolOutputBytes bounds the stable provider-visible Content. RawContent
+// retains the complete local result for explicit session-scoped paging.
 const maxToolOutputBytes = 32 * 1024
 
 var deprecatedContextRetentionWarning sync.Once
@@ -954,6 +954,8 @@ type Options struct {
 	WriteScheduler *SubagentScheduler
 	// WriteWorkspaceRoot normalizes parent write reservations.
 	WriteWorkspaceRoot string
+	// SessionTemp owns the exact private scratch root for delivery accounting.
+	SessionTemp *sessiontemp.Manager
 	// WriteRoots is the session-scoped writable directory manager.
 	WriteRoots *sandbox.WritableRootSet
 	// WriteAccessGate authorizes extra writable directories. nil is fail-closed
@@ -1039,6 +1041,10 @@ type Options struct {
 	// (or cloned for) sub-agents. nil disables v2 capture. Does not affect
 	// provider-visible tool schemas or prompts.
 	MutationObserver *checkpoint.MutationObserver
+	// LegacyAnchorSafetyGate is an internal kill switch for reverting
+	// delete_range to the pre-fingerprint full-file fresh-read requirement.
+	// It never enters provider-visible prompts or tool schemas.
+	LegacyAnchorSafetyGate bool
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1095,22 +1101,23 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		svc: newAgentServices(prov, tools, sink, gate, planModeReadOnlyTrust,
 			sandboxEscapeApprover, configWriteApprover, hooks, opts),
 		agentConfig: agentConfig{
-			maxSteps:           opts.MaxSteps,
-			maxStepsKey:        maxStepsKey,
-			reasoningByteLimit: reasoningByteLimit,
-			maxOutputTokens:    opts.MaxOutputTokens,
-			temperature:        opts.Temperature,
-			usageSource:        usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
-			modelRef:           strings.TrimSpace(opts.ModelRef),
-			workspaceID:        strings.TrimSpace(opts.WorkspaceID),
-			classifierTaskText: opts.ClassifierTaskText,
-			writeWorkspaceRoot: strings.TrimSpace(opts.WriteWorkspaceRoot),
-			subagentDepth:      subagentDepth,
-			maxSubagentDepth:   maxSubagentDepth,
-			contextWindow:      opts.ContextWindow,
-			compactRatio:       opts.CompactRatio,
-			recentKeep:         opts.RecentKeep,
-			archiveDir:         opts.ArchiveDir,
+			maxSteps:               opts.MaxSteps,
+			maxStepsKey:            maxStepsKey,
+			reasoningByteLimit:     reasoningByteLimit,
+			maxOutputTokens:        opts.MaxOutputTokens,
+			temperature:            opts.Temperature,
+			usageSource:            usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
+			modelRef:               strings.TrimSpace(opts.ModelRef),
+			workspaceID:            strings.TrimSpace(opts.WorkspaceID),
+			classifierTaskText:     opts.ClassifierTaskText,
+			writeWorkspaceRoot:     strings.TrimSpace(opts.WriteWorkspaceRoot),
+			subagentDepth:          subagentDepth,
+			maxSubagentDepth:       maxSubagentDepth,
+			contextWindow:          opts.ContextWindow,
+			compactRatio:           opts.CompactRatio,
+			recentKeep:             opts.RecentKeep,
+			archiveDir:             opts.ArchiveDir,
+			legacyAnchorSafetyGate: opts.LegacyAnchorSafetyGate,
 		},
 		sess: sessionRuntime{
 			conversation: session,
@@ -1142,6 +1149,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	}
 	a.SetResponseLanguage(opts.ResponseLanguage)
 	a.SetReasoningLanguage(opts.ReasoningLanguage)
+	a.bindToolResultSessionCapability()
 	a.maybeArmForkFromEnv()
 	a.maybeWrapForkCaptureProvider()
 	if warnDeprecatedRetention {
@@ -1174,6 +1182,9 @@ func (a *Agent) closedLoopActive() bool {
 		return true
 	}
 	if a.planContractSnapshot() != nil {
+		return true
+	}
+	if a.turn.constraints.PolicyFloor == taskcontract.PolicyFloorDelivery {
 		return true
 	}
 	if a.turn.engine == nil {
@@ -1232,8 +1243,8 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	runMaxSteps := a.maxSteps
 	runMaxStepsKey := a.maxStepsKey
 	a.recovery.runSeq.Add(1)
-	// All role settings participate in the workspace lease for the run; the
-	// exclusive write lock is still acquired lazily on the first real writer.
+	// All role settings participate in the workspace lease for the run; write
+	// locks are acquired per mutating tool and released when that tool ends.
 	if a.svc.workspaceLease != nil {
 		a.svc.workspaceLease.BeginRun()
 		defer a.svc.workspaceLease.EndRun()
@@ -1590,6 +1601,9 @@ func parseExecutorHandoff(input string) (task, plan string, ok bool) {
 func looksLikeExecutorHandoffDeferral(answer string) bool {
 	lower := strings.ToLower(strings.TrimSpace(answer))
 	if lower == "" {
+		return true
+	}
+	if looksLikePendingAction(lower) {
 		return true
 	}
 	if containsAnySubstring(lower, executorHandoffDeferralPhrases) {
@@ -2263,7 +2277,13 @@ func (a *Agent) recoveryPlanTransition(toolName string, args json.RawMessage) (b
 		return false, "", "", ""
 	}
 	after := evidence.ReceiptFromToolCall("todo_write", args, true, true).Todos
-	if len(after) == 0 || evidence.ValidateSerialTodos(after) != nil || !evidence.PreservesCompletedTodoPositions(before, after) {
+	if evidence.ValidateSerialTodos(after) != nil {
+		return false, "", "", ""
+	}
+	if len(after) == 0 {
+		return true, planReviewText(before), planReviewText(after), planTransitionDiff(before, after)
+	}
+	if !evidence.PreservesCompletedTodoPositions(before, after) {
 		// Let todo_write report malformed or invalid state directly; an invalid
 		// task list is not a meaningful plan proposal for the reviewer.
 		return false, "", "", ""
@@ -2516,37 +2536,6 @@ func (a *Agent) repeatedSuccessBlock(call provider.ToolCall, t tool.Tool) (strin
 		call.Name, count), true
 }
 
-func (a *Agent) staleAnchorEditBlock(call provider.ToolCall) (string, bool) {
-	if a.task.ledger == nil || !anchorBasedEditTool(call.Name) {
-		return "", false
-	}
-	rec := evidence.ReceiptFromToolCall(call.Name, json.RawMessage(call.Arguments), true, false)
-	if len(rec.Paths) == 0 {
-		return "", false
-	}
-	writeIndex, ok := a.task.ledger.LatestSuccessfulWriteIndex(rec.Paths)
-	if !ok || a.task.ledger.HasSuccessfulAnchorRefreshReadAfter(rec.Paths, writeIndex) {
-		return "", false
-	}
-	return fmt.Sprintf(
-		"blocked: [fresh read required] %q targets %s, which was already modified earlier this turn. Re-read the current file with read_file without offset/limit before another range deletion, or use multi_edit with exact replacements when possible. This prevents stale start/end anchors from selecting an unintended destructive span.",
-		call.Name, strings.Join(rec.Paths, ", ")), true
-}
-
-func anchorBasedEditTool(name string) bool {
-	switch name {
-	// edit_file synchronously reads the current file, requires a unique exact
-	// or narrowly fuzzy match, and returns the actual applied diff. Let it try
-	// optimistically; a stale old_string fails without writing and tells the
-	// model to re-read. delete_range remains guarded because two independently
-	// resolved anchors can otherwise select an unintended destructive span.
-	case "delete_range":
-		return true
-	default:
-		return false
-	}
-}
-
 func (a *Agent) recordRepeatSuccess(call provider.ToolCall, t tool.Tool) {
 	sig, ok := repeatSuccessSignature(call, t)
 	if !ok {
@@ -2762,16 +2751,15 @@ func firstLine(s string) string {
 	return s
 }
 
-// truncateToolOutput builds the compatibility Content form for a tool result.
-// Under-cap bodies are byte-identical; over-cap bodies keep a tool-aware head
-// and tail while RawContent stores the full original. New request projections
-// promote RawContent until pressure pruning, while older readers remain bounded.
+// truncateToolOutput builds the stable provider-visible Content form for a tool
+// result. Under-cap bodies are byte-identical; over-cap bodies keep a tool-aware
+// head and tail while RawContent stores the full local original.
 func truncateToolOutput(s string) (string, string) {
 	return truncateToolOutputFor(s, "", "")
 }
 
-// truncateToolOutputFor is the tool-aware compatibility-storage limiter.
-// toolName and toolCallID populate the marker used by older readers.
+// truncateToolOutputFor is the tool-aware provider-input limiter. toolName and
+// toolCallID populate the recovery marker.
 func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 	if len(s) <= maxToolOutputBytes {
 		return s, ""
@@ -2805,23 +2793,14 @@ func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 	}
 	head := snapToRuneBoundary(s, 0, headKeep)
 	tail := snapToRuneBoundary(s, len(s)-tailKeep, len(s))
-	omitted := len(s) - len(head) - len(tail)
-	namePart := toolName
-	if namePart == "" {
-		namePart = "tool"
-	}
-	idPart := toolCallID
-	if idPart == "" {
-		idPart = "-"
-	}
-	notice := fmt.Sprintf("tool output truncated: %d of %d bytes elided", omitted, len(s))
-	marker := fmt.Sprintf(
-		"\n\n…[truncated tool=%s call_id=%s original_bytes=%d kept_bytes=%d — full original retained in canonical transcript; re-read or retry with narrower args]…\n\n",
-		namePart, idPart, len(s), len(head)+len(tail),
-	)
-	body := head + marker + tail
-	if len(body) > maxToolOutputBytes {
-		overflow := len(body) - maxToolOutputBytes
+	resultRef := toolResultRef(toolCallID, s)
+	marker := toolOutputRecoveryMarker(toolName, toolCallID, resultRef, len(s), len(head)+len(tail))
+	for range 3 {
+		bodyLen := len(head) + len(marker) + len(tail)
+		if bodyLen <= maxToolOutputBytes {
+			break
+		}
+		overflow := bodyLen - maxToolOutputBytes
 		trimHead := overflow / 2
 		trimTail := overflow - trimHead
 		if trimHead < len(head) {
@@ -2830,9 +2809,10 @@ func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 		if trimTail < len(tail) {
 			tail = snapToRuneBoundary(tail, trimTail, len(tail))
 		}
-		body = head + marker + tail
+		marker = toolOutputRecoveryMarker(toolName, toolCallID, resultRef, len(s), len(head)+len(tail))
 	}
-	return body, notice
+	notice := fmt.Sprintf("tool output truncated: %d of %d bytes elided", len(s)-len(head)-len(tail), len(s))
+	return head + marker + tail, notice
 }
 
 // snapToRuneBoundary returns s[lo:hi] with the bounds nudged outward until

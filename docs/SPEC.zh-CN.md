@@ -148,8 +148,8 @@ transcript，仅在唯一自动阈值被跨越时安装 provider 可见的短 **
 - 每个 provider 声明 `context_window`（tokens）。唯一自动触发值是
   `agent.compact_ratio`（默认 **0.80**；预设 0.70 / 0.80 / 0.85；范围 0.65–0.85）。
   `triggerTokens = floor(context_window × compact_ratio)`。
-- **阈值以下**不写 projection；普通请求临时将 tool `RawContent` 提升为模型
-  可见 `Content`，因此新版本可看到完整工具结果，而旧版本仍安全读取有界内容。
+- **阈值以下**普通请求保持 append-only，不写 projection。所有 provider 请求只使用
+  持久化且有界的 tool `Content`；本地 `RawContent` 不会进入 sampling、重试、摘要或 replay。
 - **达到阈值**后，单飞维护事务先持久剪枝：所有超过 8192 个 Unicode code point
   的工具结果变为 `4096 头部 + "[... tool result middle pruned ...]" + 1024 尾部`。
   若已解除压力则不调摘要模型；否则将连续旧前缀摘要，并仅原样保留最近
@@ -166,8 +166,10 @@ transcript，仅在唯一自动阈值被跨越时安装 provider 可见的短 **
   - 官方 DeepSeek Chat/Responses 在剩余共享窗口还能放下 384K 自动预算时继续省略字段，只在临界时注入裁剪值。官方 Anthropic 兼容层因 `max_tokens` 必填，仍发送 384K 或裁剪值。
   - 官方 OpenCode Go 预设会主动发送 `min(模型上限, 物理剩余)`，使用通用 `max_tokens` / `max_output_tokens`。第三方兼容 API 在可信上下文 400 之前不假设共享窗口。
   - 正数是用户显式控费上限，仍可按物理剩余继续下调。负数表示明确省略可选 wire 字段；已知自动预算放不下时压缩，而不是覆盖用户选择。
-- canonical 工具存储保持向后兼容：`Content` 仍是稳定 ≤32KB 版，`RawContent` 保存完整原文。
-  新版请求投影在低压时提升 `RawContent`；prune projection 不改写两个 canonical 字段。
+- canonical 工具存储保持向后兼容：`Content` 是稳定的 provider 可见 ≤32KB 表示，
+  `RawContent` 保存本地完整原文。只有模型显式分页调用 `use_capability` 的
+  `session:tool_result` 后，完整结果页才会进入上下文；sampling、流重试、摘要与 projection
+  replay 均使用同一份有界 `Content`。prune projection 不改写两个 canonical 字段。
 - 自动维护只在 `ContextManager.Prepare` 中规划一次，输入为当前 projection 加上
   append-only canonical tail；canonical 永不改写。后续阈值合并
   **上一摘要 + 新增历史** 为单条 digest（无 multi-span、无应用层重试）。
@@ -265,7 +267,7 @@ Profile 描述的是 worker，不是一次运行。委派由五个彼此独立�
 - host 无法路径化约束的写工具（自定义、未知）被丢弃；
 - 运行结束后，host 用自己记录的变更与声明比对，任何越界路径都会写进该子智能体的 host receipts 交还给父智能体。
 
-省略 `write_paths` 并不等于不受约束：该次运行会声明整个 workspace，因而与其他所有写入声明串行。那是纯调度边界——workspace 内部不拒绝任何写入，因为同一时刻不可能有另一个持有重叠声明的并发写入者。但离开 workspace 的写入仍会被记为越界。
+省略 `write_paths` 并不等于不受约束：该次运行开工时声明整个 workspace，因此不能和其他 writer 同时开工。若整段只有路径型写入，调度预留会收窄到已写文件，父代理或兄弟任务可以写其他文件。`bash` / MCP 一旦产生 workspace 变更，预留重新变为整区。目录声明可以同时开工，只有落盘到同一文件时才互斥。能力上界（sandbox / `AllowsPath`）仍是声明本身，不会随预留收窄。离开 workspace 的写入仍会被记为越界。
 
 声明路径换来的是并行能力；代价是在 OS sandbox 无法强制写根的宿主上失去 `bash`。
 

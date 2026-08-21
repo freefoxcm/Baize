@@ -5,8 +5,8 @@
  * every full remount collapses the tree back to the static priors — and any
  * estimate-based scrollToIndex landing after the remount inherits the
  * prior's error, which grows with transcript length (#8657). This store
- * records the heights Virtuoso has already measured (`data-known-size` on
- * mounted rows) and synthesizes estimates from them:
+ * records the real heights returned by Virtuoso's `itemSize` callback and
+ * synthesizes estimates from them:
  *
  *   measured height for this rowKey
  *   → median of recently measured rows of the same kind
@@ -17,18 +17,22 @@
  * disarmed even when a remount cannot be avoided.
  */
 
-import { estimateTranscriptRowSize, type TranscriptRow } from "./transcriptRows";
+import { estimateTranscriptRowSize, transcriptRowMeasurementVersion, type TranscriptRow } from "./transcriptRows";
 
 /** Samples kept per row kind for the median fallback. */
 const KIND_SAMPLE_CAP = 100;
 
 export type TranscriptMeasuredSizes = {
   /** Record one measured row height (px). Non-positive/NaN ignored. */
-  record: (rowKey: string, kind: TranscriptRow["kind"], height: number) => void;
-  /** Best-known height estimate for a row. */
-  estimateFor: (row: TranscriptRow) => number;
+  record: (
+    rowKey: string,
+    kind: TranscriptRow["kind"],
+    height: number,
+    width?: number,
+    measurementVersion?: string,
+  ) => void;
   /** Estimate array aligned with `rows`, for Virtuoso's heightEstimates. */
-  synthesize: (rows: readonly TranscriptRow[]) => number[];
+  synthesize: (rows: readonly TranscriptRow[], width?: number) => number[];
   /** Drop all measurements (surface switch). */
   clear: () => void;
 };
@@ -43,44 +47,48 @@ function medianOf(samples: readonly number[]): number | undefined {
 }
 
 export function createTranscriptMeasuredSizes(): TranscriptMeasuredSizes {
-  const measured = new Map<string, number>();
-  const kindSamples = new Map<TranscriptRow["kind"], number[]>();
-  const medianCache = new Map<TranscriptRow["kind"], number | undefined>();
+  type Sample = { kind: TranscriptRow["kind"]; height: number; width?: number; measurementVersion: string };
+  const measured = new Map<string, Sample>();
 
-  const record: TranscriptMeasuredSizes["record"] = (rowKey, kind, height) => {
+  const widthMatches = (sample: Sample, width?: number) => width === undefined
+    || (sample.width !== undefined && Math.abs(sample.width - width) <= 1);
+
+  const record: TranscriptMeasuredSizes["record"] = (rowKey, kind, height, width, measurementVersion = "0:0") => {
     if (!Number.isFinite(height) || height <= 0) return;
-    measured.set(rowKey, height);
-    let samples = kindSamples.get(kind);
-    if (!samples) {
-      samples = [];
-      kindSamples.set(kind, samples);
-    }
-    samples.push(height);
-    if (samples.length > KIND_SAMPLE_CAP) samples.splice(0, samples.length - KIND_SAMPLE_CAP);
-    medianCache.delete(kind);
+    measured.delete(rowKey);
+    measured.set(rowKey, {
+      kind,
+      height,
+      width: Number.isFinite(width) && (width ?? 0) > 0 ? width : undefined,
+      measurementVersion,
+    });
   };
 
-  const kindMedian = (kind: TranscriptRow["kind"]): number | undefined => {
-    if (!medianCache.has(kind)) {
-      medianCache.set(kind, medianOf(kindSamples.get(kind) ?? []));
-    }
-    return medianCache.get(kind);
-  };
-
-  const estimateFor: TranscriptMeasuredSizes["estimateFor"] = (row) => {
-    const exact = measured.get(String(row.key));
-    if (exact !== undefined) return exact;
-    return kindMedian(row.kind) ?? estimateTranscriptRowSize(row);
-  };
+  const kindMedian = (kind: TranscriptRow["kind"], width?: number) => medianOf(
+    [...measured.values()]
+      .filter((sample) => sample.kind === kind && widthMatches(sample, width))
+      .slice(-KIND_SAMPLE_CAP)
+      .map((sample) => sample.height),
+  );
 
   return {
     record,
-    estimateFor,
-    synthesize: (rows) => rows.map((row) => estimateFor(row)),
-    clear: () => {
-      measured.clear();
-      kindSamples.clear();
-      medianCache.clear();
+    synthesize: (rows, width) => {
+      // Remove changed-content samples before computing any kind median; a
+      // stale exact height must not influence another row's fallback.
+      for (const row of rows) {
+        const rowKey = String(row.key);
+        const sample = measured.get(rowKey);
+        if (sample && sample.measurementVersion !== transcriptRowMeasurementVersion(row)) measured.delete(rowKey);
+      }
+      const medians = new Map<TranscriptRow["kind"], number | undefined>();
+      return rows.map((row) => {
+        const exact = measured.get(String(row.key));
+        if (exact && widthMatches(exact, width)) return exact.height;
+        if (!medians.has(row.kind)) medians.set(row.kind, kindMedian(row.kind, width));
+        return medians.get(row.kind) ?? estimateTranscriptRowSize(row);
+      });
     },
+    clear: () => measured.clear(),
   };
 }

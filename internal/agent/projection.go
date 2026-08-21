@@ -252,10 +252,9 @@ func summaryContentHash(summary string) string {
 }
 
 // coveredPrefixHash fingerprints the current model-visible prefix of msgs[:n].
-// Tool RawContent is promoted here because it is what new requests send to the
-// provider; bounded Content remains only the compatibility representation for
-// older readers. SanitizeToolPairing applies the same deterministic repair used
-// on the wire, keeping hashes stable when LoadSession repairs a transcript.
+// Tool Content is the stable bounded provider representation; RawContent is
+// local-only. SanitizeToolPairing applies the same deterministic repair used on
+// the wire, keeping hashes stable when LoadSession repairs a transcript.
 func coveredPrefixHash(msgs []provider.Message, n int) string {
 	if n <= 0 || n > len(msgs) {
 		return ""
@@ -264,9 +263,8 @@ func coveredPrefixHash(msgs []provider.Message, n int) string {
 	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
 }
 
-// boundedCoveredPrefixHash reproduces the pre-RawContent v3 fingerprint. It
-// is accepted only for reading old sidecars; every new checkpoint writes the
-// current hash above so a later RawContent edit cannot reuse stale state.
+// boundedCoveredPrefixHash is the v3 bounded provider fingerprint. Keep the
+// named helper for old sidecar and load-repair compatibility tests.
 func boundedCoveredPrefixHash(msgs []provider.Message, n int) string {
 	if n <= 0 || n > len(msgs) {
 		return ""
@@ -275,11 +273,71 @@ func boundedCoveredPrefixHash(msgs []provider.Message, n int) string {
 	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
 }
 
-// migrateBoundedCoveredPrefixHash upgrades a sidecar written before tool
-// RawContent became model-visible. Keeping this as an explicit load migration,
-// rather than a permanent validation fallback, ensures a later RawContent edit
-// invalidates the projection once the sidecar has been observed by this version.
-func migrateBoundedCoveredPrefixHash(st *CompactionState, msgs []provider.Message) bool {
+// promotedCoveredPrefixHash reproduces the temporary v3 behavior that promoted
+// full tool RawContent into every provider request.
+func promotedCoveredPrefixHash(msgs []provider.Message, n int) string {
+	if n <= 0 || n > len(msgs) {
+		return ""
+	}
+	promoted := append([]provider.Message(nil), msgs[:n]...)
+	for i := range promoted {
+		if promoted[i].Role == provider.RoleTool && promoted[i].RawContent != "" {
+			promoted[i].Content = promoted[i].RawContent
+		}
+	}
+	return providerVisibleFingerprint(provider.SanitizeToolPairing(provider.ModelMessages(promoted)))
+}
+
+// normalizePromotedProjectionToolBodies converts the provider-visible tool
+// bodies persisted by the temporary RawContent-promoting implementation back
+// to canonical bounded Content. Every tool message must match a canonical tool
+// result exactly by identity and old provider-visible body. Duplicate call IDs
+// are safe only when every matching candidate maps to the same bounded body.
+func normalizePromotedProjectionToolBodies(projection, canonical []provider.Message, n int) ([]provider.Message, bool) {
+	if n <= 0 || n > len(canonical) {
+		return nil, false
+	}
+	normalized := append([]provider.Message(nil), projection...)
+	for i, projected := range normalized {
+		if projected.Role != provider.RoleTool {
+			continue
+		}
+		visibleBody := projected.Content
+		if projected.ProviderContent != "" {
+			visibleBody = projected.ProviderContent
+		}
+		boundedBody := ""
+		matched := false
+		for _, candidate := range canonical[:n] {
+			if candidate.Role != provider.RoleTool || candidate.ToolCallID != projected.ToolCallID || candidate.Name != projected.Name {
+				continue
+			}
+			matchesBounded := visibleBody == candidate.Content
+			matchesPromoted := candidate.RawContent != "" && visibleBody == candidate.RawContent
+			if !matchesBounded && !matchesPromoted {
+				continue
+			}
+			if matched && boundedBody != candidate.Content {
+				return nil, false
+			}
+			boundedBody = candidate.Content
+			matched = true
+		}
+		if !matched {
+			return nil, false
+		}
+		normalized[i].Content = boundedBody
+		normalized[i].RawContent = ""
+		normalized[i].ProviderContent = ""
+	}
+	return normalized, true
+}
+
+// migratePromotedCoveredPrefixHash normalizes a sidecar written while full tool
+// RawContent was model-visible. Migration is exact and atomic: both its hash and
+// retained tool bodies must match the historical form. Unrelated, stale, or
+// ambiguous sidecars stay invalid so callers drop only their projection body.
+func migratePromotedCoveredPrefixHash(st *CompactionState, msgs []provider.Message) bool {
 	if st == nil {
 		return false
 	}
@@ -287,9 +345,14 @@ func migrateBoundedCoveredPrefixHash(st *CompactionState, msgs []provider.Messag
 	stored := st.Projection.CoveredPrefixHash
 	currentHash := coveredPrefixHash(msgs, n)
 	if stored == "" || currentHash == "" || stored == currentHash ||
-		stored != boundedCoveredPrefixHash(msgs, n) {
+		stored != promotedCoveredPrefixHash(msgs, n) {
 		return false
 	}
+	normalizedMessages, ok := normalizePromotedProjectionToolBodies(st.Projection.Messages, msgs, n)
+	if !ok {
+		return false
+	}
+	st.Projection.Messages = normalizedMessages
 	st.Projection.CoveredPrefixHash = currentHash
 	if st.LastReceipt != nil && st.LastReceipt.CoveredPrefixHash == stored {
 		receipt := *st.LastReceipt

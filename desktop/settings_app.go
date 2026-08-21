@@ -23,6 +23,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
+	"reasonix/internal/bot"
 	"reasonix/internal/botruntime"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -91,6 +92,8 @@ type ProviderPresetView struct {
 	Label               string   `json:"label"`
 	Description         string   `json:"description"`
 	KeyEnv              string   `json:"keyEnv"`
+	Recommended         bool     `json:"recommended,omitempty"`
+	BillingMode         string   `json:"billingMode,omitempty"`
 	ProviderNames       []string `json:"providerNames"`
 	Models              []string `json:"models"`
 	Added               bool     `json:"added"`
@@ -170,20 +173,24 @@ type AgentView struct {
 }
 
 type BotAllowlistView struct {
-	Enabled         bool     `json:"enabled"`
-	AllowAll        bool     `json:"allowAll"`
-	QQUsers         []string `json:"qqUsers"`
-	FeishuUsers     []string `json:"feishuUsers"`
-	WeixinUsers     []string `json:"weixinUsers"`
-	QQApprovers     []string `json:"qqApprovers"`
-	FeishuApprovers []string `json:"feishuApprovers"`
-	WeixinApprovers []string `json:"weixinApprovers"`
-	QQAdmins        []string `json:"qqAdmins"`
-	FeishuAdmins    []string `json:"feishuAdmins"`
-	WeixinAdmins    []string `json:"weixinAdmins"`
-	QQGroups        []string `json:"qqGroups"`
-	FeishuGroups    []string `json:"feishuGroups"`
-	WeixinGroups    []string `json:"weixinGroups"`
+	Enabled           bool     `json:"enabled"`
+	AllowAll          bool     `json:"allowAll"`
+	QQUsers           []string `json:"qqUsers"`
+	FeishuUsers       []string `json:"feishuUsers"`
+	WeixinUsers       []string `json:"weixinUsers"`
+	QQApprovers       []string `json:"qqApprovers"`
+	FeishuApprovers   []string `json:"feishuApprovers"`
+	WeixinApprovers   []string `json:"weixinApprovers"`
+	QQAdmins          []string `json:"qqAdmins"`
+	FeishuAdmins      []string `json:"feishuAdmins"`
+	WeixinAdmins      []string `json:"weixinAdmins"`
+	QQGroups          []string `json:"qqGroups"`
+	FeishuGroups      []string `json:"feishuGroups"`
+	WeixinGroups      []string `json:"weixinGroups"`
+	DingtalkUsers     []string `json:"dingtalkUsers"`
+	DingtalkApprovers []string `json:"dingtalkApprovers"`
+	DingtalkAdmins    []string `json:"dingtalkAdmins"`
+	DingtalkGroups    []string `json:"dingtalkGroups"`
 }
 
 type BotAccessView struct {
@@ -197,9 +204,10 @@ type BotAccessView struct {
 }
 
 type BotSelfUserIDsView struct {
-	QQ     []string `json:"qq"`
-	Feishu []string `json:"feishu"`
-	Weixin []string `json:"weixin"`
+	QQ       []string `json:"qq"`
+	Feishu   []string `json:"feishu"`
+	Weixin   []string `json:"weixin"`
+	Dingtalk []string `json:"dingtalk"`
 }
 
 type BotPairingView struct {
@@ -258,6 +266,19 @@ type WeixinBotView struct {
 	APIBase   string `json:"apiBase"`
 }
 
+type DingtalkBotView struct {
+	Enabled          bool          `json:"enabled"`
+	ClientID         string        `json:"clientId"`
+	ClientSecretEnv  string        `json:"clientSecretEnv"`
+	SecretSet        bool          `json:"secretSet"`
+	BotName          string        `json:"botName"`
+	RequireMention   bool          `json:"requireMention"`
+	Model            string        `json:"model"`
+	ToolApprovalMode string        `json:"toolApprovalMode"`
+	WorkspaceRoot    string        `json:"workspaceRoot"`
+	Access           BotAccessView `json:"access"`
+}
+
 type BotSettingsView struct {
 	Enabled            bool                `json:"enabled"`
 	Model              string              `json:"model"`
@@ -276,6 +297,7 @@ type BotSettingsView struct {
 	QQ                 QQBotView           `json:"qq"`
 	Feishu             FeishuBotView       `json:"feishu"`
 	Weixin             WeixinBotView       `json:"weixin"`
+	Dingtalk           DingtalkBotView     `json:"dingtalk"`
 	Connections        []BotConnectionView `json:"connections"`
 }
 
@@ -743,6 +765,8 @@ func providerPresetViewsForRootWithResolver(cfg *config.Config, root string, res
 			Label:               preset.Label,
 			Description:         preset.Description,
 			KeyEnv:              keyEnv,
+			Recommended:         preset.Recommended,
+			BillingMode:         preset.BillingMode,
 			ProviderNames:       nonNil(names),
 			Models:              nonNil(models),
 			Added:               added,
@@ -1084,9 +1108,10 @@ func botSettingsView(b config.BotConfig) BotSettingsView {
 		QueueDrop:          b.QueueDrop,
 		IgnoreSelfMessages: b.IgnoreSelfMessages,
 		SelfUserIDs: BotSelfUserIDsView{
-			QQ:     nonNil(b.SelfUserIDs.QQ),
-			Feishu: nonNil(b.SelfUserIDs.Feishu),
-			Weixin: nonNil(b.SelfUserIDs.Weixin),
+			QQ:       nonNil(b.SelfUserIDs.QQ),
+			Feishu:   nonNil(b.SelfUserIDs.Feishu),
+			Weixin:   nonNil(b.SelfUserIDs.Weixin),
+			Dingtalk: nonNil(b.SelfUserIDs.Dingtalk),
 		},
 		Control: BotControlView{
 			Enabled:  b.Control.Enabled,
@@ -1100,20 +1125,24 @@ func botSettingsView(b config.BotConfig) BotSettingsView {
 		},
 		Routes: botRouteViews(b.Routes),
 		Allowlist: BotAllowlistView{
-			Enabled:         b.Allowlist.Enabled,
-			AllowAll:        b.Allowlist.AllowAll,
-			QQUsers:         nonNil(b.Allowlist.QQUsers),
-			FeishuUsers:     nonNil(b.Allowlist.FeishuUsers),
-			WeixinUsers:     nonNil(b.Allowlist.WeixinUsers),
-			QQApprovers:     nonNil(b.Allowlist.QQApprovers),
-			FeishuApprovers: nonNil(b.Allowlist.FeishuApprovers),
-			WeixinApprovers: nonNil(b.Allowlist.WeixinApprovers),
-			QQAdmins:        nonNil(b.Allowlist.QQAdmins),
-			FeishuAdmins:    nonNil(b.Allowlist.FeishuAdmins),
-			WeixinAdmins:    nonNil(b.Allowlist.WeixinAdmins),
-			QQGroups:        nonNil(b.Allowlist.QQGroups),
-			FeishuGroups:    nonNil(b.Allowlist.FeishuGroups),
-			WeixinGroups:    nonNil(b.Allowlist.WeixinGroups),
+			Enabled:           b.Allowlist.Enabled,
+			AllowAll:          b.Allowlist.AllowAll,
+			QQUsers:           nonNil(b.Allowlist.QQUsers),
+			FeishuUsers:       nonNil(b.Allowlist.FeishuUsers),
+			WeixinUsers:       nonNil(b.Allowlist.WeixinUsers),
+			QQApprovers:       nonNil(b.Allowlist.QQApprovers),
+			FeishuApprovers:   nonNil(b.Allowlist.FeishuApprovers),
+			WeixinApprovers:   nonNil(b.Allowlist.WeixinApprovers),
+			QQAdmins:          nonNil(b.Allowlist.QQAdmins),
+			FeishuAdmins:      nonNil(b.Allowlist.FeishuAdmins),
+			WeixinAdmins:      nonNil(b.Allowlist.WeixinAdmins),
+			QQGroups:          nonNil(b.Allowlist.QQGroups),
+			FeishuGroups:      nonNil(b.Allowlist.FeishuGroups),
+			WeixinGroups:      nonNil(b.Allowlist.WeixinGroups),
+			DingtalkUsers:     nonNil(b.Allowlist.DingtalkUsers),
+			DingtalkApprovers: nonNil(b.Allowlist.DingtalkApprovers),
+			DingtalkAdmins:    nonNil(b.Allowlist.DingtalkAdmins),
+			DingtalkGroups:    nonNil(b.Allowlist.DingtalkGroups),
 		},
 		QQ: QQBotView{
 			Enabled:          b.QQ.Enabled,
@@ -1143,6 +1172,18 @@ func botSettingsView(b config.BotConfig) BotSettingsView {
 			TokenEnv:  b.Weixin.TokenEnv,
 			TokenSet:  strings.TrimSpace(b.Weixin.TokenEnv) != "" && os.Getenv(b.Weixin.TokenEnv) != "",
 			APIBase:   b.Weixin.APIBase,
+		},
+		Dingtalk: DingtalkBotView{
+			Enabled:          b.Dingtalk.Enabled,
+			ClientID:         b.Dingtalk.ClientID,
+			ClientSecretEnv:  b.Dingtalk.SecretEnv,
+			SecretSet:        (strings.TrimSpace(b.Dingtalk.SecretEnv) != "" && os.Getenv(b.Dingtalk.SecretEnv) != "") || strings.TrimSpace(b.Dingtalk.ClientSecret) != "",
+			BotName:          b.Dingtalk.BotName,
+			RequireMention:   b.Dingtalk.RequireMention,
+			Model:            strings.TrimSpace(b.Dingtalk.Model),
+			ToolApprovalMode: normalizeBotConnectionToolApprovalMode(b.Dingtalk.ToolApprovalMode),
+			WorkspaceRoot:    strings.TrimSpace(b.Dingtalk.WorkspaceRoot),
+			Access:           botAccessViewFromConfig(b.Dingtalk.Access),
 		},
 		Connections: botConnectionViews(b.Connections),
 	}
@@ -1651,14 +1692,14 @@ func desktopBotConfigConfigured(bot config.BotConfig) bool {
 		(strings.TrimSpace(bot.Control.Addr) != "" && bot.Control.Addr != defaults.Control.Addr) ||
 		(strings.TrimSpace(bot.Control.TokenEnv) != "" && bot.Control.TokenEnv != defaults.Control.TokenEnv) ||
 		len(bot.Routes) > 0 ||
-		len(bot.SelfUserIDs.QQ)+len(bot.SelfUserIDs.Feishu)+len(bot.SelfUserIDs.Weixin) > 0 {
+		len(bot.SelfUserIDs.QQ)+len(bot.SelfUserIDs.Feishu)+len(bot.SelfUserIDs.Weixin)+len(bot.SelfUserIDs.Dingtalk) > 0 {
 		return true
 	}
 	if bot.Allowlist.AllowAll ||
-		len(bot.Allowlist.QQUsers)+len(bot.Allowlist.FeishuUsers)+len(bot.Allowlist.WeixinUsers) > 0 ||
-		len(bot.Allowlist.QQApprovers)+len(bot.Allowlist.FeishuApprovers)+len(bot.Allowlist.WeixinApprovers) > 0 ||
-		len(bot.Allowlist.QQAdmins)+len(bot.Allowlist.FeishuAdmins)+len(bot.Allowlist.WeixinAdmins) > 0 ||
-		len(bot.Allowlist.QQGroups)+len(bot.Allowlist.FeishuGroups)+len(bot.Allowlist.WeixinGroups) > 0 {
+		len(bot.Allowlist.QQUsers)+len(bot.Allowlist.FeishuUsers)+len(bot.Allowlist.WeixinUsers)+len(bot.Allowlist.DingtalkUsers) > 0 ||
+		len(bot.Allowlist.QQApprovers)+len(bot.Allowlist.FeishuApprovers)+len(bot.Allowlist.WeixinApprovers)+len(bot.Allowlist.DingtalkApprovers) > 0 ||
+		len(bot.Allowlist.QQAdmins)+len(bot.Allowlist.FeishuAdmins)+len(bot.Allowlist.WeixinAdmins)+len(bot.Allowlist.DingtalkAdmins) > 0 ||
+		len(bot.Allowlist.QQGroups)+len(bot.Allowlist.FeishuGroups)+len(bot.Allowlist.WeixinGroups)+len(bot.Allowlist.DingtalkGroups) > 0 {
 		return true
 	}
 	if bot.QQ.Enabled ||
@@ -1685,6 +1726,15 @@ func desktopBotConfigConfigured(bot config.BotConfig) bool {
 		bot.Weixin.AccountID != defaults.Weixin.AccountID ||
 		bot.Weixin.TokenEnv != defaults.Weixin.TokenEnv ||
 		bot.Weixin.APIBase != defaults.Weixin.APIBase {
+		return true
+	}
+	if bot.Dingtalk.Enabled ||
+		strings.TrimSpace(bot.Dingtalk.ClientID) != "" ||
+		strings.TrimSpace(bot.Dingtalk.ClientSecret) != "" ||
+		strings.TrimSpace(bot.Dingtalk.ClientIDEnv) != "" ||
+		strings.TrimSpace(bot.Dingtalk.SecretEnv) != "" ||
+		strings.TrimSpace(bot.Dingtalk.BotName) != "" ||
+		bot.Dingtalk.RequireMention != defaults.Dingtalk.RequireMention {
 		return true
 	}
 	return false
@@ -2084,9 +2134,10 @@ func (a *App) SetDefaultModel(ref string) error {
 		if err != nil {
 			return err
 		}
-		c.DefaultModel = resolved
+		ref = resolved
+		c.DefaultModel = ref
 		a.mu.Lock()
-		tab.model = resolved
+		tab.model = ref
 		a.mu.Unlock()
 		return nil
 	}); err != nil {
@@ -2095,7 +2146,7 @@ func (a *App) SetDefaultModel(ref string) error {
 		a.mu.Unlock()
 		return err
 	}
-	return nil
+	return a.persistTabModelIfCurrent(tab, ref)
 }
 
 // SetPlannerModel sets (or, with "", clears) the two-model planner.
@@ -3117,9 +3168,10 @@ func (a *App) SetBotSettings(b BotSettingsView) error {
 		c.Bot.QueueDrop = strings.TrimSpace(b.QueueDrop)
 		c.Bot.IgnoreSelfMessages = b.IgnoreSelfMessages
 		c.Bot.SelfUserIDs = config.BotSelfUserIDs{
-			QQ:     trimList(b.SelfUserIDs.QQ),
-			Feishu: trimList(b.SelfUserIDs.Feishu),
-			Weixin: trimList(b.SelfUserIDs.Weixin),
+			QQ:       trimList(b.SelfUserIDs.QQ),
+			Feishu:   trimList(b.SelfUserIDs.Feishu),
+			Weixin:   trimList(b.SelfUserIDs.Weixin),
+			Dingtalk: trimList(b.SelfUserIDs.Dingtalk),
 		}
 		c.Bot.Control = config.BotControlConfig{
 			Enabled:  b.Control.Enabled,
@@ -3133,20 +3185,24 @@ func (a *App) SetBotSettings(b BotSettingsView) error {
 		}
 		c.Bot.Routes = botRouteConfigs(b.Routes)
 		c.Bot.Allowlist = config.BotAllowlist{
-			Enabled:         b.Allowlist.Enabled,
-			AllowAll:        b.Allowlist.AllowAll,
-			QQUsers:         trimList(b.Allowlist.QQUsers),
-			FeishuUsers:     trimList(b.Allowlist.FeishuUsers),
-			WeixinUsers:     trimList(b.Allowlist.WeixinUsers),
-			QQApprovers:     trimList(b.Allowlist.QQApprovers),
-			FeishuApprovers: trimList(b.Allowlist.FeishuApprovers),
-			WeixinApprovers: trimList(b.Allowlist.WeixinApprovers),
-			QQAdmins:        trimList(b.Allowlist.QQAdmins),
-			FeishuAdmins:    trimList(b.Allowlist.FeishuAdmins),
-			WeixinAdmins:    trimList(b.Allowlist.WeixinAdmins),
-			QQGroups:        trimList(b.Allowlist.QQGroups),
-			FeishuGroups:    trimList(b.Allowlist.FeishuGroups),
-			WeixinGroups:    trimList(b.Allowlist.WeixinGroups),
+			Enabled:           b.Allowlist.Enabled,
+			AllowAll:          b.Allowlist.AllowAll,
+			QQUsers:           trimList(b.Allowlist.QQUsers),
+			FeishuUsers:       trimList(b.Allowlist.FeishuUsers),
+			WeixinUsers:       trimList(b.Allowlist.WeixinUsers),
+			QQApprovers:       trimList(b.Allowlist.QQApprovers),
+			FeishuApprovers:   trimList(b.Allowlist.FeishuApprovers),
+			WeixinApprovers:   trimList(b.Allowlist.WeixinApprovers),
+			QQAdmins:          trimList(b.Allowlist.QQAdmins),
+			FeishuAdmins:      trimList(b.Allowlist.FeishuAdmins),
+			WeixinAdmins:      trimList(b.Allowlist.WeixinAdmins),
+			QQGroups:          trimList(b.Allowlist.QQGroups),
+			FeishuGroups:      trimList(b.Allowlist.FeishuGroups),
+			WeixinGroups:      trimList(b.Allowlist.WeixinGroups),
+			DingtalkUsers:     trimList(b.Allowlist.DingtalkUsers),
+			DingtalkApprovers: trimList(b.Allowlist.DingtalkApprovers),
+			DingtalkAdmins:    trimList(b.Allowlist.DingtalkAdmins),
+			DingtalkGroups:    trimList(b.Allowlist.DingtalkGroups),
 		}
 		c.Bot.QQ = config.QQBotConfig{
 			Enabled:          b.QQ.Enabled,
@@ -3175,6 +3231,7 @@ func (a *App) SetBotSettings(b BotSettingsView) error {
 			TokenEnv:  strings.TrimSpace(b.Weixin.TokenEnv),
 			APIBase:   strings.TrimRight(strings.TrimSpace(b.Weixin.APIBase), "/"),
 		}
+		c.Bot.Dingtalk = dingtalkConfigFromView(b.Dingtalk, c.Bot.Dingtalk)
 		c.Bot.Connections = botConnectionConfigs(b.Connections)
 		return nil
 	})
@@ -3211,6 +3268,25 @@ func (a *App) SetBotConnectionToolApprovalMode(connID, mode string) error {
 	}
 	if a.botRuntime != nil {
 		a.botRuntime.updateConnectionToolApprovalMode(runtimeConnID, mode)
+	}
+	return nil
+}
+
+// SetBotDingtalkToolApprovalMode 更新 legacy [bot.dingtalk] 的工具审批模式，
+// 不重启 bot runtime：写入配置并热更新运行中 gateway 的
+// ConnectionChannels["dingtalk"]（由 desktopBotChannelsWithLegacyDingtalk 注入），
+// 已建会话同步生效。用于设置面板的权限选择（避免全量 SetBotSettings 的重启跳变）。
+func (a *App) SetBotDingtalkToolApprovalMode(mode string) error {
+	mode = normalizeBotConnectionToolApprovalMode(mode)
+	err := a.applyConfigOnly(func(c *config.Config) error {
+		c.Bot.Dingtalk.ToolApprovalMode = mode
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if a.botRuntime != nil {
+		a.botRuntime.updateConnectionToolApprovalMode(string(bot.PlatformDingtalk), mode)
 	}
 	return nil
 }

@@ -106,6 +106,7 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		bc.SetDisplayCurrency(cfg.ExplicitDisplayCurrency())
 	}
 	s.initTitleProvider()
+	applySessionQualityFloorFor(ctrl, ctrl.SessionPath())
 	return s
 }
 
@@ -214,6 +215,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	// would bind the rebuild back to the original file, re-conflicting later.
 	prevPath := cur.SessionPath()
 	carried := cur.History()
+	carriedQualityFloor := cur.QualityFloor()
 
 	newCtrl, err := s.build(ctx, ref)
 	if err != nil {
@@ -237,6 +239,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 		}
 	}
 	newCtrl.AdoptHistory(carried, newPath)
+	_ = newCtrl.SetQualityFloor(carriedQualityFloor)
 	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
 	// A rebuild must not force the user to re-approve tools already granted
 	// this session, or re-trust Plan-mode read-only commands already trusted
@@ -355,6 +358,7 @@ func (s *Server) reloadExtensions(ctx context.Context) error {
 	}
 	newCtrl.EnableInteractiveApproval()
 	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
+	_ = newCtrl.SetQualityFloor(cur.QualityFloor())
 	if err := s.rebindSessionLeaseFor(newCtrl.SessionPath(), newCtrl); err != nil {
 		newCtrl.Close()
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
@@ -528,7 +532,7 @@ func (s *Server) setProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := strings.ToLower(strings.TrimSpace(req.Mode))
 	switch raw {
-	case boot.TokenModeFull, boot.TokenModeEconomy, boot.TokenModeDelivery:
+	case boot.TokenModeFull, "economy", boot.TokenModeDelivery:
 	default:
 		http.Error(w, "invalid mode", http.StatusBadRequest)
 		return
@@ -607,6 +611,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /fork", s.fork)
 	mux.HandleFunc("POST /summarize", s.summarize)
 	mux.HandleFunc("POST /tool-approval-mode", s.toolApprovalMode)
+	mux.HandleFunc("POST /quality-floor", s.qualityFloor)
 	mux.HandleFunc("POST /auto-approve-tools", s.autoApproveTools)
 	mux.HandleFunc("POST /bypass", s.bypass)
 	mux.HandleFunc("POST /goal", s.goal)
@@ -1284,6 +1289,9 @@ func (s *Server) fork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.persistApprovalMode() // the fork inherits the source session's posture
+	if err := persistQualityFloorFor(s.ctl()); err != nil {
+		slog.Warn("serve: persist fork quality floor", "err", err)
+	}
 	writeJSON(w, map[string]string{"path": path})
 }
 
@@ -1471,6 +1479,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 	}
 	s.ctl().Resume(loaded, realPath)
 	s.applySessionApprovalMode(realPath) // restore the session's own posture
+	applySessionQualityFloorFor(s.ctl(), realPath)
 	if ctrl, ok := s.ctl().(*control.Controller); ok && s.leases != nil {
 		if err := s.leases.BindControllerAuthority(ctrl); err != nil {
 			http.Error(w, "session authority: unable to bind resumed session", http.StatusInternalServerError)
@@ -1642,6 +1651,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"autoApproveTools":  s.ctl().AutoApproveTools(),
 		"bypass":            s.ctl().AutoApproveTools(),
 		"toolApprovalMode":  s.ctl().ToolApprovalMode(),
+		"qualityFloor":      s.ctl().QualityFloor(),
 		"goal":              s.ctl().Goal(),
 		"goalStatus":        s.ctl().GoalStatus(),
 		"cwd":               s.ctl().SessionDir(),

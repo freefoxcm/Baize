@@ -48,6 +48,11 @@ const __T = {
     'mode_ask_title': 'Ask before each tool',
     'mode_auto_title': 'Auto-approve safe tools',
     'mode_yolo_title': 'Approve everything (YOLO)',
+    'quality_floor_title': 'Delivery floor',
+    'quality_floor_standard': 'Standard',
+    'quality_floor_delivery': 'Delivery',
+    'quality_floor_standard_title': 'Standard: adaptive verification for normal chat and analysis',
+    'quality_floor_delivery_title': 'Delivery: workspace writes require full verification and green project checks',
     'task_mode_title': 'Execution mode',
     'task_mode_direct': 'Standard',
     'task_mode_plan': 'Plan',
@@ -431,6 +436,11 @@ const __T = {
     'mode_ask_title': '每个工具执行前询问',
     'mode_auto_title': '自动批准安全工具',
     'mode_yolo_title': '全部批准 (YOLO)',
+    'quality_floor_title': '交付底线',
+    'quality_floor_standard': '标准',
+    'quality_floor_delivery': '交付',
+    'quality_floor_standard_title': '标准：适合普通对话、分析和不写文件的报告',
+    'quality_floor_delivery_title': '交付：写入工作区后必须完成完整验证并通过项目检查',
     'task_mode_title': '执行方式',
     'task_mode_direct': '常规',
     'task_mode_plan': '计划',
@@ -815,6 +825,7 @@ const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
 const modebar = $('#modebar');
+const qualityFloorbar = $('#quality-floorbar');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
 const welcome = $('#welcome');
@@ -840,7 +851,7 @@ const __authReady = bootstrapFragmentToken();
 window.fetch = (...args) => __authReady.then(() => __nativeFetch(...args));
 
 // ── state ──
-let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask';
+let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask', qualityFloor = 'standard';
 let goalMode = false, goalActive = false, goalText = '';
 let imageInputEnabled = null;
 let draftAttachments = [];
@@ -1169,6 +1180,7 @@ function updateRunStrip() {
   // Desktop parity: the approval modebar stays usable while running, but is
   // disabled while a decision surface (approval/ask card) owns the footer.
   modebar.classList.toggle('composer-modebar--disabled', waitingPrompt !== null);
+  qualityFloorbar.classList.toggle('composer-floorbar--disabled', running || waitingPrompt !== null);
   if (!on) { runStripText.textContent = ''; runStripAnnounce.textContent = ''; return; }
   let stable = null;
   if (retryStatus) {
@@ -3396,6 +3408,7 @@ function fetchStatus(){
     // sync mode UI without triggering POST (server is source of truth)
     planMode=!!s.plan;
     toolApprovalMode=s.toolApprovalMode || ((s.autoApproveTools??s.bypass)?'yolo':'ask');
+    qualityFloor=s.qualityFloor==='delivery'?'delivery':'standard';
     bypassMode=toolApprovalMode==='yolo';
     if(!bypassMode&&toolApprovalMode==='auto')yoloRestoreMode='auto';
     updateModeButtons();
@@ -4103,6 +4116,8 @@ function updateModeButtons(){
   const mb = $('#modebar');
   mb.dataset.mode = cur;
   mb.querySelectorAll('.composer-modebar__item').forEach(b => b.classList.toggle('is-active', b.dataset.mode === cur));
+  qualityFloorbar.dataset.floor=qualityFloor;
+  qualityFloorbar.querySelectorAll('.composer-floorbar__item').forEach(b=>b.classList.toggle('is-active',b.dataset.floor===qualityFloor));
 }
 function updateGoalUI(){
   updateModeButtons();
@@ -4117,6 +4132,12 @@ function updateGoalUI(){
   updateAttachmentAvailability();
 }
 async function setToolApprovalMode(mode){toolApprovalMode=mode;bypassMode=mode==='yolo';updateModeButtons();await post('/tool-approval-mode',{mode});}
+async function setQualityFloor(floor){
+  if(running||waitingPrompt||floor===qualityFloor)return;
+  const previous=qualityFloor;qualityFloor=floor;updateModeButtons();
+  try{const response=await post('/quality-floor',{floor});if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));}
+  catch(error){qualityFloor=previous;updateModeButtons();showNotice(String(error&&error.message||error),'warn');}
+}
 async function setPlan(on){planMode=on;updateModeButtons();await post('/plan',{on});}
 async function cycleMode(){if(goalMode){goalMode=false;updateGoalUI();return;}await setPlan(!planMode);setTimeout(fetchStatus,200);}
 async function toggleYolo(){if(bypassMode){const restore=yoloRestoreMode==='auto'?'auto':'ask';await setToolApprovalMode(restore);}else{yoloRestoreMode=toolApprovalMode==='auto'?'auto':'ask';await setToolApprovalMode('yolo');}setTimeout(fetchStatus,200);}
@@ -4210,6 +4231,7 @@ document.addEventListener('click',e=>{if(taskModeMenu.style.display!=='none'&&!e
 $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
   b.onclick=()=>{ if(waitingPrompt)return; if(b.dataset.mode==='yolo')void toggleYolo(); else void setToolApprovalMode(b.dataset.mode); };
 });
+qualityFloorbar.querySelectorAll('.composer-floorbar__item').forEach(b=>{b.onclick=()=>void setQualityFloor(b.dataset.floor);});
 $('#goal-chip').onclick=()=>toggleGoalMode();
 $('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(async response=>{if(!response.ok){showNotice((await response.text()).trim()||__('error_loading'),'warn');return;}log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();sessionFilter='';const search=$('#session-search');if(search)search.value='';loadSessions();updateActionAvailability();fetchStatus();});};
 // model switcher popover (desktop ModelSwitcher)

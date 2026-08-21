@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -81,6 +82,32 @@ func TestBuildModelFetchURLs(t *testing.T) {
 			base:     "https://tokenrhythm.studio/v1",
 			override: "https://tokenrhythm.studio/openai/models",
 			want:     []string{"https://tokenrhythm.studio/openai/models"},
+		},
+		{
+			name: "stepfun anthropic-docs base is unique canonical models",
+			base: "https://api.stepfun.com/step_plan",
+			want: []string{"https://api.stepfun.com/step_plan/v1/models"},
+		},
+		{
+			name: "stepfun correct base is unique canonical models",
+			base: "https://api.stepfun.com/step_plan/v1",
+			want: []string{"https://api.stepfun.com/step_plan/v1/models"},
+		},
+		{
+			name: "stepfun global host base is unique canonical models",
+			base: "https://api.stepfun.ai/step_plan",
+			want: []string{"https://api.stepfun.ai/step_plan/v1/models"},
+		},
+		{
+			name: "stepfun standard api root keeps legacy candidates",
+			base: "https://api.stepfun.com",
+			want: []string{"https://api.stepfun.com/models", "https://api.stepfun.com/v1/models"},
+		},
+		{
+			name:     "stepfun models override is unique canonical models",
+			base:     "https://example.invalid/v1",
+			override: "https://api.stepfun.com/step_plan",
+			want:     []string{"https://api.stepfun.com/step_plan/v1/models"},
 		},
 	}
 	for _, tt := range tests {
@@ -274,5 +301,34 @@ func TestProviderFetchModelsUsesAnthropicAuthMode(t *testing.T) {
 				t.Fatalf("got %v, want [anthropic-model]", got)
 			}
 		})
+	}
+}
+
+func TestProviderFetchModelsFiltersOfficialOpenCodeGoCatalogByWireFormat(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{
+				{"id": "grok-4.5"},
+				{"id": "qwen3.7-plus"},
+				{"id": "minimax-m3"},
+				{"id": "glm-5.2"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := ProviderEntry{
+		Name:      "opencode-go-anthropic",
+		Kind:      "anthropic",
+		BaseURL:   "https://opencode.ai/zen/go",
+		ModelsURL: srv.URL,
+	}
+	got, err := p.FetchModels(context.Background())
+	if err != nil {
+		t.Fatalf("FetchModels: %v", err)
+	}
+	want := []string{"minimax-m3", "qwen3.7-plus"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("models = %v, want %v", got, want)
 	}
 }

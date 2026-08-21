@@ -52,6 +52,20 @@ function firstTextNode(root: Node): Text | null {
   return null;
 }
 
+// ── Empty hydration uses a stable loading surface ────────────────────────────
+{
+  const harness = await createTranscriptHarness();
+  try {
+    await harness.render([], { hydrating: true });
+    ok(harness.container.querySelector(".transcript__loading")?.textContent?.trim() === "Loading…", "hydrating empty transcript shows the localized loading surface");
+    ok(harness.container.querySelector(".welcome") === null, "hydration never flashes the welcome surface");
+    ok(harness.scrollElement().getAttribute("aria-busy") === "true", "loading transcript exposes busy state to assistive technology");
+  } finally {
+    await harness.unmount();
+    await harness.close();
+  }
+}
+
 // ── Windowed mounting ─────────────────────────────────────────────────────────
 {
   const harness = await createTranscriptHarness({ viewportHeight: 200, rowHeight: 100 });

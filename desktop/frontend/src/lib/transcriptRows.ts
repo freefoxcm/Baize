@@ -119,7 +119,9 @@ export function partitionTurnItems(items: readonly Item[], live: TranscriptLiveF
 }
 
 function assistantReasoningOnly(item: AssistantItem): AssistantItem {
-  return { ...item, text: "" };
+  const reasoning = { ...item, text: "" };
+  itemMeasurementVersions.set(reasoning, itemMeasurementVersion(item));
+  return reasoning;
 }
 
 export function turnWorkDurationMs(items: readonly Item[]): number {
@@ -423,6 +425,39 @@ export type TranscriptRow =
   | { kind: "notice"; key: string; item: NoticeItem }
   | { kind: "extension"; key: string; item: ExtensionItem }
   | { kind: "turn-actions"; key: string; turn: number; text: string };
+
+const itemMeasurementVersions = new WeakMap<object, number>();
+let nextItemMeasurementVersion = 0;
+
+function itemMeasurementVersion(item: object): number {
+  let version = itemMeasurementVersions.get(item);
+  if (version === undefined) {
+    version = ++nextItemMeasurementVersion;
+    itemMeasurementVersions.set(item, version);
+  }
+  return version;
+}
+
+function measurementVersionForItems(items: readonly object[]): string {
+  let latest = 0;
+  for (const item of items) latest = Math.max(latest, itemMeasurementVersion(item));
+  return `${items.length}:${latest}`;
+}
+
+export function transcriptRowMeasurementVersion(row: TranscriptRow): string {
+  switch (row.kind) {
+    case "older-history":
+    case "turn-actions":
+      return "0:0";
+    case "process-header":
+      return measurementVersionForItems(row.segment.processItems);
+    case "tool-batch":
+    case "tool-group":
+      return measurementVersionForItems(row.items);
+    default:
+      return `1:${itemMeasurementVersion(row.item)}`;
+  }
+}
 
 export const OLDER_HISTORY_ROW_KEY = "older-history";
 

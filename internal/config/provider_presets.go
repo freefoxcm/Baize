@@ -14,6 +14,12 @@ type ProviderPreset struct {
 	Label       string
 	Description string
 	KeyEnv      string
+	// Recommended marks the lowest-friction starter path in Settings. It is
+	// presentation metadata only; installed entries remain editable providers.
+	Recommended bool
+	// BillingMode tells the host whether usage should be presented as a
+	// subscription-equivalent plan rather than a token price estimate.
+	BillingMode string
 	Entries     []ProviderEntry
 }
 
@@ -59,6 +65,8 @@ func CuratedProviderPreset(id string) (ProviderPreset, bool) {
 
 func providerPresetDisplayRank(id string) int {
 	switch {
+	case id == "opencode-go-recommended":
+		return -3
 	case id == "deepseek-responses":
 		return -2
 	case id == "glm-cn" || id == "zai-global" || strings.HasPrefix(id, "glm-coding-plan-") || strings.HasPrefix(id, "zai-coding-plan-"):
@@ -110,8 +118,18 @@ var (
 
 	stepfunPlanModels = []string{"step-3.7-flash", "step-3.5-flash", "step-3.5-flash-2603"}
 
+	// Only step-3.7-flash is enabled server-side on the Responses API
+	// ("this model is not enabled for the Responses API" for 3.5 SKUs).
+	stepfunResponsesModels = []string{"step-3.7-flash"}
+
+	// The pay-as-you-go channel serves the same reasoning SKUs; 3.7-flash
+	// additionally accepts image input there (verified live), while the
+	// step_plan channel rejects images outright.
+	stepfunAPIModels       = []string{"step-3.7-flash", "step-3.5-flash", "step-3.5-flash-2603"}
+	stepfunAPIVisionModels = []string{"step-3.7-flash"}
+
 	legacyOpenCodeGoModels           = []string{"glm-5.2", "glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
-	opencodeGoModels                 = []string{"glm-5.2", "glm-5.1", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
+	opencodeGoModels                 = []string{"glm-5.3", "glm-5.2", "glm-5.1", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5", "hy3"}
 	opencodeGoVisionModels           = []string{"kimi-k3"}
 	opencodeZenAnthropicModels       = []string{"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5", "qwen3.6-plus", "qwen3.5-plus", "qwen3.6-plus-free"}
 	opencodeZenAnthropicVisionModels = []string{"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"}
@@ -661,6 +679,7 @@ var curatedProviderPresets = []ProviderPreset{
 		Label:       "OpenCode Go",
 		Description: "OpenCode Go relay with per-model capability overrides.",
 		KeyEnv:      "OPENCODE_GO_API_KEY",
+		BillingMode: "subscription_equivalent",
 		Entries: []ProviderEntry{{
 			Name:          "opencode-go",
 			Kind:          "openai",
@@ -670,7 +689,18 @@ var curatedProviderPresets = []ProviderPreset{
 			Default:       "glm-5.2",
 			APIKeyEnv:     "OPENCODE_GO_API_KEY",
 			ContextWindow: 128000,
+			BillingMode:   "subscription_equivalent",
 			ModelOverrides: withOpenCodeGoChatContextOverrides(map[string]ProviderModelOverride{
+				"glm-5.3": {
+					ReasoningProtocol: ReasoningProtocolOpenAI,
+					SupportedEfforts:  []string{"low", "high", "max"},
+					DefaultEffort:     "high",
+				},
+				"glm-5.2": {
+					ReasoningProtocol: ReasoningProtocolOpenAI,
+					SupportedEfforts:  []string{"high", "max"},
+					DefaultEffort:     "high",
+				},
 				"deepseek-v4-flash": {
 					ReasoningProtocol: ReasoningProtocolDeepSeek,
 					SupportedEfforts:  []string{"disabled", "low", "high", "max"},
@@ -696,12 +726,19 @@ var curatedProviderPresets = []ProviderPreset{
 					SupportedEfforts:  []string{"high", "max"},
 					DefaultEffort:     "max",
 				},
+				"hy3": {
+					ReasoningProtocol: ReasoningProtocolOpenAI,
+					SupportedEfforts:  []string{"none", "low", "high"},
+					DefaultEffort:     "high",
+				},
 			}),
 		}},
 	},
 	opencodeGoAnthropicPreset,
+	opencodeGoResponsesPreset,
 	opencodeGoDeepSeekAnthropicPreset,
 	opencodeGoDeepSeekResponsesPreset,
+	opencodeGoRecommendedPreset,
 	{
 		ID:          "opencode-zen-anthropic",
 		Label:       "OpenCode Zen Anthropic",
@@ -842,6 +879,23 @@ var curatedProviderPresets = []ProviderPreset{
 		}},
 	},
 	{
+		ID:          "stepfun-responses",
+		Label:       "StepFun Responses API",
+		Description: "StepFun Responses API endpoint with reasoning effort and tool calls (step-3.7-flash).",
+		KeyEnv:      "STEPFUN_API_KEY",
+		Entries: []ProviderEntry{{
+			Name:             "stepfun-responses",
+			Kind:             "responses",
+			BaseURL:          "https://api.stepfun.com/v1",
+			Models:           stepfunResponsesModels,
+			Default:          "step-3.7-flash",
+			APIKeyEnv:        "STEPFUN_API_KEY",
+			ResponsesMode:    "stateless",
+			SupportedEfforts: []string{"low", "medium", "high"},
+			DefaultEffort:    "medium",
+		}},
+	},
+	{
 		ID:          "stepfun-anthropic",
 		Label:       "StepFun Anthropic",
 		Description: "StepFun coding-plan Anthropic-compatible endpoint.",
@@ -851,6 +905,40 @@ var curatedProviderPresets = []ProviderPreset{
 			Kind:             "anthropic",
 			BaseURL:          "https://api.stepfun.com/step_plan",
 			Models:           stepfunPlanModels,
+			Default:          "step-3.7-flash",
+			APIKeyEnv:        "STEPFUN_API_KEY",
+			Thinking:         "adaptive",
+			SupportedEfforts: []string{"low", "medium", "high"},
+			DefaultEffort:    "medium",
+		}},
+	},
+	{
+		ID:          "stepfun-api",
+		Label:       "StepFun API Pay-as-you-go",
+		Description: "StepFun pay-as-you-go OpenAI-compatible API with vision on step-3.7-flash.",
+		KeyEnv:      "STEPFUN_API_KEY",
+		Entries: []ProviderEntry{{
+			Name:             "stepfun-api",
+			Kind:             "openai",
+			BaseURL:          "https://api.stepfun.com/v1",
+			Models:           stepfunAPIModels,
+			VisionModels:     stepfunAPIVisionModels,
+			Default:          "step-3.7-flash",
+			APIKeyEnv:        "STEPFUN_API_KEY",
+			SupportedEfforts: []string{"low", "medium", "high"},
+			DefaultEffort:    "medium",
+		}},
+	},
+	{
+		ID:          "stepfun-api-anthropic",
+		Label:       "StepFun API Anthropic Pay-as-you-go",
+		Description: "StepFun pay-as-you-go Anthropic-compatible Messages API with automatic prefix caching.",
+		KeyEnv:      "STEPFUN_API_KEY",
+		Entries: []ProviderEntry{{
+			Name:             "stepfun-api-anthropic",
+			Kind:             "anthropic",
+			BaseURL:          "https://api.stepfun.com",
+			Models:           stepfunAPIModels,
 			Default:          "step-3.7-flash",
 			APIKeyEnv:        "STEPFUN_API_KEY",
 			Thinking:         "adaptive",

@@ -100,6 +100,8 @@ func TestKeepOnlyVisibleTabPublishesDetachedRuntimeProjection(t *testing.T) {
 
 	app := NewApp()
 	app.ctx = context.Background()
+	broadCatalogRefreshes := 0
+	app.projectTreeCatalogRefreshHook = func() { broadCatalogRefreshes++ }
 	events := make(chan runtimeEventEnvelope, 8)
 	app.runtimeEvents.emit = func(ctx context.Context, name string, payload ...any) {
 		events <- runtimeEventEnvelope{ctx: ctx, name: name, payload: append([]any(nil), payload...)}
@@ -127,6 +129,9 @@ func TestKeepOnlyVisibleTabPublishesDetachedRuntimeProjection(t *testing.T) {
 
 	if _, err := app.keepOnlyVisibleTab(visible.ID); err != nil {
 		t.Fatalf("keepOnlyVisibleTab: %v", err)
+	}
+	if broadCatalogRefreshes != 0 {
+		t.Fatalf("topic switch requested %d broad catalog refreshes, want runtime-only projection", broadCatalogRefreshes)
 	}
 	app.mu.RLock()
 	detached := app.detachedSessions[sessionRuntimeKey(sessionA)]

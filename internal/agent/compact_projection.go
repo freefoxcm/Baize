@@ -364,7 +364,7 @@ func buildVisibleCompressionProjection(visible []provider.Message, plan visibleC
 			projection = append(projection, msg)
 		}
 	}
-	return provider.ProjectionMessages(promoteToolRawContent(projection))
+	return provider.ProjectionMessages(projection)
 }
 
 func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int, res foldSummary) CompactionTelemetry {

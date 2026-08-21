@@ -357,6 +357,10 @@ func TestReleaseCacheHitGuard(t *testing.T) {
 
 	threshold := envInt("REASONIX_CACHE_GUARD_THRESHOLD", 90)
 	maxLowCases := envInt("REASONIX_CACHE_GUARD_MAX_LOW_CASES", 1)
+	for _, size := range []int{64 << 10, 256 << 10} {
+		verifyLargeToolOutputCacheContract(t, size)
+		t.Logf("CACHE_GUARD_RESULT: case=large-tool-%dk status=pass provider_bytes_max=%d", size>>10, maxToolOutputBytes)
+	}
 
 	cases := []struct {
 		name string
@@ -449,6 +453,82 @@ func TestReleaseCacheHitGuard(t *testing.T) {
 			t.Fatal(msg)
 		}
 	}
+}
+
+func TestLargeToolOutputCachePrefixContract(t *testing.T) {
+	visibleSizes := make([]int, 0, 2)
+	for _, size := range []int{64 << 10, 256 << 10} {
+		visibleSizes = append(visibleSizes, verifyLargeToolOutputCacheContract(t, size))
+	}
+	if visibleSizes[1]-visibleSizes[0] > 128 {
+		t.Fatalf("provider-visible growth tracks RawContent: 64KiB=%d 256KiB=%d", visibleSizes[0], visibleSizes[1])
+	}
+}
+
+func verifyLargeToolOutputCacheContract(t *testing.T, size int) int {
+	t.Helper()
+	callID := fmt.Sprintf("large-%d", size)
+	const rawSentinel = "UNIQUE-RAW-MIDDLE-SENTINEL"
+	raw := strings.Repeat("R", size/2) + rawSentinel + strings.Repeat("R", size/2-len(rawSentinel))
+	bounded, notice := truncateToolOutputFor(raw, "large_result", callID)
+	if notice == "" || len(bounded) > maxToolOutputBytes {
+		t.Fatalf("%d-byte result was not bounded: content=%d notice=%q", size, len(bounded), notice)
+	}
+	canonical := []provider.Message{
+		{Role: provider.RoleSystem, Content: systemPrompt},
+		{Role: provider.RoleUser, Content: "produce a large result"},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: callID, Name: "large_result", Arguments: `{}`}}},
+		{Role: provider.RoleTool, ToolCallID: callID, Name: "large_result", Content: bounded, RawContent: raw},
+	}
+	first := modelInputMessages(canonical)
+	firstWire := encodeProviderMessages(t, first)
+	if bytes.Contains(mustCacheJSON(t, firstWire), []byte(rawSentinel)) {
+		t.Fatal("provider-visible request contains RawContent sentinel")
+	}
+	if got := first[len(first)-1]; got.RawContent != "" || len(got.Content) > maxToolOutputBytes {
+		t.Fatalf("provider tool result is not bounded: content=%d raw=%d", len(got.Content), len(got.RawContent))
+	}
+
+	secondCanonical := append(append([]provider.Message(nil), canonical...), provider.Message{Role: provider.RoleUser, Content: "continue"})
+	second := modelInputMessages(secondCanonical)
+	secondWire := encodeProviderMessages(t, second)
+	if common := commonPrefixMsgs(firstWire, secondWire); common != len(firstWire) {
+		t.Fatalf("%d-byte result changed old provider prefix at message %d/%d", size, common, len(firstWire))
+	}
+
+	reg := tool.NewRegistry()
+	reg.Add(echoTool{})
+	beforeSchemas, afterSchemas := reg.Schemas(), reg.Schemas()
+	beforeShape := CaptureShape(systemPrompt, beforeSchemas, 0)
+	afterShape := CaptureShape(systemPrompt, afterSchemas, 0)
+	if !bytes.Equal(mustCacheJSON(t, beforeSchemas), mustCacheJSON(t, afterSchemas)) {
+		t.Fatal("large tool result changed provider tool schema bytes or order")
+	}
+	if diag := CompareShape(beforeShape, afterShape, nil, nil); diag.PrefixChanged {
+		t.Fatalf("large append-only result reported PrefixChanged: %+v", diag)
+	}
+	if canonical[len(canonical)-1].RawContent != raw {
+		t.Fatal("canonical RawContent was not retained")
+	}
+	return charsOf(firstWire)
+}
+
+func encodeProviderMessages(t *testing.T, msgs []provider.Message) []json.RawMessage {
+	t.Helper()
+	out := make([]json.RawMessage, len(msgs))
+	for i, msg := range msgs {
+		out[i] = append(json.RawMessage(nil), mustCacheJSON(t, msg)...)
+	}
+	return out
+}
+
+func mustCacheJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	b, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func cacheCurve(t *testing.T, mock *mockDeepSeek, turns int) []int {

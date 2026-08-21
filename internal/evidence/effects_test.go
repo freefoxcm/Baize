@@ -49,6 +49,7 @@ func TestClassifyToolCallSeparatesMutationDomains(t *testing.T) {
 		{"unknown shell", "bash", `{"command":"custom-tool --run"}`, false, ToolEffects{StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Scope: effectscope.Unknown}},
 		{"trusted reader", "read_file", `{}`, true, ToolEffects{Known: true, Scope: effectscope.Observation}},
 		{"analysis", "analyze_data", `{}`, true, ToolEffects{Known: true, Scope: effectscope.Scratch}},
+		{"fleet meta tool", "fleet", `{}`, false, ToolEffects{Known: true, Scope: effectscope.Observation}},
 		{"session title", "set_session_title", `{"title":"Current task"}`, false, ToolEffects{Known: true, StateMutation: true, Scope: effectscope.Durable, Reason: "host session metadata write"}},
 		{"generic writer", "edit_file", `{}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true, Scope: effectscope.Durable}},
 	}

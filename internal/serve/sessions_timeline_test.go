@@ -23,7 +23,7 @@ func TestTimelineSessionsPaginatesSearchesAndSkipsCleanup(t *testing.T) {
 	for index := range paths {
 		name := fmt.Sprintf("session-%02d.jsonl", index)
 		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(fmt.Sprintf("{\"role\":\"user\",\"content\":\"message %02d\"}\n", index)), 0o644); err != nil {
+		if err := os.WriteFile(path, fmt.Appendf(nil, "{\"role\":\"user\",\"content\":\"message %02d\"}\n", index), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		stamp := base.Add(time.Duration(index) * time.Minute)
@@ -93,7 +93,7 @@ func TestTimelineSessionsPinsCurrentDraft(t *testing.T) {
 func TestTimelineSessionsExcludesDraftFromLaterPages(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, time.August, 1, 12, 0, 0, 0, time.UTC)
-	for index := 0; index < 11; index++ {
+	for index := range 11 {
 		path := filepath.Join(dir, fmt.Sprintf("saved-%02d.jsonl", index))
 		if err := os.WriteFile(path, []byte("{\"role\":\"user\",\"content\":\"saved\"}\n"), 0o644); err != nil {
 			t.Fatal(err)
