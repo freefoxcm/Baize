@@ -39,6 +39,12 @@ var modelReasoningCapabilities = map[string]modelReasoningCapability{
 		Default:  "high",
 		Aliases:  map[string]string{"medium": "high", "xhigh": "high"},
 	},
+	openai.OfficialDeepSeekVisionModel: {
+		Protocol: ReasoningProtocolDeepSeek,
+		Levels:   []string{"disabled", "low", "high", "max"},
+		Default:  "high",
+		Aliases:  map[string]string{"medium": "high", "xhigh": "high"},
+	},
 	"deepseek-v4-pro": {
 		Protocol: ReasoningProtocolDeepSeek,
 		Levels:   []string{"disabled", "low", "high", "max"},
