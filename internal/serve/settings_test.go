@@ -31,6 +31,7 @@ kind = "openai"
 base_url = "http://127.0.0.1:1/v1"
 models = ["model-a", "model-b"]
 default = "model-a"
+vision_models = ["model-b"]
 `
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -43,6 +44,74 @@ func TestApplySafeSettingsPatchValidatesConcurrency(t *testing.T) {
 	err := applySafeSettingsPatch(cfg, settingsPatch{MaxSubagentConcurrency: &total, MaxParallelWriters: &writers})
 	if err == nil || !strings.Contains(err.Error(), "cannot exceed") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestApplySafeSettingsPatchValidatesVisionModel(t *testing.T) {
+	t.Setenv("BAIZE_SERVE_TEST_MISSING_VISION_KEY", "")
+	cfg := config.Default()
+	cfg.Providers = []config.ProviderEntry{
+		{Name: "local", Kind: "openai", BaseURL: "http://127.0.0.1:1/v1", Models: []string{"text", "vision"}, Default: "text", VisionModels: []string{"vision"}},
+		{Name: "locked", Kind: "openai", BaseURL: "https://example.invalid/v1", Models: []string{"vision"}, Default: "vision", APIKeyEnv: "BAIZE_SERVE_TEST_MISSING_VISION_KEY", VisionModels: []string{"vision"}},
+	}
+
+	for _, value := range []string{"", "auto", "local/vision"} {
+		if err := applySafeSettingsPatch(cfg, settingsPatch{VisionModel: &value}); err != nil {
+			t.Fatalf("visionModel %q: %v", value, err)
+		}
+	}
+	if cfg.Agent.VisionModel != "local/vision" {
+		t.Fatalf("vision model = %q", cfg.Agent.VisionModel)
+	}
+	for _, test := range []struct {
+		value string
+		want  string
+	}{
+		{value: "local/text", want: "does not support image input"},
+		{value: "missing/vision", want: "no such model"},
+		{value: "locked/vision", want: "has no key"},
+	} {
+		err := applySafeSettingsPatch(cfg, settingsPatch{VisionModel: &test.value})
+		if err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Fatalf("visionModel %q error = %v, want %q", test.value, err, test.want)
+		}
+	}
+}
+
+func TestSafeSettingsListsConfiguredVisionModels(t *testing.T) {
+	cfg := config.Default()
+	cfg.Providers = []config.ProviderEntry{{
+		Name: "local", Kind: "openai", BaseURL: "http://127.0.0.1:1/v1",
+		Models: []string{"text", "vision"}, Default: "text", VisionModels: []string{"vision"},
+	}}
+	cfg.Agent.VisionModel = "auto"
+	view := safeSettingsFromConfig(cfg)
+	if view.VisionModel != "auto" {
+		t.Fatalf("visionModel = %q", view.VisionModel)
+	}
+	if got := strings.Join(view.VisionModels, ","); got != "local/vision" {
+		t.Fatalf("visionModels = %q", got)
+	}
+}
+
+func TestSettingsRejectsUnavailableVisionModel(t *testing.T) {
+	writeSettingsTestConfig(t)
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc, Label: "model-a", ModelRef: "local/model-a", SessionDir: t.TempDir(), WorkspaceRoot: t.TempDir()})
+	server := New(ctrl, bc, config.ServeConfig{})
+	initial, err := server.safeSettingsView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"local/model-a", "missing/vision"} {
+		payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, VisionModel: &model})
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		server.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("visionModel %q status = %d: %s", model, recorder.Code, recorder.Body.String())
+		}
 	}
 }
 
@@ -71,10 +140,11 @@ func TestSettingsRevisionConflictAndSafeUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := "local/model-b"
+	visionModel := "local/model-b"
 	approval := "ask"
 	ctrl.Submit("keep settings pending")
 	waitRunning(t, ctrl)
-	payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, DefaultModel: &model, DefaultApprovalMode: &approval})
+	payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, DefaultModel: &model, VisionModel: &visionModel, DefaultApprovalMode: &approval})
 	patch := httptest.NewRecorder()
 	patchReq := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
 	patchReq.Header.Set("Content-Type", "application/json")
@@ -86,7 +156,7 @@ func TestSettingsRevisionConflictAndSafeUpdate(t *testing.T) {
 	if err := json.Unmarshal(patch.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Revision == initial.Revision || updated.Global.DefaultModel != model || updated.Apply != "pending" {
+	if updated.Revision == initial.Revision || updated.Global.DefaultModel != model || updated.Global.VisionModel != visionModel || updated.Apply != "pending" {
 		t.Fatalf("updated settings = %#v", updated)
 	}
 
