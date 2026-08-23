@@ -285,6 +285,10 @@ const __T = {
     'settings_models_agents': 'Models & agents',
     'settings_default_model': 'Default model',
     'settings_default_model_hint': 'Used when a new session is created.',
+    'settings_vision_model': 'Image understanding model',
+    'settings_vision_model_hint': 'Optional fallback for understanding attached images. Does not change the chat model.',
+    'settings_vision_off': 'Off',
+    'settings_vision_auto': 'Auto (current provider)',
     'settings_planner_model': 'Planner model',
     'settings_subagent_model': 'Subagent model',
     'settings_subagent_effort': 'Subagent effort',
@@ -676,6 +680,10 @@ const __T = {
     'settings_models_agents': '模型与代理',
     'settings_default_model': '新会话默认模型',
     'settings_default_model_hint': '新建会话时使用。',
+    'settings_vision_model': '图片理解模型',
+    'settings_vision_model_hint': '用于理解附件图片的可选回退模型，不改变当前对话模型。',
+    'settings_vision_off': '关闭',
+    'settings_vision_auto': '自动（当前提供商）',
     'settings_planner_model': '规划模型',
     'settings_subagent_model': 'Subagent 模型',
     'settings_subagent_effort': 'Subagent 思考强度',
@@ -4841,11 +4849,17 @@ function fillModelSetting(select,models,value,allowEmpty){
   if(value&&!Array.from(select.options).some(o=>o.value===value))option(select,value,value);
   select.value=value||'';
 }
+function fillVisionModelSetting(select,models,value){
+  select.innerHTML='';option(select,'',__('settings_vision_off'));option(select,'auto',__('settings_vision_auto'));
+  (models||[]).forEach(model=>option(select,model,model));
+  if(value&&value!=='auto'&&!Array.from(select.options).some(o=>o.value===value))option(select,value,value);
+  select.value=value||'';
+}
 function populateSettings(view){
   settingsSnapshot=view;settingsRevision=view.revision||'';const value=view.global||{};const models=value.models||[];
-  fillModelSetting($('#setting-default-model'),models,value.defaultModel,false);fillModelSetting($('#setting-planner-model'),models,value.plannerModel,true);fillModelSetting($('#setting-subagent-model'),models,value.subagentModel,true);
+  fillModelSetting($('#setting-default-model'),models,value.defaultModel,false);fillVisionModelSetting($('#setting-vision-model'),value.visionModels||[],value.visionModel);fillModelSetting($('#setting-planner-model'),models,value.plannerModel,true);fillModelSetting($('#setting-subagent-model'),models,value.subagentModel,true);
 	const taskErrors=$('#setting-show-task-errors');if(taskErrors)taskErrors.checked=!!value.showTaskErrors;setTaskErrorVisibility(!!value.showTaskErrors);
-  Object.entries(value).forEach(([name,val])=>{const field=settingsForm.elements.namedItem(name);if(field&&field.tagName!=='SELECT'&&field.tagName!=='INPUT')return;if(field&&name!=='defaultModel'&&name!=='plannerModel'&&name!=='subagentModel')field.value=String(val);});
+  Object.entries(value).forEach(([name,val])=>{const field=settingsForm.elements.namedItem(name);if(field&&field.tagName!=='SELECT'&&field.tagName!=='INPUT')return;if(field&&name!=='defaultModel'&&name!=='visionModel'&&name!=='plannerModel'&&name!=='subagentModel')field.value=String(val);});
   syncThemePicker(storedThemePreference());
   $('#setting-density').value=storageValue('baize-density','comfortable');
   $('#setting-reasoning-display').value=storageValue('baize-reasoning-display','closed');
@@ -4865,7 +4879,7 @@ async function loadSettings(){
 }
 function runtimeSettingsPayload(){
   const data=new FormData(settingsForm);const payload={revision:settingsRevision};
-  ['defaultModel','plannerModel','subagentModel','subagentEffort','defaultApprovalMode','reasoningLanguage'].forEach(name=>payload[name]=String(data.get(name)||''));
+  ['defaultModel','visionModel','plannerModel','subagentModel','subagentEffort','defaultApprovalMode','reasoningLanguage'].forEach(name=>payload[name]=String(data.get(name)||''));
   ['maxSubagentDepth','maxSubagentConcurrency','maxParallelWriters'].forEach(name=>payload[name]=Number(data.get(name)));
 	payload.compactRatio=Number(data.get('compactRatio'));payload.showTaskErrors=$('#setting-show-task-errors').checked;return payload;
 }

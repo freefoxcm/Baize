@@ -180,12 +180,13 @@ func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
 	js := string(baizeJS)
 	css := string(baizeCSS)
 	settings := strings.Index(html, `id="settings-form"`)
+	visionModel := strings.Index(html, `id="setting-vision-model"`)
 	execution := strings.Index(html, `__('settings_execution')`)
 	floor := strings.Index(html, `id="quality-floor-select"`)
 	appearance := strings.Index(html, `__('settings_appearance')`)
 	taskErrors := strings.Index(html, `id="setting-show-task-errors"`)
 	attachments := strings.Index(html, `class="settings-group attachment-storage"`)
-	if settings < 0 || execution < settings || floor < execution || appearance < floor || taskErrors < appearance || attachments < taskErrors {
+	if settings < 0 || visionModel < settings || execution < visionModel || floor < execution || appearance < floor || taskErrors < appearance || attachments < taskErrors {
 		t.Fatalf("settings controls are not ordered as execution floor, appearance error visibility, attachment storage")
 	}
 	if strings.Count(html, `id="quality-floor-select"`) != 1 {
@@ -200,6 +201,8 @@ func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
 		t.Fatal("attachment refresh and clear actions must share the storage header")
 	}
 	for _, marker := range []string{
+		`fillVisionModelSetting($('#setting-vision-model'),value.visionModels||[],value.visionModel)`,
+		`['defaultModel','visionModel','plannerModel','subagentModel'`,
 		`qualityFloorDraft=qualityFloorSelect.value==='delivery'?'delivery':'standard'`,
 		`qualityFloorSelect.disabled=floorDisabled;`,
 		`if(qualityFloorDraft!==qualityFloor){await requestQualityFloor(qualityFloorDraft)`,

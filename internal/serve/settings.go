@@ -25,6 +25,7 @@ type settingsRuntimeState struct {
 
 type safeSettings struct {
 	DefaultModel           string   `json:"defaultModel"`
+	VisionModel            string   `json:"visionModel"`
 	PlannerModel           string   `json:"plannerModel"`
 	SubagentModel          string   `json:"subagentModel"`
 	SubagentEffort         string   `json:"subagentEffort"`
@@ -36,6 +37,7 @@ type safeSettings struct {
 	ReasoningLanguage      string   `json:"reasoningLanguage"`
 	ShowTaskErrors         bool     `json:"showTaskErrors"`
 	Models                 []string `json:"models"`
+	VisionModels           []string `json:"visionModels"`
 }
 
 type settingsResponse struct {
@@ -50,6 +52,7 @@ type settingsResponse struct {
 type settingsPatch struct {
 	Revision               string   `json:"revision"`
 	DefaultModel           *string  `json:"defaultModel,omitempty"`
+	VisionModel            *string  `json:"visionModel,omitempty"`
 	PlannerModel           *string  `json:"plannerModel,omitempty"`
 	SubagentModel          *string  `json:"subagentModel,omitempty"`
 	SubagentEffort         *string  `json:"subagentEffort,omitempty"`
@@ -173,6 +176,7 @@ func applySafeSettingsPatch(cfg *config.Config, patch settingsPatch) error {
 
 func runtimeSettingsChanged(before, after safeSettings) bool {
 	return before.DefaultModel != after.DefaultModel ||
+		before.VisionModel != after.VisionModel ||
 		before.PlannerModel != after.PlannerModel ||
 		before.SubagentModel != after.SubagentModel ||
 		before.SubagentEffort != after.SubagentEffort ||
@@ -192,6 +196,11 @@ func applySafeModelSettings(cfg *config.Config, patch settingsPatch) error {
 			return fmt.Errorf("default model %q is unavailable", model)
 		}
 		if err := cfg.SetDefaultModel(model); err != nil {
+			return err
+		}
+	}
+	if patch.VisionModel != nil {
+		if err := cfg.SetVisionModel(*patch.VisionModel); err != nil {
 			return err
 		}
 	}
@@ -290,16 +299,23 @@ func (s *Server) safeSettingsView() (settingsResponse, error) {
 func safeSettingsFromConfig(cfg *config.Config) safeSettings {
 	total, writers := agent.NormalizeConcurrencyLimits(cfg.Agent.MaxSubagentConcurrency, cfg.Agent.MaxParallelWriters)
 	models := make([]string, 0)
+	visionModels := make([]string, 0)
 	for i := range cfg.Providers {
 		entry := &cfg.Providers[i]
 		if !entry.Configured() {
 			continue
 		}
 		for _, model := range entry.ModelList() {
-			models = append(models, entry.Name+"/"+model)
+			ref := entry.Name + "/" + model
+			models = append(models, ref)
+			resolved, ok := cfg.ResolveModel(ref)
+			if ok && resolved.Configured() && config.EffectiveVision(resolved) {
+				visionModels = append(visionModels, ref)
+			}
 		}
 	}
 	sort.Strings(models)
+	sort.Strings(visionModels)
 	reasoningLanguage := cfg.Agent.ReasoningLanguage
 	if reasoningLanguage == "" {
 		reasoningLanguage = "auto"
@@ -309,7 +325,8 @@ func safeSettingsFromConfig(cfg *config.Config) safeSettings {
 		effort = "auto"
 	}
 	return safeSettings{
-		DefaultModel: cfg.DefaultModel, PlannerModel: cfg.Agent.PlannerModel,
+		DefaultModel: cfg.DefaultModel, VisionModel: cfg.Agent.VisionModel,
+		PlannerModel:  cfg.Agent.PlannerModel,
 		SubagentModel: cfg.Agent.SubagentModel, SubagentEffort: effort,
 		DefaultApprovalMode:    cfg.DesktopDefaultToolApprovalMode(),
 		MaxSubagentDepth:       agent.NormalizeMaxSubagentDepth(cfg.Agent.MaxSubagentDepth),
@@ -317,6 +334,7 @@ func safeSettingsFromConfig(cfg *config.Config) safeSettings {
 		CompactRatio: cfg.Agent.CompactRatio, ReasoningLanguage: reasoningLanguage,
 		ShowTaskErrors: cfg.Serve.ShowTaskErrors,
 		Models:         models,
+		VisionModels:   visionModels,
 	}
 }
 
@@ -324,6 +342,9 @@ func settingsOverrides(global, effective safeSettings) []string {
 	var out []string
 	if global.DefaultModel != effective.DefaultModel {
 		out = append(out, "defaultModel")
+	}
+	if global.VisionModel != effective.VisionModel {
+		out = append(out, "visionModel")
 	}
 	if global.PlannerModel != effective.PlannerModel {
 		out = append(out, "plannerModel")
