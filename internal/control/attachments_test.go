@@ -241,6 +241,15 @@ func TestAttachmentDefaultHundredMiBBoundary(t *testing.T) {
 	}
 }
 
+func TestImageAttachmentLimitIsSixtyFourMiB(t *testing.T) {
+	if maxImageAttachmentBytes != 64*1024*1024 {
+		t.Fatalf("image attachment limit = %d, want 64 MiB", maxImageAttachmentBytes)
+	}
+	if DefaultAttachmentPolicy().MaxFileBytes != 100*1024*1024 {
+		t.Fatalf("general attachment limit = %d, want 100 MiB", DefaultAttachmentPolicy().MaxFileBytes)
+	}
+}
+
 func TestSaveAttachmentReaderCleansTempFilesOnLimitAndQuotaFailures(t *testing.T) {
 	root := t.TempDir()
 	policy := AttachmentPolicy{MaxFileBytes: 4, WorkspaceQuotaBytes: 5}

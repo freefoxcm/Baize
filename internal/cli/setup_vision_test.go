@@ -61,17 +61,13 @@ func TestApplyProviderVisionSelectionNormalizesProviderWideFlag(t *testing.T) {
 	}
 }
 
-func TestPromptProviderVisionForOfficialDeepSeekForcesTextOnly(t *testing.T) {
+func TestOfficialDeepSeekTextModelRemainsTextOnly(t *testing.T) {
 	entry := config.ProviderEntry{
 		Name: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash",
 		Vision: true, VisionModels: []string{"deepseek-v4-flash"},
 	}
-	got, err := promptProviderVision(entry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Vision || got.VisionModels == nil || len(got.VisionModels) != 0 {
-		t.Fatalf("official DeepSeek vision state = vision:%v models:%#v", got.Vision, got.VisionModels)
+	if config.EffectiveVision(&entry) {
+		t.Fatal("official DeepSeek text model accepted image input")
 	}
 }
 

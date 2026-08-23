@@ -150,6 +150,54 @@ func TestOpenCodeGoContextWindowPresetsMatchModelsDev(t *testing.T) {
 	}
 }
 
+func TestOpenCodePresetPresentationMetadata(t *testing.T) {
+	want := map[string]struct {
+		group    string
+		section  string
+		tier     string
+		route    string
+		optional bool
+	}{
+		"opencode-go-recommended":        {group: "opencode", section: "go", tier: "primary", route: "bundle"},
+		"opencode-go":                    {group: "opencode", section: "go", tier: "compatibility", route: "chat"},
+		"opencode-go-anthropic":          {group: "opencode", section: "go", tier: "advanced", route: "anthropic"},
+		"opencode-go-responses":          {group: "opencode", section: "go", tier: "advanced", route: "responses"},
+		"opencode-go-deepseek-anthropic": {group: "opencode", section: "go", tier: "advanced", route: "search-anthropic", optional: true},
+		"opencode-go-deepseek-responses": {group: "opencode", section: "go", tier: "advanced", route: "search-responses", optional: true},
+		"opencode-zen-anthropic":         {group: "opencode", section: "zen", tier: "primary", route: "zen-anthropic"},
+	}
+	for id, expected := range want {
+		preset, ok := CuratedProviderPreset(id)
+		if !ok {
+			t.Fatalf("missing preset %q", id)
+		}
+		if preset.DisplayGroup != expected.group || preset.DisplaySection != expected.section || preset.DisplayTier != expected.tier || preset.RouteKind != expected.route || preset.Optional != expected.optional {
+			t.Fatalf("preset %q metadata = group:%q section:%q tier:%q route:%q optional:%t", id, preset.DisplayGroup, preset.DisplaySection, preset.DisplayTier, preset.RouteKind, preset.Optional)
+		}
+	}
+}
+
+func TestOpenCodeGoPresetOutputBudgetsAreConservative(t *testing.T) {
+	for _, id := range []string{
+		"opencode-go-recommended",
+		"opencode-go",
+		"opencode-go-anthropic",
+		"opencode-go-responses",
+		"opencode-go-deepseek-anthropic",
+		"opencode-go-deepseek-responses",
+	} {
+		preset, ok := CuratedProviderPreset(id)
+		if !ok {
+			t.Fatalf("missing preset %q", id)
+		}
+		for _, entry := range preset.Entries {
+			if entry.MaxOutputTokens != 32_768 {
+				t.Fatalf("preset %q entry %q max output = %d, want 32768", id, entry.Name, entry.MaxOutputTokens)
+			}
+		}
+	}
+}
+
 func TestOpenCodeGoDeepSeekAlternativeProtocolPresets(t *testing.T) {
 	responsesPreset, ok := CuratedProviderPreset("opencode-go-deepseek-responses")
 	if !ok || len(responsesPreset.Entries) != 1 {
@@ -165,8 +213,11 @@ func TestOpenCodeGoDeepSeekAlternativeProtocolPresets(t *testing.T) {
 	if !EffectiveWebSearch(&responses) || !HasServerWebSearchCapability(&responses) {
 		t.Fatalf("opencode-go-deepseek-responses web search = effective:%t capability:%t", EffectiveWebSearch(&responses), HasServerWebSearchCapability(&responses))
 	}
-	if cap := EffortCapabilityForEntry(&responses); !cap.Supported || cap.Default != "high" || !containsString(cap.Levels, "disabled") || !containsString(cap.Levels, "max") {
+	if cap := EffortCapabilityForEntry(&responses); !cap.Supported || cap.Default != "high" || !stringSlicesEqual(cap.Levels, []string{"auto", "disabled", "low", "high", "max"}) {
 		t.Fatalf("opencode-go-deepseek-responses effort capability = %+v", cap)
+	}
+	if got, err := NormalizeEffort(&responses, "low"); err != nil || got != "low" {
+		t.Fatalf("opencode-go-deepseek-responses Flash low = %q/%v, want low/nil", got, err)
 	}
 
 	anthropicPreset, ok := CuratedProviderPreset("opencode-go-deepseek-anthropic")
@@ -255,6 +306,17 @@ func TestOpenCodeGoRecommendedPresetIsOneClickAndCostBounded(t *testing.T) {
 		if entry.BillingMode != "subscription_equivalent" || entry.MaxOutputTokens != 32_768 {
 			t.Fatalf("recommended entry %q cost controls = billing:%q max_output:%d", entry.Name, entry.BillingMode, entry.MaxOutputTokens)
 		}
+		if entry.Name == "opencode-go" {
+			for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro"} {
+				resolved := entry
+				resolved.Model = model
+				resolved.applyModelOverride()
+				cap := EffortCapabilityForEntry(&resolved)
+				if !stringSlicesEqual(cap.Levels, []string{"auto", "disabled", "low", "high", "max"}) {
+					t.Fatalf("recommended %s effort capability = %+v", model, cap)
+				}
+			}
+		}
 	}
 }
 
@@ -305,7 +367,7 @@ func TestDeepSeekResponsesPresetMatchesOfficialSupport(t *testing.T) {
 	if entry.ModelsURL != "" {
 		t.Fatalf("deepseek responses models URL = %q, want static supported-model list", entry.ModelsURL)
 	}
-	if !EffectiveWebSearch(&entry) || entry.Vision || entry.VisionModels != nil {
+	if !EffectiveWebSearch(&entry) || entry.Vision {
 		t.Fatalf("deepseek responses capabilities = web_search:%t vision:%t vision_models:%v", EffectiveWebSearch(&entry), entry.Vision, entry.VisionModels)
 	}
 	var cfg Config

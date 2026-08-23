@@ -81,9 +81,22 @@ console.log("\nbundle budgets");
 // path while keeping its 1.68 KiB question rail lazy-loaded. Test diagnostics
 // plus the navigation owner add 0.7 KiB gzip (0.164%) over the merged test gate.
 // DingTalk channel status and locale wiring move the current-base production
-// build from 427.2 to 427.7 KiB and test from 428.6 to 429.1 KiB. Keep about
-// 0.1 KiB of build-SHA headroom with a 0.5 KiB (about 0.117%) ratchet per gate.
-const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 429.2 : 427.8;
+// build from 427.2 to 427.7 KiB and test from 428.6 to 429.1 KiB. The unified
+// state-aware geometry contract, session diagnostics counters, and guarded
+// native-scroll probes add 2.4 KiB gzip to the initial path. The current
+// main-v2 merge adds another 0.3 KiB of deterministic shared startup code.
+// Keep the increase explicit and bounded instead of hiding it in a broad
+// percentage ratchet.
+// The retained-transcript surface adds a small, bounded navigation owner to
+// the startup path (overlay state + stale-completion guard). Keep the increase
+// explicit and narrow; the measured build is 431.1 KiB gzip.
+// The web-search tool card now resolves the same display projection lazily so
+// its filtered count matches the assistant Sources panel. The measured build
+// is 431.509 KiB gzip; keep 0.1 KiB of explicit headroom for hash/toolchain
+// drift instead of relying on a rounded equality. Baize's retained DeepSeek
+// low-effort preset metadata adds another measured 0.1 KiB; cap both channels
+// at 431.8 KiB so that compatibility support remains explicit and bounded.
+const initialJSBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 431.8 : 431.8;
 assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 280 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
@@ -97,7 +110,10 @@ if (initialCSS.length > 0) {
 // Extension surfaces, Task Monitor, and compact decision receipts share the
 // application stylesheet loaded before React mounts. Keep their combined
 // allowance bounded even though the file is no longer render-blocking.
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 114 * 1024);
+// Navigation overlay styles add a bounded 0.1 KiB to the deferred shell.
+// The cleaned source panel adds 0.1 KiB gzip to the deferred shell on top of
+// the retained-transcript navigation allowance; keep the ratchet explicit.
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 114.3 * 1024);
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
 }
@@ -120,10 +136,13 @@ for (const path of localeChunks) {
   // Recovery-copy and catalog-only sidebar labels can move the simplified
   // Chinese chunk across the rounded 55.9 KiB boundary on CI's Node/zlib;
   // retain a narrow 0.1 KiB headroom rather than making gzip output a
-  // platform-dependent gate.
-  // Node 24's zlib output puts the merged zh-TW chunk four bytes above the
-  // 56.60 KiB gate; keep only 0.01 KiB of cross-version compression headroom.
-  const budget = name.startsWith("zh-TW-") ? 56.61 * 1024 : 56.0 * 1024;
+  // platform-dependent gate. The OpenCode one-key setup adds product-level
+  // connection, fallback, and legacy-state copy while removing protocol
+  // choices from the primary UI; keep that complete guidance with a bounded
+  // 0.4–0.5 KiB locale-only ratchet. Baize's retained DeepSeek low-effort
+  // wording puts zh-TW just above the rounded boundary, so preserve 0.1 KiB
+  // of explicit platform/toolchain headroom.
+  const budget = name.startsWith("zh-TW-") ? 57.3 * 1024 : 56.5 * 1024;
   assertBudget(`${name} gzip`, gzipBytes(path), budget);
 }
 
@@ -138,7 +157,8 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // More menu, completion summary) makes the latest-base merge 2353.1 KiB in
 // production and 2358.3 KiB in test: about 9.0 KiB (0.38%) over main-v2's
 // channel gates. Retain that attributable UI capacity with 0.1 KiB of build-SHA
-// headroom without widening the gzip or largest-chunk exceptions.
-const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_358.4 : 2_353.2;
+// headroom without widening the gzip or largest-chunk exceptions. Baize's
+// retained DeepSeek low-effort metadata adds 0.4 KiB raw in both channels.
+const rawInitialBudgetKiB = process.env.REASONIX_CHANNEL === "test" ? 2_358.8 : 2_353.7;
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_000 * 1024);
