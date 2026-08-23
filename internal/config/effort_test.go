@@ -49,6 +49,36 @@ func TestDeepSeekV4FlashEffortCapabilityIncludesLow(t *testing.T) {
 	}
 }
 
+func TestDeepSeekV4VisionEffortCapabilityBehindCustomProxy(t *testing.T) {
+	vision := &ProviderEntry{
+		Name:    "opencode-proxy",
+		Kind:    "openai",
+		BaseURL: "https://proxy.example/zen/go/v1",
+		Model:   "deepseek-v4-flash-vision-exp",
+	}
+	cap := EffortCapabilityForEntry(vision)
+	want := []string{"auto", "disabled", "low", "high", "max"}
+	if !cap.Supported || !stringSlicesEqual(cap.Levels, want) || cap.Default != "high" {
+		t.Fatalf("proxied vision capability = %+v, want levels %v default high", cap, want)
+	}
+	if protocol := ReasoningProtocolForEntry(vision); protocol != ReasoningProtocolDeepSeek {
+		t.Fatalf("proxied vision protocol = %q, want deepseek", protocol)
+	}
+	if got, err := NormalizeEffort(vision, "low"); err != nil || got != "low" {
+		t.Fatalf("proxied vision low = %q/%v, want low/nil", got, err)
+	}
+
+	unknown := &ProviderEntry{
+		Name:    "opencode-proxy",
+		Kind:    "openai",
+		BaseURL: vision.BaseURL,
+		Model:   "ox-alpha-free",
+	}
+	if unknownCap := EffortCapabilityForEntry(unknown); unknownCap.Supported {
+		t.Fatalf("unknown proxied model capability = %+v, want unsupported", unknownCap)
+	}
+}
+
 func TestDefaultDeepSeekV4EntriesAcceptCompatibilityAliases(t *testing.T) {
 	cfg := Default()
 	for _, ref := range []string{"deepseek-flash", "deepseek-pro"} {
