@@ -21,7 +21,7 @@ import (
 	"reasonix/internal/secrets"
 )
 
-const maxImageAttachmentBytes = 10 * 1024 * 1024
+const maxImageAttachmentBytes = 64 * 1024 * 1024
 const maxAttachmentCreateAttempts = 1000
 
 // ErrNoClipboardImage reports that the clipboard was read successfully but holds

@@ -927,6 +927,7 @@ export interface Meta {
   workspacePath?: string;
   gitBranch?: string;
   imageInputEnabled?: boolean;
+  visionFallbackEnabled?: boolean;
   autoApproveTools?: boolean;
   bypass?: boolean; // legacy JSON key for YOLO/full-access tool auto-approval
   collaborationMode?: CollaborationMode;
@@ -1830,11 +1831,18 @@ export interface ProviderPresetView {
   keyEnv: string;
   recommended?: boolean;
   billingMode?: string;
+  displayGroup?: string;
+  displaySection?: string;
+  displayTier?: "primary" | "advanced" | "compatibility" | string;
+  routeKind?: string;
+  optional?: boolean;
+  displayOrder?: number;
   providerNames: string[];
   models: string[];
   added: boolean;
-  status?: "available" | "installed" | "installed_modified" | "name_conflict" | "similar_existing";
+  status?: "available" | "installed" | "installed_modified" | "partial" | "name_conflict" | "similar_existing";
   statusProviderNames?: string[];
+  missingProviderNames?: string[];
   keySet: boolean;
   requiresKey?: boolean;
   configured?: boolean;
@@ -2245,6 +2253,7 @@ export interface BotConnectionDiagnostic {
 export interface SettingsView {
   defaultModel: string;
   plannerModel: string;
+  visionModel: string;
   subagentModel: string;
   subagentEffort: string;
   autoPlan: string;

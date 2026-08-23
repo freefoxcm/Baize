@@ -137,6 +137,31 @@ func TestEffortHandlerReportsRuntimeNormalizedEffort(t *testing.T) {
 	}
 }
 
+func TestEffortHandlerHidesNonReasoningCustomModel(t *testing.T) {
+	home := t.TempDir()
+	isolateServeHome(t, home)
+	body := "default_model = \"opencode-proxy/ox-alpha-free\"\n[[providers]]\nname = \"opencode-proxy\"\nkind = \"openai\"\nbase_url = \"https://proxy.example/v1\"\nmodel = \"ox-alpha-free\"\nreasoning_protocol = \"none\"\n"
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc, ModelRef: "opencode-proxy/ox-alpha-free"})
+	s := &Server{ctrl: ctrl, bc: bc}
+
+	rec := httptest.NewRecorder()
+	s.effort(rec, httptest.NewRequest(http.MethodGet, "/effort", nil))
+	var out struct {
+		Supported bool     `json:"supported"`
+		Levels    []string `json:"levels"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode effort response: %v", err)
+	}
+	if out.Supported || len(out.Levels) != 0 {
+		t.Fatalf("ox-alpha-free effort capability = supported:%t levels:%v, want hidden", out.Supported, out.Levels)
+	}
+}
+
 // TestThinkingAliasSubmitsEffort covers the /thinking alias: a bare command
 // reports the current effort capability, a level argument switches through the
 // same path as /effort.
