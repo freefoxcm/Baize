@@ -855,9 +855,9 @@ func TestServeIndexReportsSessionDeleteFailures(t *testing.T) {
 		"'cannot_delete_active': '无法删除当前会话'",
 		"'delete_failed': 'Could not delete the session. Check your connection and try again.'",
 		"'delete_failed': '无法删除会话，请检查连接后重试'",
-		"if(target&&target.current){showNotice(__('cannot_delete_active'),'warn');return;}",
-		"if(!r.ok){showNotice((await r.text()).trim()||('HTTP '+r.status),'warn');}",
-		"}).catch(()=>showNotice(__('delete_failed'),'warn'));",
+		"if(target&&target.current){showAppToast(__('cannot_delete_active'),'warn');return;}",
+		"if(!r.ok){showAppToast((await r.text()).trim()||('HTTP '+r.status),'danger');}",
+		"}).catch(()=>showAppToast(__('delete_failed'),'danger'));",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing session delete failure handling %q", want)
@@ -883,7 +883,7 @@ func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
 	html := baizeWebSource()
 	for _, want := range []string{
 		"e.outcome==='recovery_paused'",
-		"showNotice('⏸ '+__('recovery_paused'))",
+		"appendTranscriptNotice('⏸ '+__('recovery_paused'))",
 		"'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
 		"'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
 	} {

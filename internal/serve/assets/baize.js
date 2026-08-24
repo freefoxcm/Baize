@@ -100,6 +100,7 @@ const __T = {
     'attachment_unavailable_command': 'Attachments cannot be combined with slash or shell commands.',
     'attachment_cancel_upload': 'Cancel upload',
     'attachment_upload_failed': 'File upload failed',
+    'submit_failed': 'Message could not be sent.',
     'attachment_paste_too_large': 'Large clipboard files are not supported. Use file selection or drag and drop.',
     'attachment_paste_files': 'Clipboard files cannot be streamed safely. Use file selection or drag and drop.',
     'attachments_storage': 'Attachment storage',
@@ -495,6 +496,7 @@ const __T = {
     'attachment_unavailable_command': '附件不能与斜杠命令或 shell 命令混用。',
     'attachment_cancel_upload': '取消上传',
     'attachment_upload_failed': '文件上传失败',
+    'submit_failed': '消息发送失败。',
     'attachment_paste_too_large': '剪贴板中的大文件不支持直接粘贴，请使用文件选择或拖放。',
     'attachment_paste_files': '剪贴板文件无法安全地流式上传，请使用文件选择或拖放。',
     'attachments_storage': '附件存储',
@@ -1089,19 +1091,34 @@ function setActionDisabled(id, disabled, title) {
   if(title)node.setAttribute('title', title);
   else node.removeAttribute('title');
 }
-function showNotice(text, tone) {
+function appendTranscriptNotice(text, tone) {
   hideWelcome();
   const n=el('div','notice'+(tone==='warn'?' notice--warn':''),text);
   log.appendChild(n);
-  scrollDown(true); // synchronous feedback to a user action — always reveal
+  scrollDown(true);
 }
 let appToastTimer=0;
-function showAppToast(text,tone,duration){
-  const region=$('#app-toast-region');if(!region)return;
+let appToastKey='';
+const APP_TOAST_DURATIONS={info:3000,success:3000,warn:6000,danger:8000};
+function clearAppToast(key){
+  const region=$('#app-toast-region');if(!region||key&&appToastKey!==key)return;
   if(appToastTimer){clearTimeout(appToastTimer);appToastTimer=0;}
-  const toast=el('div','app-toast'+(tone==='warn'?' app-toast--warn':''),text);
+  region.replaceChildren();appToastKey='';
+}
+function showAppToast(text,tone='info',duration,key=''){
+  const region=$('#app-toast-region');if(!region)return;
+  clearAppToast();
+  const kind=Object.hasOwn(APP_TOAST_DURATIONS,tone)?tone:'info';
+  const toast=el('div','app-toast app-toast--'+kind);
+  toast.appendChild(el('span','app-toast__text',text));
+  if(kind==='danger'){
+    toast.setAttribute('role','alert');
+    const close=el('button','app-toast__close','\u00d7');close.type='button';close.title=__('close');close.setAttribute('aria-label',__('close'));close.onclick=()=>clearAppToast(key);toast.appendChild(close);
+  }
+  appToastKey=key;
   region.replaceChildren(toast);
-  appToastTimer=setTimeout(()=>{toast.classList.add('app-toast--leaving');setTimeout(()=>{if(region.firstChild===toast)region.replaceChildren();},160);appToastTimer=0;},duration);
+  const delay=duration===undefined?APP_TOAST_DURATIONS[kind]:duration;
+  if(delay>0)appToastTimer=setTimeout(()=>{toast.classList.add('app-toast--leaving');setTimeout(()=>{if(region.firstChild===toast)clearAppToast(key);},160);appToastTimer=0;},delay);
 }
 function hiddenTranscriptTool(name){
   const n=String(name||'').trim().toLowerCase();
@@ -1140,6 +1157,7 @@ function renderDeliveryCard(it){
   btn.onclick=()=>{
     if(btn.disabled||running)return;
     disableDeliveryCards();
+    setDeliveryCardError(card,'');
     deliveryRecoveryActive=true;
     const prompt=__('delivery_continue_prompt');
     post('/submit',{input:prompt,action:'final_readiness_recovery'}).then(async response=>{
@@ -1148,11 +1166,17 @@ function renderDeliveryCard(it){
     }).catch(err=>{
       deliveryRecoveryActive=false;
       btn.disabled=false;
-      showNotice(String(err&&err.message||err), 'warn');
+      setDeliveryCardError(card,String(err&&err.message||err));
     });
   };
   actions.appendChild(btn);card.appendChild(actions);
   return card;
+}
+function setDeliveryCardError(card,text){
+  let node=card.querySelector('.delivery-card__error');
+  if(!text){node?.remove();return;}
+  if(!node){node=el('div','delivery-card__error');node.setAttribute('role','alert');card.insertBefore(node,card.querySelector('.delivery-card__actions'));}
+  node.textContent=text;
 }
 function deliveryReadinessItem(e){
   const missing=Array.isArray(e&&e.readiness&&e.readiness.missing)?e.readiness.missing:[];
@@ -2736,13 +2760,16 @@ let pendingPrompts=[];
 // cleanup removes its keydown listener first.
 let currentApprovalCleanup = null;
 function clearPendingPrompts(){pendingPrompts.splice(0).forEach(fn=>fn());}
-function focusDecisionPrompt(){
+function focusDecisionPrompt(message){
   const prompt=document.querySelector('.approval, .ask');
-  if(prompt){const target=prompt.matches('.approval')?prompt:prompt.querySelector('button:not(:disabled),input:not(:disabled),textarea:not(:disabled)')||prompt;target.focus?.({preventScroll:true});prompt.scrollIntoView?.({block:'nearest'});}
+  if(prompt){
+    if(message){let notice=prompt.querySelector('.decision-inline-notice');if(!notice){notice=el('div','decision-inline-notice');notice.setAttribute('role','status');prompt.appendChild(notice);}notice.textContent=message;}
+    const target=prompt.matches('.approval')?prompt:prompt.querySelector('button:not(:disabled),input:not(:disabled),textarea:not(:disabled)')||prompt;target.focus?.({preventScroll:true});prompt.scrollIntoView?.({block:'nearest'});
+  }
 }
 function ordinaryOverlayAllowed(){
   if(!decisionInteractionLocked)return true;
-  showNotice(__('workspace_decision_pending'),'warn');focusDecisionPrompt();return false;
+  focusDecisionPrompt(__('workspace_decision_pending'));return false;
 }
 function closeOrdinaryModals(){
   closeImageViewer();document.getElementById('rewind-overlay')?.remove();
@@ -3153,10 +3180,10 @@ function openRewindPicker() {
   if(!prepareOrdinaryOverlay())return;
   fetch('/checkpoints').then(r=>r.json()).then(cps=>{
     checkpointCount=Array.isArray(cps)?cps.length:0; updateActionAvailability();
-    if(!cps||cps.length===0){showNotice(__('no_checkpoints'),'warn');return;}
+    if(!cps||cps.length===0){showAppToast(__('no_checkpoints'),'warn');return;}
     rewindCheckpoints=cps; rewindStage=0; rewindSelected=0; rewindScope=0;
     renderRewindPicker();
-  }).catch(()=>{});
+  }).catch(error=>showAppToast(error instanceof Error?error.message:String(error),'danger'));
 }
 function refreshCheckpointAvailability(){
   fetch('/checkpoints').then(r=>r.json()).then(cps=>{
@@ -3384,7 +3411,7 @@ function currentModelRefLabel(){const c=modelsCache.find(m=>m.active);return c?(
 let es;
 function connectEvents(){
 es=new EventSource('/events');
-es.onopen=()=>{setConnState('connected');fetchStatus();fetchTodos();};
+  es.onopen=()=>{setConnState('connected');clearAppToast('connection');fetchStatus();fetchTodos();};
 es.onmessage=ev=>{setConnState('connected');
   if(historyPending)return; // history rebuild owns the transcript; skip gap events
   const e=JSON.parse(ev.data);
@@ -3432,7 +3459,7 @@ es.onmessage=ev=>{setConnState('connected');
         if (tt && !tt.userOverride && tt.summary.style.display !== 'none') { tt.folded = true; applyTurnFold(tt); } }
       if(deliveryRecoveryActive&&e.outcome!=='final_readiness'&&!e.err)clearDeliveryCards();
       deliveryRecoveryActive=false;
-      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){showNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
+      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){appendTranscriptNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
   }
 };
 es.onerror=()=>{
@@ -3440,7 +3467,7 @@ es.onerror=()=>{
   else{setConnState('disconnected');}
 };
 }
-__authReady.then(connectEvents).catch(error=>{setConnState('disconnected');showNotice(error instanceof Error?error.message:__('auth_failed'),'warn');});
+__authReady.then(connectEvents).catch(error=>{setConnState('disconnected');showAppToast(error instanceof Error?error.message:__('auth_failed'),'danger',0,'connection');});
 
 // ── status polling ──
 function fetchStatus(){
@@ -3573,7 +3600,7 @@ function reloadHistory() {
     fetchTodos();
     refreshCheckpointAvailability();
   }).catch(() => {
-    showNotice(__('error_loading'), 'warn');
+    showAppToast(__('error_loading'), 'danger');
   }).finally(() => {
     historyPending = false;
     fetchStatus(); // re-sync running/goal/context after the rebuild
@@ -3670,7 +3697,7 @@ function toggleTimelineDate(date,groupSessions){
 async function resumeTimelineSession(session){
   const targetKey=timelineSessionKey(session);if(running||timelineResumePending||targetKey===timelineSelectedKey)return;const previousKey=timelineSelectedKey;timelineResumePending=true;timelineSelectedKey=targetKey;syncTimelineSelection();const travelDone=animateTimelineTravelToSelection();
   try{const response=await post('/resume',{path:session.path});if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));timelineConfirmedKey=targetKey;log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosDismissed=false;resetCumulativeStats();travelDone.then(animated=>{const reload=()=>{if(timelineConfirmedKey!==targetKey)return;timelineResumePending=false;loadSessions();};if(animated)setTimeout(reload,TIMELINE_TRAVEL_MS+40);else reload();});updateActionAvailability();reloadHistory();fetchStatus();}
-  catch(error){timelineResumePending=false;timelineSelectedKey=previousKey||timelineConfirmedKey;syncTimelineSelection();animateTimelineTravelToSelection();showNotice(error instanceof Error?error.message:String(error),'warn');}
+  catch(error){timelineResumePending=false;timelineSelectedKey=previousKey||timelineConfirmedKey;syncTimelineSelection();animateTimelineTravelToSelection();showAppToast(error instanceof Error?error.message:String(error),'danger');}
 }
 function renderSessions(){
   const list=$('#session-list'); if(!list)return;
@@ -3853,13 +3880,13 @@ function isDirectImageFile(file) {
   return (DIRECT_IMAGE_MIMES.has(mime) && (!ext || DIRECT_IMAGE_EXTS.has(ext))) || (DIRECT_IMAGE_EXTS.has(ext) && !mime);
 }
 function validateImageFile(file) {
-  if (!isDirectImageFile(file)) { showNotice(__('attachment_image_type'),'warn'); return false; }
-  if (file.size > 10 << 20) { showNotice(__('attachment_image_too_large'),'warn'); return false; }
+  if (!isDirectImageFile(file)) { showAppToast(__('attachment_image_type'),'warn'); return false; }
+  if (file.size > 10 << 20) { showAppToast(__('attachment_image_too_large'),'warn'); return false; }
   return true;
 }
 async function attachFiles(files, imageOnly=false) {
   if (attachmentEntryDisabled()) {
-    showNotice(goalMode || goalText ? __('attachment_unavailable_goal') : __('attachment_unavailable_running'),'warn');
+    showAppToast(goalMode || goalText ? __('attachment_unavailable_goal') : __('attachment_unavailable_running'),'warn');
     return;
   }
   attachmentUploading = true;
@@ -3872,7 +3899,7 @@ async function attachFiles(files, imageOnly=false) {
     try{
       const res=await uploadAttachment(f);
       if(res.path){draftAttachments.push({...attachmentRecord(res.path,res.name||uploadFileName(f)),size:res.size||f.size});renderDraftAttachments();}
-    }catch(error){if(error?.name!=='AbortError')showNotice((error instanceof Error?error.message:String(error))||__('attachment_upload_failed'),'warn');}
+    }catch(error){if(error?.name!=='AbortError')showAppToast((error instanceof Error?error.message:String(error))||__('attachment_upload_failed'),'danger');}
     finally{hideUpload();}
   }
   attachmentUploading = false;
@@ -3886,7 +3913,7 @@ input.addEventListener('paste', e => {
   const imgs = all.filter(f => f.type && f.type.startsWith('image/'));
   e.preventDefault();
   if (imgs.length) attachFiles(imgs, true);
-  if (imgs.length !== all.length) showNotice(__('attachment_paste_files'),'warn');
+  if (imgs.length !== all.length) showAppToast(__('attachment_paste_files'),'warn');
 });
 const composerBox = input.closest('.composer') || input.parentElement;
 let dragDepth = 0;
@@ -4033,16 +4060,19 @@ async function sendQueuedGuidance(item) {
       } else if (stillQueued) {
         // 409: the turn ended between our running check and the enqueue.
         if (running) {
-          showNotice(__('guidance_rejected'), 'warn');
+          showAppToast(__('guidance_rejected'), 'warn');
         } else {
           rearmAutoSend = true;
         }
       }
     } else {
+      const response=await post('/submit',{input:text});
+      if(!response.ok)throw new Error((await response.text()).trim()||__('submit_failed'));
       appendUserMsg(text);
-      await post('/submit',{input:text});
       guidanceQueue = guidanceQueue.filter(q => q.id !== item.id);
     }
+  } catch(error) {
+    showAppToast(error instanceof Error?error.message:String(error),'danger');
   } finally {
     guidanceSendingId = null;
     renderGuidanceShelf();
@@ -4087,23 +4117,25 @@ async function send(){
   const attachments=draftAttachments.slice();
   if(!v&&!attachments.length)return;
   if(running){
-    if(attachments.length){showNotice(__('attachment_unavailable_running'),'warn');return;}
+    if(attachments.length){showAppToast(__('attachment_unavailable_running'),'warn');return;}
     // Mid-turn: queue as guidance instead of starting a second turn.
     queueGuidance(v);
     return;
   }
   if(attachmentUploading)return;
-  if(attachments.length&&(goalMode||goalText)){showNotice(__('attachment_unavailable_goal'),'warn');return;}
-  if(attachments.length&&(v.startsWith('/')||v.startsWith('!'))){showNotice(__('attachment_unavailable_command'),'warn');return;}
+  if(attachments.length&&(goalMode||goalText)){showAppToast(__('attachment_unavailable_goal'),'warn');return;}
+  if(attachments.length&&(v.startsWith('/')||v.startsWith('!'))){showAppToast(__('attachment_unavailable_command'),'warn');return;}
   if(v==='/reload'){
-    input.value='';input.style.height='';closeSlashMenu();
-    showNotice(__('extensions_reloading'));
-    const response=await post('/extensions/reload',{});
-    if(response.ok){showNotice(__('extensions_reloaded'));fetchStatus();}
-    else{showNotice((await response.text()).trim()||__('extensions_reload_failed'),'warn');}
+    closeSlashMenu();
+    showAppToast(__('extensions_reloading'),'info');
+    try{
+      const response=await post('/extensions/reload',{});
+      if(response.ok){input.value='';input.style.height='';showAppToast(__('extensions_reloaded'),'success');fetchStatus();}
+      else{showAppToast((await response.text()).trim()||__('extensions_reload_failed'),'danger');}
+    }catch(error){showAppToast(error instanceof Error?error.message:String(error),'danger');}
     return;
   }
-  await syncModeBeforeSubmit();
+  try{await syncModeBeforeSubmit();}catch(error){showAppToast(error instanceof Error?error.message:String(error),'danger');return;}
   let submitInput=v;
   if(goalMode && !v.startsWith('/goal')){
     // Send as /goal command for goal-draft mode
@@ -4116,8 +4148,9 @@ async function send(){
     updateGoalUI();
   }
   const isModelSwitch=submitInput.startsWith('/model ');
-  const response=await post('/submit',{input:submitInput,attachments:attachments.map(a=>a.path)});
-  if(!response.ok){showNotice((await response.text()).trim()||__('attachment_upload_failed'),'warn');return;}
+  let response;
+  try{response=await post('/submit',{input:submitInput,attachments:attachments.map(a=>a.path)});}catch(error){showAppToast(error instanceof Error?error.message:String(error),'danger');return;}
+  if(!response.ok){showAppToast((await response.text()).trim()||__('submit_failed'),'danger');return;}
   if(response.status===202||response.status===204){
     appendUserMsg(formatAttachmentMessage(v,attachments));
     draftAttachments=[];
@@ -4211,7 +4244,7 @@ function toggleGoalMode(){
     goalMode=false;
     updateGoalUI();
   } else {
-    if(draftAttachments.length){showNotice(__('attachment_unavailable_goal'),'warn');return;}
+    if(draftAttachments.length){showAppToast(__('attachment_unavailable_goal'),'warn');return;}
     goalMode=true;
     updateGoalUI();
     input.focus();
@@ -4293,7 +4326,7 @@ $('#modebar').querySelectorAll('.composer-modebar__item').forEach(b=>{
 });
 qualityFloorSelect.onchange=()=>{if(running||waitingPrompt)return;qualityFloorDraft=qualityFloorSelect.value==='delivery'?'delivery':'standard';settingsDirty=true;updateModeButtons();};
 $('#goal-chip').onclick=()=>toggleGoalMode();
-$('#btn-new').onclick=()=>{if(running){showNotice(__('new_session_busy'),'warn');return;}post('/new').then(async response=>{if(!response.ok){showNotice((await response.text()).trim()||__('error_loading'),'warn');return;}log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();sessionFilter='';const search=$('#session-search');if(search)search.value='';loadSessions();updateActionAvailability();fetchStatus();});};
+$('#btn-new').onclick=()=>{if(running){showAppToast(__('new_session_busy'),'warn');return;}post('/new').then(async response=>{if(!response.ok){showAppToast((await response.text()).trim()||__('error_loading'),'danger');return;}log.innerHTML='';log.appendChild(welcome);showWelcome();resetItems();hasVisibleHistory=false;checkpointCount=0;todosState=[];todosDismissed=false;renderTodoPanel();resetCumulativeStats();sessionFilter='';const search=$('#session-search');if(search)search.value='';loadSessions();updateActionAvailability();fetchStatus();}).catch(error=>showAppToast(error instanceof Error?error.message:String(error),'danger'));};
 // model switcher popover (desktop ModelSwitcher)
 function providerLabel(p){
   switch(p){
@@ -4739,7 +4772,7 @@ document.addEventListener('click',e=>{
   e.stopPropagation();
   const name=del.dataset.name;
   const target=sessionsCache.find(s=>s.name===name);
-  if(target&&target.current){showNotice(__('cannot_delete_active'),'warn');return;}
+  if(target&&target.current){showAppToast(__('cannot_delete_active'),'warn');return;}
   openDeleteSession(name);
 });
 $('#delete-modal-close').onclick=()=>closeDeleteSession();
@@ -4750,9 +4783,9 @@ $('#delete-confirm').onclick=()=>{
   if(!name)return;
   closeDeleteSession();
   post('/delete-session',{name}).then(async r=>{
-    if(!r.ok){showNotice((await r.text()).trim()||('HTTP '+r.status),'warn');}
+    if(!r.ok){showAppToast((await r.text()).trim()||('HTTP '+r.status),'danger');}
     loadSessions();
-  }).catch(()=>showNotice(__('delete_failed'),'warn'));
+  }).catch(()=>showAppToast(__('delete_failed'),'danger'));
 };
 
 // welcome examples
@@ -4835,11 +4868,11 @@ async function loadAttachments(){
 }
 async function deleteManagedAttachment(path){
   if(!window.confirm(__('attachments_delete_warning')))return;
-  const response=await post('/attachments/delete',{path});if(!response.ok){showNotice((await response.text()).trim()||__('attachments_delete_failed'),'warn');return;}await loadAttachments();
+  try{const response=await post('/attachments/delete',{path});if(!response.ok){showAppToast((await response.text()).trim()||__('attachments_delete_failed'),'danger');return;}await loadAttachments();}catch(error){showAppToast(error instanceof Error?error.message:String(error),'danger');}
 }
 async function clearManagedAttachments(){
   if(!window.confirm(__('attachments_clear_warning')))return;
-  const response=await post('/attachments/clear',{});if(!response.ok){showNotice((await response.text()).trim()||__('attachments_delete_failed'),'warn');return;}await loadAttachments();
+  try{const response=await post('/attachments/clear',{});if(!response.ok){showAppToast((await response.text()).trim()||__('attachments_delete_failed'),'danger');return;}await loadAttachments();}catch(error){showAppToast(error instanceof Error?error.message:String(error),'danger');}
 }
 function openSettings(){
   if(!ordinaryOverlayAllowed())return;

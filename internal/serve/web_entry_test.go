@@ -219,7 +219,9 @@ func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
 		`.attachment-storage__actions{display:flex;`,
 		`.settings-check--task-errors strong{white-space:nowrap}`,
 		`.app-toast-region{position:fixed;`,
+		`.app-toast--success{`,
 		`.app-toast--warn{`,
+		`.app-toast--danger{`,
 	} {
 		if !strings.Contains(css, marker) {
 			t.Errorf("settings stylesheet missing %q", marker)
@@ -230,6 +232,52 @@ func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
 	}
 	if strings.Contains(js, `settingsState(message,tone);showNotice(message,tone)`) {
 		t.Fatal("settings save result must not be appended to the transcript")
+	}
+}
+
+func TestServeOperationalFeedbackDoesNotEnterTranscript(t *testing.T) {
+	js := string(baizeJS)
+	css := string(baizeCSS)
+	for _, marker := range []string{
+		`APP_TOAST_DURATIONS={info:3000,success:3000,warn:6000,danger:8000}`,
+		`toast.setAttribute('role','alert')`,
+		`app-toast__close`,
+		`showAppToast(error instanceof Error?error.message:__('auth_failed'),'danger',0,'connection')`,
+		`es.onopen=()=>{setConnState('connected');clearAppToast('connection')`,
+		`focusDecisionPrompt(__('workspace_decision_pending'))`,
+		`setDeliveryCardError(card,String(err&&err.message||err))`,
+		`showAppToast(__('no_checkpoints'),'warn')`,
+		`showAppToast(__('extensions_reloading'),'info')`,
+		`showAppToast(__('extensions_reloaded'),'success')`,
+		`showAppToast((await response.text()).trim()||__('submit_failed'),'danger')`,
+		`showAppToast(__('cannot_delete_active'),'warn')`,
+	} {
+		if !strings.Contains(js, marker) {
+			t.Errorf("operational feedback contract missing %q", marker)
+		}
+	}
+	if strings.Contains(js, `showNotice(`) {
+		t.Fatal("page operations must not use the legacy transcript notice helper")
+	}
+	for _, marker := range []string{
+		`appendTranscriptNotice(`,
+		`case 'notice': { if(attachAuditNotice(e))`,
+		`log.appendChild(el('div','msg--error'`,
+		`const it = { id: genItemId(), kind: 'notice', text:`,
+	} {
+		if !strings.Contains(js, marker) {
+			t.Errorf("runtime transcript feedback contract missing %q", marker)
+		}
+	}
+	for _, marker := range []string{
+		`.app-toast{display:flex;`,
+		`pointer-events:auto`,
+		`.app-toast__close{`,
+		`.delivery-card__error,.decision-inline-notice{`,
+	} {
+		if !strings.Contains(css, marker) {
+			t.Errorf("operational feedback stylesheet missing %q", marker)
+		}
 	}
 }
 
