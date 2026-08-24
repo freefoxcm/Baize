@@ -3613,15 +3613,19 @@ loadInitialTaskErrorVisibility().finally(reloadHistory);
 
 // ── session list ──
 let sessionCount=0,sessionsNextCursor='',sessionsTotal=0,sessionsSearchTimer=null;
-const TIMELINE_TRAVEL_MS=520,TIMELINE_TRAVEL_SPAN=24,TIMELINE_COLLAPSED_KEY='baize-timeline-collapsed-dates';
+const TIMELINE_TRAVEL_MS=520,TIMELINE_TRAVEL_SPAN=24,TIMELINE_COLLAPSED_KEY='baize-timeline-collapsed-dates',TIMELINE_OVERRIDES_KEY='baize-timeline-date-overrides';
 let timelineRedrawFrame=0,timelineSettlePending=false,timelineTravelFrame=0,timelineTravelResolve=null,timelineTravelGeneration=0,timelineCurrentPosition=null,timelinePathShape='',timelineResumePending=false,timelineSelectedKey='',timelineConfirmedKey='';
 let timelineGeometry={total:0,anchors:new Map()};
 const timelinePulseTimers=new WeakMap();
-function readCollapsedTimelineDates(){
-  try{const raw=localStorage.getItem(TIMELINE_COLLAPSED_KEY);if(!raw)return new Set();const values=JSON.parse(raw);return Array.isArray(values)&&values.every(value=>typeof value==='string')?new Set(values):new Set();}catch{return new Set();}
+function readTimelineStorage(key){
+  try{const raw=localStorage.getItem(key);return raw?JSON.parse(raw):null;}catch{return null;}
 }
-const collapsedTimelineDates=readCollapsedTimelineDates();
-function storeCollapsedTimelineDates(){try{localStorage.setItem(TIMELINE_COLLAPSED_KEY,JSON.stringify(Array.from(collapsedTimelineDates).sort()));}catch{}}
+function readTimelineDateOverrides(){
+  const stored=readTimelineStorage(TIMELINE_OVERRIDES_KEY);if(stored&&typeof stored==='object'&&!Array.isArray(stored)){const entries=Object.entries(stored);if(entries.every(([,value])=>typeof value==='boolean'))return new Map(entries);}
+  const legacy=readTimelineStorage(TIMELINE_COLLAPSED_KEY);return Array.isArray(legacy)&&legacy.every(value=>typeof value==='string')?new Map(legacy.map(value=>[value,true])):new Map();
+}
+const timelineDateOverrides=readTimelineDateOverrides();
+function storeTimelineDateOverrides(){try{localStorage.setItem(TIMELINE_OVERRIDES_KEY,JSON.stringify(Object.fromEntries(Array.from(timelineDateOverrides.entries()).sort(([left],[right])=>left.localeCompare(right)))));}catch{}}
 function sessionTitle(s){
   if(s.draft)return __('new_session_draft');
   const name=String(s.name||'').replace(/^.*\//,'').replace(/\.jsonl$/,'');
@@ -3640,7 +3644,11 @@ function sessionDateLabel(key){
   return new Intl.DateTimeFormat(__LANG==='zh'?'zh-CN':undefined,{year:year===today.getFullYear()?undefined:'numeric',month:'short',day:'numeric'}).format(date);
 }
 function sessionTime(value){const date=new Date(value);return Number.isNaN(date.getTime())?'':new Intl.DateTimeFormat(__LANG==='zh'?'zh-CN':undefined,{hour:'2-digit',minute:'2-digit'}).format(date);}
-function timelineDateCollapsed(key){return!sessionFilter.trim()&&collapsedTimelineDates.has(key);}
+function timelineDateDefaultExpanded(key){
+  const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(key);if(!match)return false;const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),date=new Date(year,month-1,day);if(date.getFullYear()!==year||date.getMonth()!==month-1||date.getDate()!==day)return false;
+  const today=new Date(),delta=(Date.UTC(today.getFullYear(),today.getMonth(),today.getDate())-Date.UTC(year,month-1,day))/86400000;return delta>=0&&delta<3;
+}
+function timelineDateCollapsed(key){if(sessionFilter.trim())return false;if(timelineDateOverrides.has(key))return timelineDateOverrides.get(key);return!timelineDateDefaultExpanded(key);}
 function timelineDisplayKey(sessionKey){
   const session=sessionsCache.find(entry=>timelineSessionKey(entry)===sessionKey);if(!session)return sessionKey;
   const dateKey=sessionDateKey(session.updatedAt);return timelineDateCollapsed(dateKey)?timelineDateNodeKey(dateKey):sessionKey;
@@ -3692,7 +3700,7 @@ function syncTimelineSelection(){
   list.querySelectorAll('.timeline-date').forEach(date=>{const key=date.dataset.dateKey,contains=sessionsCache.some(session=>sessionDateKey(session.updatedAt)===key&&timelineSessionKey(session)===timelineSelectedKey),active=contains&&timelineDateCollapsed(key);date.classList.toggle('timeline-date--contains-current',active);if(active)date.setAttribute('aria-current','true');else date.removeAttribute('aria-current');});
 }
 function toggleTimelineDate(date,groupSessions){
-  if(sessionFilter.trim())return;const key=date.dataset.dateKey,collapse=!collapsedTimelineDates.has(key);if(collapse)collapsedTimelineDates.add(key);else collapsedTimelineDates.delete(key);storeCollapsedTimelineDates();cancelTimelineTravel();groupSessions.hidden=collapse;date.setAttribute('aria-expanded',collapse?'false':'true');syncTimelineSelection();scheduleTimelineRedraw({settle:true});
+  if(sessionFilter.trim())return;const key=date.dataset.dateKey,collapse=!timelineDateCollapsed(key);timelineDateOverrides.set(key,collapse);storeTimelineDateOverrides();cancelTimelineTravel();groupSessions.hidden=collapse;date.setAttribute('aria-expanded',collapse?'false':'true');syncTimelineSelection();scheduleTimelineRedraw({settle:true});
 }
 async function resumeTimelineSession(session){
   const targetKey=timelineSessionKey(session);if(running||timelineResumePending||targetKey===timelineSelectedKey)return;const previousKey=timelineSelectedKey;timelineResumePending=true;timelineSelectedKey=targetKey;syncTimelineSelection();const travelDone=animateTimelineTravelToSelection();
