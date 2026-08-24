@@ -416,6 +416,7 @@ var English = Messages{
 	SetupManagerTitle:        "Provider configuration",
 	SetupAddOpenAI:           "Add OpenAI-compatible provider",
 	SetupAddAnthropic:        "Add Anthropic-compatible provider",
+	SetupAddResponses:        "Add Responses-compatible provider",
 	SetupProviderExistsFmt:   "Provider %q already exists. Manage the existing provider to edit its models or settings.",
 	SetupSaveExit:            "Save and exit",
 	SetupSaveExitDesc:        "write staged changes",
@@ -475,6 +476,9 @@ var English = Messages{
 	CustomPromptAPIKey:   "Enter API Key",
 	CustomPromptWindow:   "Context window in tokens (a value below the model's real window makes compaction fire early)",
 	CustomAddedFmt:       "Added custom model: %s",
+
+	ResponsesProviderDesc:   "Add an OpenAI Responses API compatible model",
+	ResponsesAddMethodLabel: "Add Responses-compatible model - Select add method",
 
 	// Anthropic compatible provider
 	AnthropicProviderDesc:          "Add third-party Anthropic compatible model",

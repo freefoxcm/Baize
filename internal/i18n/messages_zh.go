@@ -417,6 +417,7 @@ var Chinese = Messages{
 	SetupManagerTitle:        "供应商配置",
 	SetupAddOpenAI:           "添加 OpenAI 兼容供应商",
 	SetupAddAnthropic:        "添加 Anthropic 兼容供应商",
+	SetupAddResponses:        "添加 Responses 兼容供应商",
 	SetupProviderExistsFmt:   "供应商 %q 已存在。请进入现有供应商管理来编辑模型或设置。",
 	SetupSaveExit:            "保存并退出",
 	SetupSaveExitDesc:        "写入当前暂存的修改",
@@ -476,6 +477,9 @@ var Chinese = Messages{
 	CustomPromptAPIKey:   "请输入 API Key",
 	CustomPromptWindow:   "上下文窗口(tokens,填得比模型真实窗口小会导致过早压缩)",
 	CustomAddedFmt:       "已添加自定义模型: %s",
+
+	ResponsesProviderDesc:   "添加 OpenAI Responses API 兼容模型",
+	ResponsesAddMethodLabel: "添加 Responses 兼容模型 - 选择添加方式",
 
 	// Anthropic 兼容 provider
 	AnthropicProviderDesc:          "添加第三方 Anthropic 兼容模型",
