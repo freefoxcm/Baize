@@ -1095,6 +1095,14 @@ function showNotice(text, tone) {
   log.appendChild(n);
   scrollDown(true); // synchronous feedback to a user action — always reveal
 }
+let appToastTimer=0;
+function showAppToast(text,tone,duration){
+  const region=$('#app-toast-region');if(!region)return;
+  if(appToastTimer){clearTimeout(appToastTimer);appToastTimer=0;}
+  const toast=el('div','app-toast'+(tone==='warn'?' app-toast--warn':''),text);
+  region.replaceChildren(toast);
+  appToastTimer=setTimeout(()=>{toast.classList.add('app-toast--leaving');setTimeout(()=>{if(region.firstChild===toast)region.replaceChildren();},160);appToastTimer=0;},duration);
+}
 function hiddenTranscriptTool(name){
   const n=String(name||'').trim().toLowerCase();
   return n==='todo_write'||n==='exit_plan_mode';
@@ -4907,8 +4915,8 @@ settingsForm.onsubmit=async event=>{
     if(response.status===409){const view=await response.json();populateSettings(view);if(floorApplied){try{await rollbackFloor();}catch(error){fetchStatus();settingsState(__('settings_conflict')+' '+String(error&&error.message||error),'danger');return;}}settingsState(__('settings_conflict'),'warn');return;}
     if(!response.ok)throw new Error((await response.text()).trim()||('HTTP '+response.status));
     const view=await response.json();populateSettings(view);qualityFloorDraft=qualityFloor;updateModeButtons();
-    const message=view.apply==='pending'?__('settings_pending'):__('settings_applied');const tone=view.apply==='pending'?'warn':'';
-    settingsState(message,tone);showNotice(message,tone);collapseWorkbench({restoreFocus:true});
+    const pending=view.apply==='pending';const message=pending?__('settings_pending'):__('settings_applied');const tone=pending?'warn':'success';
+    showAppToast(message,tone,pending?6000:3000);collapseWorkbench({restoreFocus:true});
   }catch(error){
     let message=error instanceof Error?error.message:String(error);
     if(floorApplied){try{await rollbackFloor();}catch(rollbackError){fetchStatus();message+='; '+String(rollbackError&&rollbackError.message||rollbackError);}}

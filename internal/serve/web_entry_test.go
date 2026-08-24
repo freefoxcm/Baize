@@ -208,6 +208,7 @@ func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
 		`if(qualityFloorDraft!==qualityFloor){await requestQualityFloor(qualityFloorDraft)`,
 		`await rollbackFloor();`,
 		`settingsState(__('settings_conflict'),'warn');return;`,
+		`showAppToast(message,tone,pending?6000:3000)`,
 		`collapseWorkbench({restoreFocus:true})`,
 	} {
 		if !strings.Contains(js, marker) {
@@ -217,10 +218,18 @@ func TestServeSettingsLayoutAndSaveContract(t *testing.T) {
 	for _, marker := range []string{
 		`.attachment-storage__actions{display:flex;`,
 		`.settings-check--task-errors strong{white-space:nowrap}`,
+		`.app-toast-region{position:fixed;`,
+		`.app-toast--warn{`,
 	} {
 		if !strings.Contains(css, marker) {
 			t.Errorf("settings stylesheet missing %q", marker)
 		}
+	}
+	if !strings.Contains(html, `id="app-toast-region" role="status" aria-live="polite" aria-atomic="true"`) {
+		t.Fatal("settings save toast region must be a polite atomic live region")
+	}
+	if strings.Contains(js, `settingsState(message,tone);showNotice(message,tone)`) {
+		t.Fatal("settings save result must not be appended to the transcript")
 	}
 }
 
