@@ -390,6 +390,7 @@ var ChineseTraditional = Messages{
 	SetupManagerTitle:        "供應商設定",
 	SetupAddOpenAI:           "新增 OpenAI 相容供應商",
 	SetupAddAnthropic:        "新增 Anthropic 相容供應商",
+	SetupAddResponses:        "新增 Responses 相容供應商",
 	SetupProviderExistsFmt:   "供應商 %q 已存在。請進入現有供應商管理來編輯模型或設定。",
 	SetupSaveExit:            "儲存並離開",
 	SetupSaveExitDesc:        "寫入目前暫存的修改",
@@ -449,6 +450,9 @@ var ChineseTraditional = Messages{
 	CustomPromptAPIKey:   "請輸入 API Key",
 	CustomPromptWindow:   "上下文視窗(tokens,填得比模型真實視窗小會導致過早壓縮)",
 	CustomAddedFmt:       "已新增自訂模型: %s",
+
+	ResponsesProviderDesc:   "新增 OpenAI Responses API 相容模型",
+	ResponsesAddMethodLabel: "新增 Responses 相容模型 - 選擇新增方式",
 
 	// Anthropic 相容 provider
 	AnthropicProviderDesc:          "新增第三方 Anthropic 相容模型",

@@ -433,6 +433,7 @@ type Messages struct {
 	SetupManagerTitle        string
 	SetupAddOpenAI           string
 	SetupAddAnthropic        string
+	SetupAddResponses        string
 	SetupProviderExistsFmt   string
 	SetupSaveExit            string
 	SetupSaveExitDesc        string
@@ -492,6 +493,10 @@ type Messages struct {
 	CustomPromptAPIKey   string // "Enter API Key"
 	CustomPromptWindow   string // "Enter context window in tokens"
 	CustomAddedFmt       string // "Added custom model: %s"
+
+	// Responses compatible provider
+	ResponsesProviderDesc   string
+	ResponsesAddMethodLabel string
 
 	// Anthropic compatible provider
 	AnthropicProviderDesc          string // "Add Anthropic API compatible model"
