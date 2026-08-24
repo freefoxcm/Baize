@@ -2,7 +2,7 @@
 <html lang="en" data-language="__LANG__">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Baize</title>
 <link rel="icon" type="image/svg+xml" href="/assets/logo-symbol.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -300,10 +300,38 @@
           </button>
           <div class="effortsw__menu" id="effort-menu" style="display:none"></div>
         </div>
+        <button type="button" class="composer-mobile-trigger composer-mobile-trigger--approval" id="btn-mobile-approval" aria-haspopup="dialog" aria-controls="mobile-controls-dialog" aria-expanded="false" title="__('modebar_title')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span id="mobile-approval-value">__('mode_ask')</span>
+        </button>
+        <button type="button" class="composer-mobile-trigger composer-mobile-trigger--more" id="btn-mobile-controls" aria-haspopup="dialog" aria-controls="mobile-controls-dialog" aria-expanded="false" title="__('mobile_controls_title')" aria-label="__('mobile_controls_title')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h2"/><path d="M10 17h10"/><circle cx="8" cy="17" r="2"/></svg>
+        </button>
       </div>
     </div>
   </footer>
 </div>
+
+<dialog class="mobile-controls-dialog" id="mobile-controls-dialog" aria-labelledby="mobile-controls-title">
+  <header class="mobile-controls-dialog__head">
+    <div><span class="mobile-controls-dialog__eyebrow">Baize</span><h2 id="mobile-controls-title">__('mobile_controls_title')</h2></div>
+    <button type="button" class="mobile-controls-dialog__close" id="mobile-controls-close" aria-label="__('close')" title="__('close')">&times;</button>
+  </header>
+  <div class="mobile-controls-dialog__body">
+    <section class="mobile-controls-dialog__section" id="mobile-task-section">
+      <h3>__('task_mode_title')</h3>
+      <div class="mobile-controls-dialog__slot" id="mobile-task-slot"></div>
+    </section>
+    <section class="mobile-controls-dialog__section" id="mobile-approval-section">
+      <h3>__('modebar_title')</h3>
+      <div class="mobile-controls-dialog__slot" id="mobile-approval-slot"></div>
+    </section>
+    <section class="mobile-controls-dialog__section" id="mobile-effort-section">
+      <h3>__('effort_title')</h3>
+      <div class="mobile-controls-dialog__slot" id="mobile-effort-slot"></div>
+    </section>
+  </div>
+</dialog>
 
 <div class="app-toast-region" id="app-toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="settings-backdrop" id="settings-backdrop" hidden></div>
