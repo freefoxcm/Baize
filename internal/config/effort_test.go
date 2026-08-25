@@ -68,14 +68,44 @@ func TestDeepSeekV4VisionEffortCapabilityBehindCustomProxy(t *testing.T) {
 		t.Fatalf("proxied vision low = %q/%v, want low/nil", got, err)
 	}
 
-	unknown := &ProviderEntry{
+	oxAlpha := &ProviderEntry{
 		Name:    "opencode-proxy",
 		Kind:    "openai",
 		BaseURL: vision.BaseURL,
 		Model:   "ox-alpha-free",
 	}
+	oxAlphaCap := EffortCapabilityForEntry(oxAlpha)
+	oxAlphaWant := []string{"auto", "low", "high", "max"}
+	if !oxAlphaCap.Supported || !stringSlicesEqual(oxAlphaCap.Levels, oxAlphaWant) || oxAlphaCap.Default != "auto" {
+		t.Fatalf("proxied Ox Alpha capability = %+v, want levels %v default auto", oxAlphaCap, oxAlphaWant)
+	}
+	if protocol := ReasoningProtocolForEntry(oxAlpha); protocol != ReasoningProtocolOpenAI {
+		t.Fatalf("proxied Ox Alpha protocol = %q, want openai", protocol)
+	}
+	if got, err := NormalizeEffort(oxAlpha, "max"); err != nil || got != "max" {
+		t.Fatalf("proxied Ox Alpha max = %q/%v, want max/nil", got, err)
+	}
+	if got := EffectiveSupportedEfforts(oxAlpha); !stringSlicesEqual(got, []string{"low", "high", "max"}) {
+		t.Fatalf("proxied Ox Alpha wire vocabulary = %v", got)
+	}
+	if got := EffectiveEffort(oxAlpha); got != "" {
+		t.Fatalf("proxied Ox Alpha auto effort = %q, want provider default", got)
+	}
+
+	unknown := &ProviderEntry{Name: "opencode-proxy", Kind: "openai", BaseURL: vision.BaseURL, Model: "unknown-future-model"}
 	if unknownCap := EffortCapabilityForEntry(unknown); unknownCap.Supported {
 		t.Fatalf("unknown proxied model capability = %+v, want unsupported", unknownCap)
+	}
+	oxAlpha.ReasoningProtocol = ReasoningProtocolNone
+	oxAlpha.Effort = "max"
+	if disabled := EffortCapabilityForEntry(oxAlpha); disabled.Supported || len(EffectiveSupportedEfforts(oxAlpha)) != 0 || EffectiveEffort(oxAlpha) != "" {
+		t.Fatalf("explicitly disabled Ox Alpha capability = %+v", disabled)
+	}
+	oxAlpha.ReasoningProtocol = ""
+	oxAlpha.Effort = ""
+	oxAlpha.SupportedEfforts = []string{"low", "high"}
+	if custom := EffortCapabilityForEntry(oxAlpha); !stringSlicesEqual(custom.Levels, []string{"auto", "low", "high"}) {
+		t.Fatalf("custom Ox Alpha capability = %+v, want explicit vocabulary", custom)
 	}
 }
 

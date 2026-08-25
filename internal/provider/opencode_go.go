@@ -29,6 +29,7 @@ const (
 // OpenCodeGoChatModels is the official Chat Completions catalog.
 func OpenCodeGoChatModels() map[string]OpenCodeGoModelLimits {
 	return map[string]OpenCodeGoModelLimits{
+		"ox-alpha-free":     {Context: 1_000_000, MaxOutput: 131_072},
 		"glm-5.3":           {Context: 1_000_000, MaxOutput: 131_072},
 		"glm-5.2":           {Context: 1_000_000, MaxOutput: 131_072},
 		"glm-5.1":           {Context: 202_752, MaxOutput: 32_768},

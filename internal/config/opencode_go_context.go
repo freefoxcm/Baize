@@ -15,6 +15,7 @@ const (
 
 func normalizeLegacyOpenCodeGoInstalls(c *Config) bool {
 	changed := normalizeLegacyOpenCodeGoKimiK3Catalog(c)
+	changed = normalizeLegacyOpenCodeGoOxAlphaCatalog(c) || changed
 	changed = normalizeLegacyOpenCodeGoRouteCatalog(c) || changed
 	changed = normalizeLegacyOpenCodeGoContextWindows(c) || changed
 	changed = normalizeLegacyOpenCodeGoBilling(c) || changed
@@ -404,7 +405,8 @@ func openCodeGoCatalogMatches(presetID string, p, canonical ProviderEntry) bool 
 	if stringSlicesEqual(p.Models, canonical.Models) {
 		return true
 	}
-	return presetID == "opencode-go" && (stringSlicesEqual(p.Models, opencodeGoModels) || stringSlicesEqual(p.Models, legacyOpenCodeGoModels))
+	return presetID == "opencode-go" && (stringSlicesEqual(p.Models, opencodeGoModels) ||
+		stringSlicesEqual(p.Models, preOxAlphaOpenCodeGoModels) || stringSlicesEqual(p.Models, legacyOpenCodeGoModels))
 }
 
 func migrateOpenCodeGoProviderWindow(p *ProviderEntry, canonical ProviderEntry, legacy int) bool {

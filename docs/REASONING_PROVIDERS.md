@@ -25,6 +25,7 @@ get a tailored request shape automatically — no extra config needed.
 | Kimi CN/Global `kimi-k3` | `api.moonshot.cn/v1`, `api.moonshot.ai/v1` | `reasoning_effort` | `low`, `high`, `max` | Always thinks; defaults to `max`. Reasonix replays the complete assistant message, uses `max_completion_tokens`, and omits K3's fixed sampling fields. |
 | Custom Kimi K3 gateway | Any OpenAI-compatible K3 endpoint | `reasoning_effort` | `low`, `high`, `max` | Select `reasoning_protocol = "kimi-k3"` to opt into K3's complete-message replay and request shape. |
 | OpenCode Go `kimi-k3` | `opencode.ai/zen/go/v1` | `reasoning_effort` | `high`, `max` | Relay-specific scale; defaults to `max` and keeps the relay's standard OpenAI-compatible request shape. |
+| OpenCode Go or proxy `ox-alpha-free` | `opencode.ai/zen/go/v1` or any OpenAI-compatible proxy | `reasoning_effort` | `auto`, `low`, `high`, `max` | Recognised by exact model ID. `auto` omits the field; an explicit `reasoning_protocol = "none"` still disables the control. |
 | Token Rhythm DeepSeek V4 | `tokenrhythm.studio/v1` | DeepSeek `thinking.type` + `reasoning_effort` | Model-specific DeepSeek scale | Selected through the preset's model override, independent of the gateway host. |
 | Token Rhythm GLM 5/5.1/5.2 | `tokenrhythm.studio/v1` | GLM `thinking.type` (`enabled`\|`disabled`) | `auto`, `enabled`, `disabled` | Selected through the preset's model override; `reasoning_effort` is omitted. |
 

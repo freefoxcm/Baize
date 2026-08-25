@@ -1532,8 +1532,7 @@ func normalizeLegacyOpenCodeGoKimiK3Catalog(c *Config) (changed bool) {
 	}
 	for i := range c.Providers {
 		p := &c.Providers[i]
-		presetID := strings.TrimSpace(p.PresetID)
-		if (presetID != "opencode-go" && (presetID != "" || strings.TrimSpace(p.Name) != "opencode-go")) ||
+		if !isMigratableOpenCodeGoChatEntry(p) ||
 			!strings.EqualFold(strings.TrimSpace(p.Kind), "openai") ||
 			normalizedBaseURLForMigration(p.BaseURL) != "https://opencode.ai/zen/go/v1" ||
 			!stringSlicesEqual(p.Models, legacyOpenCodeGoModels) ||
@@ -1541,7 +1540,7 @@ func normalizeLegacyOpenCodeGoKimiK3Catalog(c *Config) (changed bool) {
 			continue
 		}
 		p.Models = append([]string(nil), opencodeGoModels...)
-		p.VisionModels = migrateKimiK3VisionModels(p.VisionModels, nil)
+		p.VisionModels = migrateLegacyOpenCodeGoVisionModels(p.VisionModels)
 		mergeMissingKimiK3Override(p, ProviderModelOverride{
 			ReasoningProtocol: ReasoningProtocolOpenAI,
 			SupportedEfforts:  []string{"high", "max"},

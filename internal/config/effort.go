@@ -33,6 +33,11 @@ type modelReasoningCapability struct {
 }
 
 var modelReasoningCapabilities = map[string]modelReasoningCapability{
+	"ox-alpha-free": {
+		Protocol: ReasoningProtocolOpenAI,
+		Levels:   []string{"low", "high", "max"},
+		Default:  "auto",
+	},
 	"deepseek-v4-flash": {
 		Protocol: ReasoningProtocolDeepSeek,
 		Levels:   []string{"disabled", "low", "high", "max"},
@@ -282,7 +287,7 @@ func EffortDisplay(e *ProviderEntry) string {
 // DefaultEffort (or the first supported level) the runtime default. Empty means
 // provider default / omit the provider-specific effort field.
 func EffectiveEffort(e *ProviderEntry) string {
-	if e == nil {
+	if e == nil || explicitReasoningProtocol(e) == ReasoningProtocolNone {
 		return ""
 	}
 	if effort := normalizeStoredEffort(e.Effort); effort != "" {
@@ -303,6 +308,26 @@ func EffectiveEffort(e *ProviderEntry) string {
 		return supported[0]
 	}
 	return def
+}
+
+// EffectiveSupportedEfforts returns explicit provider metadata first, then an
+// exact built-in model vocabulary. It does not make auto select a concrete
+// effort; callers use it only to validate and preserve explicit wire values.
+func EffectiveSupportedEfforts(e *ProviderEntry) []string {
+	if e == nil || explicitReasoningProtocol(e) == ReasoningProtocolNone {
+		return nil
+	}
+	if supported := normalizedSupportedEfforts(e); len(supported) > 0 {
+		return supported
+	}
+	cap, ok := resolvedModelReasoningCapability(e)
+	if !ok {
+		return nil
+	}
+	if explicit := explicitReasoningProtocol(e); explicit != "" && explicit != cap.Protocol {
+		return nil
+	}
+	return append([]string(nil), cap.Levels...)
 }
 
 func normalizeEffortConfig(c *Config) {

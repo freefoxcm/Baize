@@ -28,8 +28,8 @@ func TestNormalizeLegacyOpenCodeGoInstallsAppliesCatalogAndWindowsInOnePass(t *t
 	}
 	for i := range c.Providers {
 		got := c.Providers[i]
-		if !got.HasModel("kimi-k3") {
-			t.Fatalf("provider %q did not receive the Kimi K3 catalog update", got.Name)
+		if !got.HasModel("kimi-k3") || !got.HasModel("ox-alpha-free") || !got.HasVisionModel("ox-alpha-free") {
+			t.Fatalf("provider %q did not receive the current Chat catalog", got.Name)
 		}
 		for model, limits := range provider.OpenCodeGoChatModels() {
 			if window := got.ModelOverrides[model].ContextWindow; window != limits.Context {
@@ -39,6 +39,51 @@ func TestNormalizeLegacyOpenCodeGoInstallsAppliesCatalogAndWindowsInOnePass(t *t
 	}
 	if normalizeLegacyOpenCodeGoInstalls(c) {
 		t.Fatal("combined OpenCode Go migration was not idempotent")
+	}
+}
+
+func TestNormalizeLegacyOpenCodeGoOxAlphaCatalogPreservesCustomChoices(t *testing.T) {
+	canonical := ProviderEntry{
+		Name:         "opencode-go",
+		Kind:         "openai",
+		BaseURL:      "https://opencode.ai/zen/go/v1",
+		Models:       append([]string(nil), preOxAlphaOpenCodeGoModels...),
+		VisionModels: append([]string(nil), preOxAlphaOpenCodeGoVisionModels...),
+		Default:      "glm-5.3",
+		PresetID:     "opencode-go",
+	}
+	customModels := canonical
+	customModels.Name = "opencode-go-custom-models"
+	customModels.Models = append(customModels.Models, "private-model")
+	customEndpoint := canonical
+	customEndpoint.Name = "opencode-go-custom-endpoint"
+	customEndpoint.BaseURL = "https://proxy.example/v1"
+	customVision := canonical
+	customVision.VisionModels = []string{}
+	recommended := canonical
+	recommended.PresetID = "opencode-go-recommended"
+	c := &Config{Providers: []ProviderEntry{canonical, customModels, customEndpoint, customVision, recommended}}
+
+	if !normalizeLegacyOpenCodeGoOxAlphaCatalog(c) {
+		t.Fatal("Ox Alpha catalog migration did not report a change")
+	}
+	if !c.Providers[0].HasModel("ox-alpha-free") || !c.Providers[0].HasVisionModel("ox-alpha-free") {
+		t.Fatalf("canonical catalog = %+v, want Ox Alpha model and vision capability", c.Providers[0])
+	}
+	if c.Providers[0].ModelOverrides["ox-alpha-free"].ContextWindow != 1_000_000 {
+		t.Fatalf("canonical Ox Alpha override = %+v", c.Providers[0].ModelOverrides["ox-alpha-free"])
+	}
+	if c.Providers[1].HasModel("ox-alpha-free") || c.Providers[2].HasModel("ox-alpha-free") {
+		t.Fatal("custom model catalog or endpoint was migrated")
+	}
+	if !c.Providers[3].HasModel("ox-alpha-free") || c.Providers[3].HasVisionModel("ox-alpha-free") {
+		t.Fatal("explicitly disabled vision choice was not preserved")
+	}
+	if !c.Providers[4].HasModel("ox-alpha-free") || !c.Providers[4].HasVisionModel("ox-alpha-free") {
+		t.Fatal("recommended bundle Chat entry was not migrated")
+	}
+	if normalizeLegacyOpenCodeGoOxAlphaCatalog(c) {
+		t.Fatal("Ox Alpha catalog migration was not idempotent")
 	}
 }
 
