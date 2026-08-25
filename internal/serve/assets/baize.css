@@ -10,7 +10,7 @@
   --violet:#a98b72;--violet-soft:rgba(169,139,114,.15);
   --hl-keyword:#d99475;--hl-string:#98b88b;--hl-number:#d6ae70;--hl-func:#8cb0b8;--hl-var:#ccb184;--hl-deletion:#dc755d;
   --composer-bg:#302c28;--composer-fg:#f3ede4;--assistant-bg:transparent;--assistant-fg:#f3ede4;
-  --glass-panel:var(--panel);--glass-sidebar:var(--sidebar-bg);--glass-footer:var(--footer-bg);--glass-composer:var(--composer-bg);--glass-popover:var(--card);--glass-filter:none;
+  --glass-panel:var(--panel);--glass-sidebar:var(--sidebar-bg);--glass-composer:var(--composer-bg);--glass-popover:var(--card);--glass-filter:none;--composer-glass-border:var(--border-strong);--composer-glass-shadow:var(--shadow-md);
   --shadow-sm:0 1px 0 rgba(0,0,0,.28);--shadow-md:0 8px 22px rgba(0,0,0,.22);--shadow-lg:0 18px 50px rgba(0,0,0,.42);
   --radius:8px;--radius-lg:12px;
   --rail-width:56px;--context-width:304px;--workspace-width:520px;
@@ -53,8 +53,8 @@
 :root[data-theme-family="light"] .diff-line--del{background:var(--danger-soft);color:var(--danger)}
 :root[data-theme-family="light"] .goal-chip:hover{background:color-mix(in srgb,var(--accent) 25%,transparent)}
 @supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
-  :root,:root[data-theme="charcoal-copper"]{--glass-panel:rgba(44,41,38,.78);--glass-sidebar:rgba(24,23,22,.82);--glass-footer:rgba(33,31,29,.72);--glass-composer:rgba(48,44,40,.78);--glass-popover:rgba(47,43,39,.88);--glass-filter:blur(16px) saturate(118%)}
-  :root[data-theme="ivory-morning"]{--glass-panel:rgba(255,250,242,.78);--glass-sidebar:rgba(238,231,220,.82);--glass-footer:rgba(238,231,220,.72);--glass-composer:rgba(255,250,242,.8);--glass-popover:rgba(255,250,242,.9);--glass-filter:blur(16px) saturate(112%)}
+  :root,:root[data-theme="charcoal-copper"]{--glass-panel:rgba(44,41,38,.78);--glass-sidebar:rgba(24,23,22,.82);--glass-composer:rgba(48,44,40,.66);--glass-popover:rgba(47,43,39,.88);--glass-filter:blur(16px) saturate(118%);--composer-glass-border:rgba(244,233,215,.24);--composer-glass-shadow:0 14px 34px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08)}
+  :root[data-theme="ivory-morning"]{--glass-panel:rgba(255,250,242,.78);--glass-sidebar:rgba(238,231,220,.82);--glass-composer:rgba(255,250,242,.72);--glass-popover:rgba(255,250,242,.9);--glass-filter:blur(16px) saturate(112%);--composer-glass-border:rgba(49,43,36,.18);--composer-glass-shadow:0 14px 34px rgba(73,60,43,.14),inset 0 1px 0 rgba(255,255,255,.72)}
 }
 /* Light mode: the sidebar wordmark stays dark and flat; only the welcome
    logo keeps the accent glow it has on the dark theme. */
@@ -75,9 +75,8 @@ input,textarea{font:inherit;color:inherit}
 .app--settings-open{--context-width:410px}
 .sidebar{grid-row:1/3;background:var(--sidebar-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .transcript{grid-column:3;grid-row:1;overflow-y:auto;padding:24px 28px;position:relative;background:var(--bg)}
-.footer{grid-column:3;grid-row:2;border-top:1px solid var(--border);background:var(--glass-footer);padding:12px 28px 16px;display:flex;flex-direction:column;gap:8px;position:relative}
-.footer::before{content:'';position:absolute;inset:-20px 0 auto 0;height:20px;background:linear-gradient(to top,var(--glass-footer),transparent);pointer-events:none}
-.footer,.activity-rail,.context-panel,.composer-card,.workspace-panel,.settings-drawer,.modelsw__menu,.attachment-menu,.task-mode__menu,.effortsw__menu,.slash-menu,.modal,.app-toast,.mobile-controls-dialog{-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter)}
+.footer{grid-column:3;grid-row:2;border-top:1px solid color-mix(in srgb,var(--border) 70%,transparent);background:transparent;padding:12px 28px 16px;display:flex;flex-direction:column;gap:8px;position:relative}
+.activity-rail,.context-panel,.composer-card,.workspace-panel,.settings-drawer,.modelsw__menu,.attachment-menu,.task-mode__menu,.effortsw__menu,.slash-menu,.modal,.app-toast,.mobile-controls-dialog{-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter)}
 
 /* ── left workbench ── */
 .activity-rail{grid-column:1;grid-row:1/3;z-index:12;display:flex;min-width:0;flex-direction:column;align-items:center;padding:8px 0;background:var(--glass-sidebar);border-right:1px solid var(--border)}
@@ -504,8 +503,8 @@ input,textarea{font:inherit;color:inherit}
 .slash-menu__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-top:1px solid var(--border);font-size:10.5px;color:var(--muted-2)}
 
 /* composer */
-.composer-card{position:relative;width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--glass-composer);color:var(--composer-fg);border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);overflow:visible;transition:border-color .18s ease,box-shadow .18s ease}
-.composer-card:focus-within{border-color:var(--accent);box-shadow:var(--shadow-md),0 0 0 3px var(--accent-soft)}
+.composer-card{position:relative;width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--glass-composer);color:var(--composer-fg);border:1px solid var(--composer-glass-border);border-radius:var(--radius-lg);box-shadow:var(--composer-glass-shadow);overflow:visible;transition:border-color .18s ease,box-shadow .18s ease}
+.composer-card:focus-within{border-color:var(--accent);box-shadow:var(--composer-glass-shadow),0 0 0 3px var(--accent-soft)}
 .composer{display:flex;gap:7px;align-items:flex-end;padding:10px 10px 10px 14px}
 .composer__caret{color:var(--accent);font-family:var(--mono);font-weight:600;font-size:16px;flex-shrink:0;line-height:38px}
 .composer__input{flex:1;border:none;background:none;color:var(--composer-fg);font-size:14px;line-height:1.5;padding:9px 0;outline:none;resize:none;min-height:22px;max-height:220px;field-sizing:content}
@@ -1060,6 +1059,6 @@ html[lang="zh"] .settings-check--task-errors small{font-size:10px;letter-spacing
   .timeline-date__chevron,.timeline-date__dot[data-pulse="true"],.session-item__dot[data-pulse="true"],.timeline-node[data-selected-pulse="true"] .timeline-date__dot::before,.timeline-node[data-selected-pulse="true"] .session-item__dot::before{animation:none!important;transition:none!important}
 }
 @media(prefers-reduced-transparency:reduce){
-  :root,:root[data-theme="charcoal-copper"]{--glass-panel:var(--panel);--glass-sidebar:var(--sidebar-bg);--glass-footer:var(--footer-bg);--glass-composer:var(--composer-bg);--glass-popover:var(--card);--glass-filter:none}
+  :root,:root[data-theme="charcoal-copper"]{--glass-panel:var(--panel);--glass-sidebar:var(--sidebar-bg);--glass-composer:var(--composer-bg);--glass-popover:var(--card);--glass-filter:none;--composer-glass-border:var(--border-strong);--composer-glass-shadow:var(--shadow-md)}
   .mobile-controls-dialog::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 }
