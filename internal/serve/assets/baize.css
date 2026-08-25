@@ -236,8 +236,9 @@ input,textarea{font:inherit;color:inherit}
 .cursor{display:inline-block;width:2px;height:1.1em;background:var(--accent);vertical-align:text-bottom;margin-left:2px;animation:blink 1s steps(2,start) infinite}
 @keyframes blink{to{visibility:hidden}}
 /* ── markdown rendering ── */
-.turn{position:relative;padding:10px 12px 4px;margin:0 -12px 2px;border-top:1px solid var(--border);border-radius:var(--radius-lg)}
-.turn:first-child{border-top:none}
+.turn{position:relative;padding:10px 0 4px;margin:0 0 2px}
+.turn::before{content:'';position:absolute;top:0;left:50%;width:min(100%,var(--chat-maxw));height:1px;background:var(--border);transform:translateX(-50%);pointer-events:none}
+.turn:first-child::before{display:none}
 .turn-summary{display:block;width:100%;max-width:var(--chat-maxw);margin:2px auto 4px;text-align:left;min-height:24px;padding:2px 7px;border:none;background:none;font-size:13px;font-weight:500;color:var(--muted);border-radius:6px;cursor:pointer;transition:color .15s,background .15s}
 .turn-summary:hover{color:var(--fg-2);background:color-mix(in srgb,var(--fg) 5%,transparent)}
 .turn-summary--folded{color:var(--fg-2)}
@@ -258,6 +259,8 @@ input,textarea{font:inherit;color:inherit}
 @keyframes jump-bar-in{to{opacity:1;transform:translate(0,-50%)}}
 .msg__text--md{white-space:normal}
 .msg__text--md .md-tail{white-space:pre-wrap;word-break:break-word}
+.msg--user .msg__text--md .md-sections>:first-child{margin-top:0}
+.msg--user .msg__text--md .md-sections>:last-child{margin-bottom:0}
 .md-sections>p{margin:0 0 .55em}
 .md-sections>p:last-child{margin-bottom:.3em}
 .md-sections h1,.md-sections h2,.md-sections h3,.md-sections h4{font-family:var(--heading);line-height:1.3;margin:.9em 0 .4em;font-weight:600}
