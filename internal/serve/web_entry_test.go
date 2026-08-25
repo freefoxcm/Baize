@@ -535,7 +535,6 @@ func TestServeMobileGlassComposerContract(t *testing.T) {
 	for _, want := range []string{
 		`viewport-fit=cover`,
 		`interactive-widget=resizes-content`,
-		`id="btn-mobile-approval"`,
 		`id="btn-mobile-controls"`,
 		`id="mobile-controls-dialog"`,
 		`id="mobile-task-slot"`,
@@ -554,8 +553,13 @@ func TestServeMobileGlassComposerContract(t *testing.T) {
 		`calc(8px + env(safe-area-inset-bottom))`,
 		`.composer-meta{height:44px;min-height:44px;max-height:44px;flex-wrap:nowrap`,
 		`.composer-mobile-trigger{display:inline-flex`,
+		`.modelsw__menu{position:absolute;inset:auto 0 calc(100% + 8px) auto;width:min(320px,calc(100vw - 24px));max-width:calc(100vw - 68px);max-height:min(42dvh,320px);overscroll-behavior:contain}`,
 		`.mobile-controls-dialog::backdrop`,
 		`.mobile-controls-dialog--active .task-mode__menu,.mobile-controls-dialog--active .effortsw__menu{position:static;display:grid!important`,
+		`.mobile-controls-dialog--active .task-mode__item.is-active,.mobile-controls-dialog--active .effortsw__item.is-active{border-color:`,
+		`.mobile-controls-dialog--active .task-mode__item.is-active::after,.mobile-controls-dialog--active .effortsw__item.is-active::after{content:'\2713'`,
+		`.mobile-controls-dialog--active .composer-modebar__thumb{box-shadow:`,
+		`.mobile-controls-dialog--active .composer-modebar__item.is-active{font-weight:750`,
 		`@media(prefers-reduced-transparency:reduce)`,
 	} {
 		if !strings.Contains(css, want) {
@@ -580,6 +584,12 @@ func TestServeMobileGlassComposerContract(t *testing.T) {
 	}
 	if strings.Contains(js, `cloneNode`) {
 		t.Fatal("mobile composer controls must move the existing nodes instead of cloning stateful controls")
+	}
+	if strings.Contains(html+js, `btn-mobile-approval`) || strings.Contains(js, `syncMobileApprovalTrigger`) {
+		t.Fatal("mobile composer must expose only the single chat-controls trigger")
+	}
+	if strings.Contains(css, `.modelsw__menu{position:fixed;`) {
+		t.Fatal("mobile model menu must not use fixed positioning inside the glass composer")
 	}
 }
 
