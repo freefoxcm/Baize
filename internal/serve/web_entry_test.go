@@ -527,6 +527,62 @@ func TestBaizeThemePaletteContracts(t *testing.T) {
 	}
 }
 
+func TestServeMobileGlassComposerContract(t *testing.T) {
+	html := string(indexHTML)
+	css := string(baizeCSS)
+	js := string(baizeJS)
+
+	for _, want := range []string{
+		`viewport-fit=cover`,
+		`interactive-widget=resizes-content`,
+		`id="btn-mobile-approval"`,
+		`id="btn-mobile-controls"`,
+		`id="mobile-controls-dialog"`,
+		`id="mobile-task-slot"`,
+		`id="mobile-approval-slot"`,
+		`id="mobile-effort-slot"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("mobile composer HTML missing %q", want)
+		}
+	}
+
+	for _, want := range []string{
+		`--glass-filter:none`,
+		`@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px)))`,
+		`height:var(--app-viewport-height,100dvh)`,
+		`calc(8px + env(safe-area-inset-bottom))`,
+		`.composer-meta{height:44px;min-height:44px;max-height:44px;flex-wrap:nowrap`,
+		`.composer-mobile-trigger{display:inline-flex`,
+		`.mobile-controls-dialog::backdrop`,
+		`.mobile-controls-dialog--active .task-mode__menu,.mobile-controls-dialog--active .effortsw__menu{position:static;display:grid!important`,
+		`@media(prefers-reduced-transparency:reduce)`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("mobile composer CSS missing %q", want)
+		}
+	}
+
+	for _, want := range []string{
+		`window.visualViewport?.addEventListener('resize',syncAppViewportHeight`,
+		`document.documentElement.style.setProperty('--app-viewport-height'`,
+		`slot.appendChild(node)`,
+		`marker.parentNode?.insertBefore(node,marker.nextSibling)`,
+		`mobileControlsDialog.showModal()`,
+		`mobileControlsDialog.addEventListener('keydown',event=>{if(event.key==='Escape')`,
+		`mobileControlsDialog.addEventListener('cancel'`,
+		`if(!event.matches)closeMobileControls({restoreFocus:false})`,
+		`const secondaryDisabled=running||waitingPrompt!==null`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("mobile composer JavaScript missing %q", want)
+		}
+	}
+	if strings.Contains(js, `cloneNode`) {
+		t.Fatal("mobile composer controls must move the existing nodes instead of cloning stateful controls")
+	}
+}
+
 func TestServeLeftWorkbenchContract(t *testing.T) {
 	html := string(indexHTML)
 	css := string(baizeCSS)

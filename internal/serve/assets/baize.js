@@ -61,6 +61,7 @@ const __T = {
     'provider_label_deepseek': 'DeepSeek Official',
     'model_no_match': 'No matching models',
     'effort_title': 'Reasoning effort',
+    'mobile_controls_title': 'Chat controls',
     'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
     'delivery_incomplete_title': 'Delivery checks are not complete',
     'delivery_incomplete_body': 'The response was generated, but required delivery evidence is still incomplete.',
@@ -457,6 +458,7 @@ const __T = {
     'provider_label_deepseek': 'DeepSeek 官方',
     'model_no_match': '没有匹配的模型',
     'effort_title': '思考长度',
+    'mobile_controls_title': '聊天控制',
     'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
     'delivery_incomplete_title': '交付检查尚未完成',
     'delivery_incomplete_body': '内容已经生成，但所需的交付证据尚未完成。',
@@ -837,10 +839,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
+let viewportSyncFrame=0;
+function syncAppViewportHeight(){
+  if(viewportSyncFrame)return;
+  viewportSyncFrame=requestAnimationFrame(()=>{
+    viewportSyncFrame=0;
+    const viewport=window.visualViewport;
+    const height=viewport&&viewport.scale<=1.01?viewport.height:window.innerHeight;
+    document.documentElement.style.setProperty('--app-viewport-height',Math.round(height)+'px');
+  });
+}
+window.addEventListener('resize',syncAppViewportHeight,{passive:true});
+window.addEventListener('orientationchange',syncAppViewportHeight,{passive:true});
+window.visualViewport?.addEventListener('resize',syncAppViewportHeight,{passive:true});
+window.visualViewport?.addEventListener('scroll',syncAppViewportHeight,{passive:true});
+syncAppViewportHeight();
 const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('#btn-stop');
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
 const modebar = $('#modebar');
+const mobileControlsDialog=$('#mobile-controls-dialog'),mobileControlsButton=$('#btn-mobile-controls'),mobileApprovalButton=$('#btn-mobile-approval');
 const qualityFloorSelect = $('#quality-floor-select');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
@@ -1226,6 +1244,7 @@ function updateRunStrip() {
   // Desktop parity: the approval modebar stays usable while running, but is
   // disabled while a decision surface (approval/ask card) owns the footer.
   modebar.classList.toggle('composer-modebar--disabled', waitingPrompt !== null);
+  syncMobileControlsDisabled();
   const floorDisabled=running||waitingPrompt!==null;
   qualityFloorSelect.disabled=floorDisabled;
   if (!on) { runStripText.textContent = ''; runStripAnnounce.textContent = ''; return; }
@@ -2772,7 +2791,7 @@ function ordinaryOverlayAllowed(){
   focusDecisionPrompt(__('workspace_decision_pending'));return false;
 }
 function closeOrdinaryModals(){
-  closeImageViewer();document.getElementById('rewind-overlay')?.remove();
+  closeImageViewer();closeMobileControls({restoreFocus:false});document.getElementById('rewind-overlay')?.remove();
   ['stats-modal','branches-modal','models-modal','delete-modal'].forEach(id=>{const node=document.getElementById(id);if(node)node.style.display='none';});pendingDeleteSession=null;
 }
 function prepareOrdinaryOverlay(){
@@ -4220,6 +4239,7 @@ function updateModeButtons(){
   const mb = $('#modebar');
   mb.dataset.mode = cur;
   mb.querySelectorAll('.composer-modebar__item').forEach(b => b.classList.toggle('is-active', b.dataset.mode === cur));
+  syncMobileApprovalTrigger(cur);
   qualityFloorSelect.value=qualityFloorDraft;
 }
 function updateGoalUI(){
@@ -4425,17 +4445,83 @@ function fetchEffort() {
     effortState = d || {};
     const supported = !!(effortState.supported && Array.isArray(effortState.levels) && effortState.levels.length);
     effortsw.style.display = supported ? '' : 'none';
+    const mobileSection=$('#mobile-effort-section');if(mobileSection)mobileSection.hidden=!supported;
     if (supported) {
       const cur = effortState.current || 'auto';
       effortValue.textContent = cur;
       document.getElementById('btn-effort').classList.toggle('effortsw__trigger--explicit', cur !== 'auto');
       renderEffortMenu();
     }
+    syncMobileControlsDisabled();
   }).catch(() => {});
 }
 $('#btn-effort').onclick=()=>{ if(running)return; if(effortMenu.style.display==='none'){renderEffortMenu();effortMenu.style.display='';} else effortMenu.style.display='none'; };
 document.addEventListener('click', e => { if (effortMenu.style.display !== 'none' && !e.target.closest('.effortsw')) effortMenu.style.display = 'none'; });
 fetchEffort();
+
+const mobileControlHomes=[
+  {node:$('.composer-meta__control--mode'),slot:$('#mobile-task-slot')},
+  {node:modebar,slot:$('#mobile-approval-slot')},
+  {node:effortsw,slot:$('#mobile-effort-slot')},
+].map((entry,index)=>{
+  const marker=document.createComment('mobile-control-'+index);
+  entry.node.parentNode.insertBefore(marker,entry.node);
+  return {...entry,marker};
+});
+let mobileControlsFocusReturn=null;
+function syncMobileApprovalTrigger(mode){
+  if(!mobileApprovalButton)return;
+  const current=mode||(bypassMode?'yolo':toolApprovalMode);
+  const label=$('#mobile-approval-value');if(label)label.textContent=__('mode_'+current);
+  mobileApprovalButton.dataset.mode=current;
+}
+function syncMobileControlsDisabled(){
+  const secondaryDisabled=running||waitingPrompt!==null;
+  $('#task-mode-menu')?.querySelectorAll('button').forEach(button=>button.disabled=secondaryDisabled);
+  $('#effort-menu')?.querySelectorAll('button').forEach(button=>button.disabled=secondaryDisabled);
+  modebar?.querySelectorAll('button').forEach(button=>button.disabled=waitingPrompt!==null);
+  if(mobileControlsButton)mobileControlsButton.disabled=waitingPrompt!==null;
+  if(mobileApprovalButton)mobileApprovalButton.disabled=waitingPrompt!==null;
+}
+function restoreMobileControls(){
+  mobileControlHomes.forEach(({node,marker})=>marker.parentNode?.insertBefore(node,marker.nextSibling));
+  mobileControlsDialog?.classList.remove('mobile-controls-dialog--active');
+  document.body.classList.remove('mobile-controls-open');
+  mobileControlsButton?.setAttribute('aria-expanded','false');
+  mobileApprovalButton?.setAttribute('aria-expanded','false');
+}
+function closeMobileControls({restoreFocus=true}={}){
+  if(!mobileControlsDialog)return;
+  const focusTarget=mobileControlsFocusReturn;
+  mobileControlsFocusReturn=null;
+  if(mobileControlsDialog.open&&typeof mobileControlsDialog.close==='function')mobileControlsDialog.close();
+  else{mobileControlsDialog.removeAttribute('open');restoreMobileControls();}
+  if(restoreFocus&&focusTarget)requestAnimationFrame(()=>focusTarget.focus());
+}
+function openMobileControls(trigger,section){
+  if(!mobileLayout()||!mobileControlsDialog||waitingPrompt!==null)return;
+  closeModelsw();taskModeMenu.style.display='none';effortMenu.style.display='none';
+  mobileControlsFocusReturn=trigger;
+  trigger?.setAttribute('aria-expanded','true');
+  mobileControlHomes.forEach(({node,slot})=>slot.appendChild(node));
+  mobileControlsDialog.classList.add('mobile-controls-dialog--active');
+  document.body.classList.add('mobile-controls-open');
+  syncMobileControlsDisabled();
+  if(typeof mobileControlsDialog.showModal==='function')mobileControlsDialog.showModal();else mobileControlsDialog.setAttribute('open','');
+  const target=section==='approval'?modebar.querySelector('button.is-active'):mobileControlsDialog.querySelector('.task-mode__item.is-active,.composer-modebar__item.is-active,.effortsw__item.is-active');
+  requestAnimationFrame(()=>target?.focus());
+}
+mobileApprovalButton.onclick=()=>openMobileControls(mobileApprovalButton,'approval');
+mobileControlsButton.onclick=()=>openMobileControls(mobileControlsButton,'all');
+$('#mobile-controls-close').onclick=()=>closeMobileControls();
+mobileControlsDialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeMobileControls();}});
+mobileControlsDialog.addEventListener('cancel',event=>{event.preventDefault();closeMobileControls();});
+mobileControlsDialog.addEventListener('close',restoreMobileControls);
+mobileControlsDialog.addEventListener('click',event=>{if(event.target===mobileControlsDialog)closeMobileControls();});
+const mobileControlsMedia=window.matchMedia('(max-width:768px)');
+const handleMobileControlsMedia=event=>{if(!event.matches)closeMobileControls({restoreFocus:false});};
+if(typeof mobileControlsMedia.addEventListener==='function')mobileControlsMedia.addEventListener('change',handleMobileControlsMedia);else mobileControlsMedia.addListener(handleMobileControlsMedia);
+syncMobileApprovalTrigger();syncMobileControlsDisabled();
 $('#btn-stats').onclick=()=>openStats();
 $('#branches-modal-close').onclick=()=>closeBranches();
 $('#branches-modal').onclick=e=>{if(e.target===e.currentTarget)closeBranches();};
