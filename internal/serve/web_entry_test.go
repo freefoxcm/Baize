@@ -565,7 +565,7 @@ func TestServeMobileGlassComposerContract(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		`--glass-filter:none`, `.footer{--footer-bottom-guard:16px;--footer-card-offset:12px;--footer-content-fade:28px;grid-column:3;grid-row:1;align-self:end;z-index:20;border:0;background:transparent;padding:12px calc(28px + var(--transcript-scrollbar-width,0px)) 16px 28px;`,
+		`--glass-filter:none`, `.footer{grid-column:3;grid-row:1;align-self:end;z-index:20;border:0;background:transparent;padding:12px calc(28px + var(--transcript-scrollbar-width,0px)) 16px 28px;`,
 		`@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px)))`,
 		`height:var(--app-viewport-height,100dvh)`,
 		`calc(8px + env(safe-area-inset-bottom))`,
@@ -587,6 +587,7 @@ func TestServeMobileGlassComposerContract(t *testing.T) {
 
 	for _, want := range []string{
 		`window.visualViewport?.addEventListener('resize',syncAppViewportHeight`,
+		`Math.min(window.innerHeight,viewport.height)`,
 		`document.documentElement.style.setProperty('--app-viewport-height'`,
 		`slot.appendChild(node)`,
 		`marker.parentNode?.insertBefore(node,marker.nextSibling)`,

@@ -2542,7 +2542,7 @@ func NewProviderWithProxy(e *config.ProviderEntry, proxy netclient.ProxySpec) (p
 			"api_key_source":     e.APIKeySourceLabel(),
 			"thinking":           e.Thinking,
 			"effort":             config.EffectiveEffort(e),
-			"supported_efforts":  e.SupportedEfforts,
+			"supported_efforts":  config.EffectiveSupportedEfforts(e),
 			"reasoning_protocol": config.ReasoningProtocolForEntry(e),
 			"max_output_tokens":  e.MaxOutputTokens,
 			"chat_url":           e.ChatURL,

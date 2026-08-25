@@ -845,9 +845,9 @@ function syncAppViewportHeight(){
   viewportSyncFrame=requestAnimationFrame(()=>{
     viewportSyncFrame=0;
     const viewport=window.visualViewport;
-    const height=viewport&&viewport.scale<=1.01?viewport.height:window.innerHeight;
+    const height=viewport&&viewport.scale<=1.01?Math.min(window.innerHeight,viewport.height):window.innerHeight;
     document.documentElement.style.setProperty('--app-viewport-height',Math.round(height)+'px');
-    scheduleComposerOverlaySync();
+    scheduleComposerLayoutSync();
   });
 }
 window.addEventListener('resize',syncAppViewportHeight,{passive:true});
@@ -855,7 +855,7 @@ window.addEventListener('orientationchange',syncAppViewportHeight,{passive:true}
 window.visualViewport?.addEventListener('resize',syncAppViewportHeight,{passive:true});
 window.visualViewport?.addEventListener('scroll',syncAppViewportHeight,{passive:true});
 syncAppViewportHeight();
-const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('#btn-stop'), composerFooter = $('.footer');
+const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('#btn-stop'), composerFooter = $('.footer'), composerCard = $('.composer-card'), composerWindowMask = $('.composer-window-mask');
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
 const modebar = $('#modebar');
@@ -963,39 +963,49 @@ function atBottom() { return log.scrollHeight-log.scrollTop-log.clientHeight<40;
 log.addEventListener('scroll',()=>{pinnedToBottom=atBottom();});
 log.addEventListener('wheel',e=>{if(e.deltaY<0&&log.scrollHeight>log.clientHeight)pinnedToBottom=false;},{passive:true});
 function scrollDown(force) { if(force)pinnedToBottom=true; if(!pinnedToBottom)return; requestAnimationFrame(()=>{if(force)pinnedToBottom=true; else if(!pinnedToBottom)return; log.scrollTo({top:log.scrollHeight,behavior:'instant'});});}
-let composerOverlaySyncFrame=0;
-function scheduleComposerOverlaySync(){
-  if(composerOverlaySyncFrame||!composerFooter)return;
+let composerLayoutSyncFrame=0;
+function scheduleComposerLayoutSync(){
+  if(composerLayoutSyncFrame||!composerFooter||!composerCard||!composerWindowMask)return;
   const keepPinned=pinnedToBottom;
-  composerOverlaySyncFrame=requestAnimationFrame(()=>{
-    composerOverlaySyncFrame=0;
-    const height=Math.ceil(composerFooter.getBoundingClientRect().height);
-    if(height<=0)return;
-    const value=height+'px';
-    if(document.documentElement.style.getPropertyValue('--composer-overlay-height')!==value){
-      document.documentElement.style.setProperty('--composer-overlay-height',value);
-    }
+  composerLayoutSyncFrame=requestAnimationFrame(()=>{
+    composerLayoutSyncFrame=0;
+    const footerRect=composerFooter.getBoundingClientRect(),cardRect=composerCard.getBoundingClientRect(),maskRect=composerWindowMask.getBoundingClientRect();
+    const cardStyle=getComputedStyle(composerCard),cardRadius=Math.max(0,parseFloat(cardStyle.borderTopLeftRadius)||0);
     const scrollbarWidth=Math.max(0,Math.ceil(log.getBoundingClientRect().width-log.clientWidth));
-    const scrollbarValue=scrollbarWidth+'px';
-    if(document.documentElement.style.getPropertyValue('--transcript-scrollbar-width')!==scrollbarValue){
-      document.documentElement.style.setProperty('--transcript-scrollbar-width',scrollbarValue);
-    }
+    const layoutValues={
+      '--transcript-scrollbar-width':scrollbarWidth+'px',
+      '--composer-overlay-height':Math.ceil(footerRect.height)+'px',
+      '--composer-window-left':Math.max(0,cardRect.left-maskRect.left)+'px',
+      '--composer-window-top':Math.max(0,cardRect.top-footerRect.top)+'px',
+      '--composer-window-width':Math.max(0,cardRect.width)+'px',
+      '--composer-window-height':Math.max(0,cardRect.height)+'px',
+      '--composer-window-radius':cardRadius+'px',
+    };
+    let layoutChanged=false;
+    Object.entries(layoutValues).forEach(([name,value])=>{if(document.documentElement.style.getPropertyValue(name)!==value){document.documentElement.style.setProperty(name,value);layoutChanged=true;}});
+    // Updating the overlay height can move the mask itself. Measure once more
+    // after that layout settles so the local guard remains pixel-aligned with
+    // the composer across viewport and responsive-breakpoint changes.
+    if(layoutChanged)requestAnimationFrame(scheduleComposerLayoutSync);
     if(keepPinned&&pinnedToBottom)requestAnimationFrame(()=>scrollDown(false));
   });
 }
 if(typeof ResizeObserver!=='undefined'){
-  const composerOverlayResizeObserver=new ResizeObserver(scheduleComposerOverlaySync);
-  composerOverlayResizeObserver.observe(composerFooter);
-  composerOverlayResizeObserver.observe(log);
+  const composerLayoutResizeObserver=new ResizeObserver(scheduleComposerLayoutSync);
+  composerLayoutResizeObserver.observe(composerFooter);
+  composerLayoutResizeObserver.observe(composerCard);
+  composerLayoutResizeObserver.observe(composerWindowMask);
+  composerLayoutResizeObserver.observe(log);
 }else if(typeof MutationObserver!=='undefined'){
-  const composerOverlayMutationObserver=new MutationObserver(scheduleComposerOverlaySync);
-  composerOverlayMutationObserver.observe(composerFooter,{attributes:true,childList:true,subtree:true,characterData:true});
+  const composerLayoutMutationObserver=new MutationObserver(scheduleComposerLayoutSync);
+  composerLayoutMutationObserver.observe(composerFooter,{attributes:true,childList:true,subtree:true,characterData:true});
 }
 if(typeof MutationObserver!=='undefined'){
-  const transcriptLayoutMutationObserver=new MutationObserver(scheduleComposerOverlaySync);
+  const transcriptLayoutMutationObserver=new MutationObserver(scheduleComposerLayoutSync);
   transcriptLayoutMutationObserver.observe(log,{childList:true,subtree:true,characterData:true});
 }
-scheduleComposerOverlaySync();
+window.addEventListener('resize',scheduleComposerLayoutSync);
+scheduleComposerLayoutSync();
 function hideWelcome() { if(welcome) welcome.style.display='none';}
 function showWelcome(){if(welcome)welcome.style.display='';setUsageCalendarRange('6m',true);}
 
@@ -1723,7 +1733,7 @@ function renderItem(it) {
   return null;
 }
 // ── question jump bar (desktop QuestionJumpBar parity) ──
-// A thin rail on the transcript's right edge marks each user question.
+// A thin rail on the transcript's left edge marks each user question.
 // Hover ripples the nearest dots; clicking (or pressing the rail) smooth-
 // scrolls to that question and detaches auto-pin, mirroring desktop.
 const QUESTION_NAV_MIN_COUNT = 2;

@@ -1494,7 +1494,7 @@ func TestNewProviderAppliesConfiguredDefaultEffort(t *testing.T) {
 	}
 }
 
-func TestNewProviderPreservesExplicitlySupportedKimiK3Efforts(t *testing.T) {
+func TestNewProviderPreservesBuiltInOxAlphaMaxEffort(t *testing.T) {
 	var gotReq map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
@@ -1506,13 +1506,8 @@ func TestNewProviderPreservesExplicitlySupportedKimiK3Efforts(t *testing.T) {
 	defer srv.Close()
 
 	p, err := NewProvider(&config.ProviderEntry{
-		Name:              "opencode-go",
-		Kind:              "openai",
-		BaseURL:           srv.URL,
-		Model:             "kimi-k3",
-		ReasoningProtocol: config.ReasoningProtocolOpenAI,
-		SupportedEfforts:  []string{"high", "max"},
-		DefaultEffort:     "max",
+		Name: "opencode-proxy", Kind: "openai", BaseURL: srv.URL,
+		Model: "ox-alpha-free", Effort: "max",
 	})
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
@@ -1529,7 +1524,7 @@ func TestNewProviderPreservesExplicitlySupportedKimiK3Efforts(t *testing.T) {
 		}
 	}
 	if got := gotReq["reasoning_effort"]; got != "max" {
-		t.Fatalf("reasoning_effort = %#v, want explicitly supported max", got)
+		t.Fatalf("reasoning_effort = %#v, want built-in Ox Alpha max", got)
 	}
 }
 
