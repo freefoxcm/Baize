@@ -107,6 +107,24 @@ func TestServeBaizeAssetRoutes(t *testing.T) {
 	}
 }
 
+func TestServeChatTurnAndUserMessageSpacingContract(t *testing.T) {
+	css := string(baizeCSS)
+	for _, want := range []string{
+		`.turn{position:relative;padding:10px 0 4px;margin:0 0 2px}`,
+		`.turn::before{content:'';position:absolute;top:0;left:50%;width:min(100%,var(--chat-maxw));height:1px;background:var(--border);transform:translateX(-50%);pointer-events:none}`,
+		`.turn:first-child::before{display:none}`,
+		`.msg--user .msg__text--md .md-sections>:first-child{margin-top:0}`,
+		`.msg--user .msg__text--md .md-sections>:last-child{margin-bottom:0}`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("Serve chat spacing CSS missing %q", want)
+		}
+	}
+	if strings.Contains(css, `.turn{position:relative;padding:10px 12px 4px;margin:0 -12px 2px;border-top:`) {
+		t.Fatal("turn divider must not span the transcript or inherit a rounded container edge")
+	}
+}
+
 func TestServeClipboardHasInsecureContextFallback(t *testing.T) {
 	source := string(baizeJS)
 	for _, want := range []string{
