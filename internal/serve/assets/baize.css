@@ -989,10 +989,15 @@ html[lang="zh"] .settings-check--task-errors small{font-size:10px;letter-spacing
 .mobile-controls-dialog--active .task-mode__trigger,.mobile-controls-dialog--active .effortsw__trigger{display:none}
 .mobile-controls-dialog--active .task-mode,.mobile-controls-dialog--active .effortsw{width:100%}
 .mobile-controls-dialog--active .task-mode__menu,.mobile-controls-dialog--active .effortsw__menu{position:static;display:grid!important;width:100%;min-width:0;padding:3px;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;border-radius:10px;background:var(--panel-2);box-shadow:none}
-.mobile-controls-dialog--active .task-mode__item,.mobile-controls-dialog--active .effortsw__item{min-width:0;height:36px;justify-content:center;padding:0 7px;background:transparent}
+.mobile-controls-dialog--active .task-mode__item,.mobile-controls-dialog--active .effortsw__item{position:relative;min-width:0;height:36px;justify-content:center;padding:0 18px 0 7px;border:1px solid transparent;background:transparent}
 .mobile-controls-dialog--active .task-mode__item>span,.mobile-controls-dialog--active .effortsw__item>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mobile-controls-dialog--active .task-mode__check,.mobile-controls-dialog--active .effortsw__check{display:none}
-.mobile-controls-dialog--active .composer-modebar{width:100%;max-width:none;flex-basis:auto}
+.mobile-controls-dialog--active .task-mode__item.is-active,.mobile-controls-dialog--active .effortsw__item.is-active{border-color:color-mix(in srgb,var(--accent) 62%,var(--border));background:var(--accent-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);font-weight:700}
+.mobile-controls-dialog--active .task-mode__item.is-active::after,.mobile-controls-dialog--active .effortsw__item.is-active::after{content:'\2713';position:absolute;inset:4px 4px auto auto;display:grid;place-items:center;width:14px;height:14px;border-radius:50%;background:var(--accent);color:var(--accent-fg);font-size:9px;font-weight:800;line-height:1}
+.mobile-controls-dialog--active .task-mode__item.is-active>svg:not(.task-mode__check){color:var(--accent)}
+.mobile-controls-dialog--active .composer-modebar{width:100%;max-width:none;flex-basis:auto;border-color:color-mix(in srgb,var(--accent) 30%,var(--border-strong));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 10%,transparent),var(--shadow-sm)}
+.mobile-controls-dialog--active .composer-modebar__thumb{box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 24%,transparent),0 0 0 1px color-mix(in srgb,var(--modebar-active-border) 68%,transparent),0 2px 8px color-mix(in srgb,var(--modebar-active-bg) 34%,transparent)}
+.mobile-controls-dialog--active .composer-modebar__item.is-active{font-weight:750;text-shadow:0 1px 1px color-mix(in srgb,#000 24%,transparent)}
 :root[data-density="compact"] .msg,:root[data-density="compact"] .msg--user{padding-top:5px;padding-bottom:5px}
 :root[data-density="compact"] .card{margin-top:5px;margin-bottom:5px}
 :root[data-density="compact"] .card-head{padding-top:5px;padding-bottom:5px}
@@ -1032,7 +1037,8 @@ html[lang="zh"] .settings-check--task-errors small{font-size:10px;letter-spacing
   .modelsw{min-width:0;flex:1 1 auto}
   .composer-model-trigger{width:100%;max-width:none;padding-inline:9px}
   .composer-model-trigger__value{min-width:0;flex:1}
-  .modelsw__menu{position:fixed;inset:auto max(12px,env(safe-area-inset-right)) calc(112px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));width:auto;max-height:min(55dvh,420px)}
+  .modelsw__menu{position:absolute;inset:auto 0 calc(100% + 8px) auto;width:min(320px,calc(100vw - 24px));max-width:calc(100vw - 68px);max-height:min(42dvh,320px);overscroll-behavior:contain}
+  .modelsw__list{overscroll-behavior:contain}
   .attachment-menu{left:max(12px,env(safe-area-inset-left));bottom:calc(112px + env(safe-area-inset-bottom))}
   .mobile-controls-dialog{max-height:min(72dvh,520px);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 }

@@ -858,7 +858,7 @@ const log = $('#log'), input = $('#in'), btnSend = $('#btn-send'), btnStop = $('
 const runStrip = $('#run-strip'), runStripText = $('#run-strip-text'), runStripAnnounce = $('#run-strip-announce');
 const approvalSlot = $('#approval-slot');
 const modebar = $('#modebar');
-const mobileControlsDialog=$('#mobile-controls-dialog'),mobileControlsButton=$('#btn-mobile-controls'),mobileApprovalButton=$('#btn-mobile-approval');
+const mobileControlsDialog=$('#mobile-controls-dialog'),mobileControlsButton=$('#btn-mobile-controls');
 const qualityFloorSelect = $('#quality-floor-select');
 const statusDotSidebar = $('#status-dot'), statusModel = $('#status-model');
 const ctxFill = $('#ctx-fill'), ctxUsed = $('#ctx-used'), ctxWindow = $('#ctx-window');
@@ -4239,7 +4239,6 @@ function updateModeButtons(){
   const mb = $('#modebar');
   mb.dataset.mode = cur;
   mb.querySelectorAll('.composer-modebar__item').forEach(b => b.classList.toggle('is-active', b.dataset.mode === cur));
-  syncMobileApprovalTrigger(cur);
   qualityFloorSelect.value=qualityFloorDraft;
 }
 function updateGoalUI(){
@@ -4469,26 +4468,18 @@ const mobileControlHomes=[
   return {...entry,marker};
 });
 let mobileControlsFocusReturn=null;
-function syncMobileApprovalTrigger(mode){
-  if(!mobileApprovalButton)return;
-  const current=mode||(bypassMode?'yolo':toolApprovalMode);
-  const label=$('#mobile-approval-value');if(label)label.textContent=__('mode_'+current);
-  mobileApprovalButton.dataset.mode=current;
-}
 function syncMobileControlsDisabled(){
   const secondaryDisabled=running||waitingPrompt!==null;
   $('#task-mode-menu')?.querySelectorAll('button').forEach(button=>button.disabled=secondaryDisabled);
   $('#effort-menu')?.querySelectorAll('button').forEach(button=>button.disabled=secondaryDisabled);
   modebar?.querySelectorAll('button').forEach(button=>button.disabled=waitingPrompt!==null);
   if(mobileControlsButton)mobileControlsButton.disabled=waitingPrompt!==null;
-  if(mobileApprovalButton)mobileApprovalButton.disabled=waitingPrompt!==null;
 }
 function restoreMobileControls(){
   mobileControlHomes.forEach(({node,marker})=>marker.parentNode?.insertBefore(node,marker.nextSibling));
   mobileControlsDialog?.classList.remove('mobile-controls-dialog--active');
   document.body.classList.remove('mobile-controls-open');
   mobileControlsButton?.setAttribute('aria-expanded','false');
-  mobileApprovalButton?.setAttribute('aria-expanded','false');
 }
 function closeMobileControls({restoreFocus=true}={}){
   if(!mobileControlsDialog)return;
@@ -4498,7 +4489,7 @@ function closeMobileControls({restoreFocus=true}={}){
   else{mobileControlsDialog.removeAttribute('open');restoreMobileControls();}
   if(restoreFocus&&focusTarget)requestAnimationFrame(()=>focusTarget.focus());
 }
-function openMobileControls(trigger,section){
+function openMobileControls(trigger){
   if(!mobileLayout()||!mobileControlsDialog||waitingPrompt!==null)return;
   closeModelsw();taskModeMenu.style.display='none';effortMenu.style.display='none';
   mobileControlsFocusReturn=trigger;
@@ -4508,11 +4499,10 @@ function openMobileControls(trigger,section){
   document.body.classList.add('mobile-controls-open');
   syncMobileControlsDisabled();
   if(typeof mobileControlsDialog.showModal==='function')mobileControlsDialog.showModal();else mobileControlsDialog.setAttribute('open','');
-  const target=section==='approval'?modebar.querySelector('button.is-active'):mobileControlsDialog.querySelector('.task-mode__item.is-active,.composer-modebar__item.is-active,.effortsw__item.is-active');
+  const target=mobileControlsDialog.querySelector('.task-mode__item.is-active,.composer-modebar__item.is-active,.effortsw__item.is-active');
   requestAnimationFrame(()=>target?.focus());
 }
-mobileApprovalButton.onclick=()=>openMobileControls(mobileApprovalButton,'approval');
-mobileControlsButton.onclick=()=>openMobileControls(mobileControlsButton,'all');
+mobileControlsButton.onclick=()=>openMobileControls(mobileControlsButton);
 $('#mobile-controls-close').onclick=()=>closeMobileControls();
 mobileControlsDialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeMobileControls();}});
 mobileControlsDialog.addEventListener('cancel',event=>{event.preventDefault();closeMobileControls();});
@@ -4521,7 +4511,7 @@ mobileControlsDialog.addEventListener('click',event=>{if(event.target===mobileCo
 const mobileControlsMedia=window.matchMedia('(max-width:768px)');
 const handleMobileControlsMedia=event=>{if(!event.matches)closeMobileControls({restoreFocus:false});};
 if(typeof mobileControlsMedia.addEventListener==='function')mobileControlsMedia.addEventListener('change',handleMobileControlsMedia);else mobileControlsMedia.addListener(handleMobileControlsMedia);
-syncMobileApprovalTrigger();syncMobileControlsDisabled();
+syncMobileControlsDisabled();
 $('#btn-stats').onclick=()=>openStats();
 $('#branches-modal-close').onclick=()=>closeBranches();
 $('#branches-modal').onclick=e=>{if(e.target===e.currentTarget)closeBranches();};
