@@ -565,7 +565,7 @@ func TestServeMobileGlassComposerContract(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		`--glass-filter:none`,
+		`--glass-filter:none`, `.footer{grid-column:3;grid-row:2;border-top:1px solid color-mix(in srgb,var(--border) 70%,transparent);background:transparent;`,
 		`@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px)))`,
 		`height:var(--app-viewport-height,100dvh)`,
 		`calc(8px + env(safe-area-inset-bottom))`,
