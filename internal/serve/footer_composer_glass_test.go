@@ -62,7 +62,7 @@ func TestServeActivityRailTooltipContract(t *testing.T) {
 	for _, want := range []string{
 		`.activity-rail__tooltip{position:absolute;z-index:250;top:50%;left:calc(100% + 10px);`,
 		`transform:translateY(-50%)`,
-		`@media(max-width:768px) and (hover:none) and (pointer:coarse) and (any-hover:none){.activity-rail__tooltip{display:none!important}}`,
+		`@media(hover:none) and (pointer:coarse) and (any-hover:none){.activity-rail__tooltip{display:none!important}}`,
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("Serve activity rail tooltip CSS missing %q", want)

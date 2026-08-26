@@ -520,7 +520,7 @@ const (
 	NoticeCodeSessionRecoveryAdoptedCovered                     = "session_recovery_adopted_covered"
 	NoticeCodeSessionRecoveryDepthCap                           = "session_recovery_depth_cap"
 	NoticeCodeSessionShutdownRecoveryForked                     = "session_shutdown_recovery_forked"
-	NoticeCodeCapabilityProxy                                   = "capability_proxy"
+	NoticeCodeCapabilityProxy, NoticeCodeToolOutputTruncated    = "capability_proxy", "tool_output_truncated"
 	NoticeCodeDecisionReceipt, NoticeCodeContextEditingFallback = "decision_receipt", "context_editing_fallback"
 )
 

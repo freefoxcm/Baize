@@ -21,6 +21,21 @@ func TestAnalyzeDataAggregatesJSON(t *testing.T) {
 	}
 }
 
+func TestAnalyzeDataDescriptionDistinguishesStarlarkFromPython(t *testing.T) {
+	description := (analyzeData{}).Description()
+	schema := string((analyzeData{}).Schema())
+	for _, want := range []string{"Starlark is not Python", "== None", "sorted()", "built-in `round`", "execution_scope=scratch", "never fall back to normal bash"} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("description missing %q: %s", want, description)
+		}
+	}
+	for _, want := range []string{"This is not Python", "built-in round", "width/precision"} {
+		if !strings.Contains(schema, want) {
+			t.Fatalf("schema missing %q: %s", want, schema)
+		}
+	}
+}
+
 func TestAnalyzeDataRejectsCapabilitiesAndInvalidResults(t *testing.T) {
 	tests := []struct {
 		name    string

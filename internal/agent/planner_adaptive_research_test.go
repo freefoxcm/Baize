@@ -77,7 +77,7 @@ func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *t
 	}
 	sawTruncation := false
 	for _, notice := range notices {
-		sawTruncation = sawTruncation || strings.HasPrefix(notice.Text, "tool output truncated:")
+		sawTruncation = sawTruncation || strings.HasPrefix(notice.Text, "tool output truncated:") && notice.Code == event.NoticeCodeToolOutputTruncated && notice.Detail != ""
 		if notice.Text == plannerSafetyFallbackNotice {
 			t.Fatalf("valid terminal plan incorrectly fell back: %+v", notice)
 		}

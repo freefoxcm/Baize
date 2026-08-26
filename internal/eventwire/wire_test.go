@@ -105,6 +105,11 @@ func TestToWireNoticeCarriesCode(t *testing.T) {
 	if !strings.Contains(string(b), `"code":"final_readiness"`) {
 		t.Fatalf("notice JSON = %s, want a stable code field", b)
 	}
+	w = ToWire(event.Event{Kind: event.Notice, Code: event.NoticeCodeToolOutputTruncated, Detail: "call-large"})
+	b, _ = json.Marshal(w)
+	if !strings.Contains(string(b), `"code":"tool_output_truncated"`) || !strings.Contains(string(b), `"detail":"call-large"`) {
+		t.Fatalf("truncation JSON = %s, want stable code and tool-call ID", b)
+	}
 
 	w = ToWire(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: "codeless notice"})
 	if b, err = json.Marshal(w); err != nil {
