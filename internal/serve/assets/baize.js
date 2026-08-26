@@ -25,6 +25,9 @@ const __T = {
     'run_waiting_approval': 'Waiting for approval of {tool}',
     'run_waiting_ask': 'Waiting for your answer',
     'ask_title': 'Question',
+    'ask_context_title': 'Review context',
+    'ask_context_show': 'Show',
+    'ask_context_hide': 'Hide',
     'ask_progress': 'Question {n}/{m}',
     'ask_stop_task': 'Stop task',
     'ask_next': 'Next',
@@ -428,6 +431,9 @@ const __T = {
     'run_waiting_approval': '等待审批:{tool}',
     'run_waiting_ask': '等待你的回答',
     'ask_title': '提问',
+    'ask_context_title': '确认内容',
+    'ask_context_show': '展开',
+    'ask_context_hide': '收起',
     'ask_progress': '问题 {n}/{m}',
     'ask_stop_task': '停止任务',
     'ask_next': '下一步',
@@ -3086,6 +3092,43 @@ function renderAskCard() {
   stop.onclick = stopAsk;
   head.appendChild(stop);
   d.appendChild(head);
+  const reviewContext = String(ask.context || '').trim();
+  if (reviewContext) {
+    if (typeof ask._contextCollapsed !== 'boolean') ask._contextCollapsed = false;
+    if (!Number.isFinite(ask._contextScrollTop)) ask._contextScrollTop = 0;
+    const context = el('section', 'ask__context');
+    const contextHead = el('div', 'ask__context-head');
+    contextHead.appendChild(el('span', 'ask__context-title', __('ask_context_title')));
+    const contextToggle = el('button', 'ask__context-toggle');
+    contextToggle.type = 'button';
+    const contextBody = el('div', 'ask__context-body');
+    const contextBodyId = 'ask-context-' + String(ask.id || 'current').replace(/[^a-z0-9_-]/gi, '-');
+    contextBody.id = contextBodyId;
+    contextToggle.setAttribute('aria-controls', contextBodyId);
+    const contextMarkdown = el('div', 'md-sections');
+    contextMarkdown.innerHTML = renderMarkdown(reviewContext);
+    fixImageSrcs(contextMarkdown);
+    highlightBlocks(contextMarkdown);
+    contextBody.appendChild(contextMarkdown);
+    const syncContextDisclosure = () => {
+      contextBody.hidden = ask._contextCollapsed;
+      contextToggle.textContent = ask._contextCollapsed ? __('ask_context_show') : __('ask_context_hide');
+      contextToggle.setAttribute('aria-expanded', ask._contextCollapsed ? 'false' : 'true');
+    };
+    contextToggle.onclick = () => {
+      ask._contextCollapsed = !ask._contextCollapsed;
+      syncContextDisclosure();
+      scheduleComposerLayoutSync();
+      scrollDown(true);
+    };
+    contextBody.addEventListener('scroll', () => { ask._contextScrollTop = contextBody.scrollTop; }, {passive:true});
+    contextHead.appendChild(contextToggle);
+    context.appendChild(contextHead);
+    context.appendChild(contextBody);
+    d.appendChild(context);
+    syncContextDisclosure();
+    if (!ask._contextCollapsed && ask._contextScrollTop > 0) requestAnimationFrame(() => { contextBody.scrollTop = ask._contextScrollTop; });
+  }
   d.appendChild(el('div', 'ask__prompt', q.prompt));
   // rows: options + "other answer" + "skip and keep chatting"
   const rows = el('div', 'ask__rows');
@@ -3225,6 +3268,7 @@ function renderAskCard() {
   document.addEventListener('keydown', onkey);
   askSlot._askCleanup = () => { document.removeEventListener('keydown', onkey); askSlot._askCleanup = null; };
   if (document.activeElement === input && optEls[0]) optEls[0].focus();
+  requestAnimationFrame(() => { scheduleComposerLayoutSync(); scrollDown(true); });
 }
 // stopAsk cancels the running task and dismisses every queued question
 // (desktop parity: Esc = stop task, not skip).

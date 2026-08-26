@@ -12,10 +12,17 @@ import (
 )
 
 type recordingAsker struct {
+	context   string
 	questions []event.AskQuestion
 }
 
 func (r *recordingAsker) Ask(_ context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error) {
+	r.questions = questions
+	return []event.AskAnswer{{QuestionID: "q1", Selected: []string{"Keep going"}}}, nil
+}
+
+func (r *recordingAsker) AskWithContext(_ context.Context, reviewContext string, questions []event.AskQuestion) ([]event.AskAnswer, error) {
+	r.context = reviewContext
 	r.questions = questions
 	return []event.AskAnswer{{QuestionID: "q1", Selected: []string{"Keep going"}}}, nil
 }
@@ -108,6 +115,44 @@ func TestAskToolTrimsPromptAndOptionsBeforePrompting(t *testing.T) {
 	}
 }
 
+func TestAskToolPassesTrimmedReviewContextToContextualAsker(t *testing.T) {
+	asker := &recordingAsker{}
+	ctx := withCallContext(context.Background(), "call_1", event.Discard, asker, false)
+	_, err := NewAskTool().Execute(ctx, []byte(`{
+		"context":"  ## Report outline\n\n- Trend\n- Distribution  ",
+		"questions":[{
+			"header":"Outline",
+			"question":"Generate this report?",
+			"options":[{"label":"Generate"},{"label":"Cancel"}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if asker.context != "## Report outline\n\n- Trend\n- Distribution" {
+		t.Fatalf("context = %q, want trimmed Markdown", asker.context)
+	}
+}
+
+func TestAskToolContextFallsBackToLegacyAsker(t *testing.T) {
+	ctx := withCallContext(context.Background(), "call_1", event.Discard,
+		fixedAsker{answers: []event.AskAnswer{{QuestionID: "q1", Selected: []string{"Generate"}}}}, false)
+	out, err := NewAskTool().Execute(ctx, []byte(`{
+		"context":"## Report outline",
+		"questions":[{
+			"header":"Outline",
+			"question":"Generate this report?",
+			"options":[{"label":"Generate"},{"label":"Cancel"}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out, "Outline: Generate") {
+		t.Fatalf("legacy asker answer = %q, want normal answer summary", out)
+	}
+}
+
 type fixedAsker struct{ answers []event.AskAnswer }
 
 func (f fixedAsker) Ask(_ context.Context, _ []event.AskQuestion) ([]event.AskAnswer, error) {
@@ -118,7 +163,7 @@ func TestAskToolProviderContractStable(t *testing.T) {
 	tool := NewAskTool()
 	contract := tool.Description() + "\n" + string(provider.CanonicalizeSchema(tool.Schema()))
 	got := fmt.Sprintf("%x", sha256.Sum256([]byte(contract)))
-	const want = "f4c6efe84da2e964b3f8566b1f0921ca88812ae3ecfba46185d0439ae4f4c2a5"
+	const want = "9668873347301391227781822f2a9214ce411cbfd69e5447bc83d3293bb150ba"
 	if got != want {
 		t.Fatalf("ask provider contract hash = %s, want %s; tool description or canonical schema changed", got, want)
 	}

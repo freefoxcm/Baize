@@ -119,6 +119,12 @@ widened.
 `read_only_task`, `read_session`, `read_skill`, `read_subagent_result`, `remember`, `research`,
 `review`, `run_skill`, `security_review`, `slash_command`, `task`.
 
+`ask` accepts optional Markdown `context` when a decision depends on reviewing
+concrete content such as an outline or plan. Interactive hosts preserve that
+context while the question is pending and across prompt replay; rich frontends
+sanitize it before rendering. Omitting it retains the original question-only
+contract.
+
 `parallel_tasks` and `fleet` keep their combined result below the single-tool
 output limit by returning a fair preview and a stable `Subagent reference` for
 every persisted child. `read_subagent_result` pages through one referenced

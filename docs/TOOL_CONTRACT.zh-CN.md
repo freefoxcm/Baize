@@ -93,6 +93,10 @@ call ID 时必须用它消除歧义。`offset` 默认 0，`limit` 默认 16KiB�
 `read_only_task`, `read_session`, `read_skill`, `read_subagent_result`, `remember`, `research`,
 `review`, `run_skill`, `security_review`, `slash_command`, `task`.
 
+当用户必须先查看提纲、计划等具体内容再作决定时，`ask` 可携带可选的 Markdown
+`context`。交互式 host 会在问题等待期间及提示重放时保留该上下文，富客户端在渲染前
+执行安全清洗；省略该字段时继续使用原有的纯问题契约。
+
 `parallel_tasks` 与 `fleet` 会为每个已持久化子 Agent 返回公平分配的预览和稳定的
 `Subagent reference`，使合并结果始终低于单工具输出上限。`read_subagent_result`
 按 UTF-8 字节偏移分页读取某个引用对应的完整最终答案，因此长篇并行调研无需一次性全部

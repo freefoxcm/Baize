@@ -318,8 +318,8 @@ type AskQuestion struct {
 // Ask carries an AskRequest: a batch of questions and the ID that correlates the
 // controller's AnswerQuestion(ID, …) reply.
 type Ask struct {
-	ID        string
-	Questions []AskQuestion
+	ID, Context string // Context is optional reviewable Markdown.
+	Questions   []AskQuestion
 }
 
 // Extension surface kind values carried by ExtensionSurfacePayload.Kind. They

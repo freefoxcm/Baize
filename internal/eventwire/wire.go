@@ -336,6 +336,7 @@ type AskQuestion struct {
 // Ask is the JSON form of an event.Ask.
 type Ask struct {
 	ID        string        `json:"id"`
+	Context   string        `json:"context,omitempty" externalizable:"true"`
 	Questions []AskQuestion `json:"questions"`
 }
 
@@ -512,7 +513,7 @@ func ToWireAsk(a event.Ask) *Ask {
 		}
 		qs[i] = AskQuestion{ID: q.ID, Header: q.Header, Prompt: q.Prompt, Options: opts, Multi: q.Multi}
 	}
-	return &Ask{ID: a.ID, Questions: qs}
+	return &Ask{ID: a.ID, Context: a.Context, Questions: qs}
 }
 
 // ToWireCacheDiagnostics converts cache diagnostics into their JSON wire form.
