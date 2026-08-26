@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/event"
+	"reasonix/internal/provider"
 )
 
 // TestReplayPendingPromptsReEmitsBlockedApproval proves a tool approval that is
@@ -47,11 +50,15 @@ func TestReplayPendingPromptsReEmitsBlockedApproval(t *testing.T) {
 // question, including its question payload (which the controller now retains).
 func TestReplayPendingPromptsReEmitsBlockedAsk(t *testing.T) {
 	asks := make(chan event.Ask, 8)
-	c := New(Options{Sink: event.FuncSink(func(e event.Event) {
+	session := agent.NewSession("sys")
+	session.Add(provider.Message{Role: provider.RoleAssistant, Content: "outline ready"})
+	sink := event.FuncSink(func(e event.Event) {
 		if e.Kind == event.AskRequest {
 			asks <- e.Ask
 		}
-	})})
+	})
+	exec := agent.New(nil, nil, session, agent.Options{}, sink)
+	c := New(Options{Executor: exec, Sink: sink})
 
 	questions := []event.AskQuestion{{
 		ID:      "q1",
@@ -62,19 +69,28 @@ func TestReplayPendingPromptsReEmitsBlockedAsk(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = c.Ask(context.Background(), questions)
+		_, _ = c.AskWithContext(context.Background(), "## Outline\n\n- Trend", questions)
 	}()
 
 	first := <-asks
 	c.ReplayPendingPrompts()
 	replayed := <-asks
 
-	if replayed.ID != first.ID || len(replayed.Questions) != 1 || replayed.Questions[0].Prompt != "Which option?" {
+	if replayed.ID != first.ID || replayed.Context != "## Outline\n\n- Trend" || len(replayed.Questions) != 1 || replayed.Questions[0].Prompt != "Which option?" {
 		t.Fatalf("replayed ask = %+v, want same id and questions as %+v", replayed, first)
 	}
 
 	c.AnswerQuestion(first.ID, []event.AskAnswer{{QuestionID: "q1", Selected: []string{"A"}}})
 	<-done
+
+	messages := session.Snapshot()
+	receipts := messages[len(messages)-1].DecisionReceipts
+	if len(receipts) != 1 || receipts[0].Kind != "ask" || receipts[0].Outcome != "answered" {
+		t.Fatalf("decision receipts = %+v, want one answered ask receipt", receipts)
+	}
+	if strings.Contains(receipts[0].Subject, "Outline") || strings.Contains(receipts[0].Subject, "Trend") {
+		t.Fatalf("receipt subject copied long review context: %q", receipts[0].Subject)
+	}
 }
 
 // TestReplayPendingPromptsNoOpWhenIdle proves replay emits nothing when no prompt

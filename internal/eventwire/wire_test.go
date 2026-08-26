@@ -27,6 +27,19 @@ func TestToWireRetryingJSON(t *testing.T) {
 	}
 }
 
+func TestToWireAskOmitsEmptyContext(t *testing.T) {
+	b, err := json.Marshal(ToWire(event.Event{Kind: event.AskRequest, Ask: event.Ask{
+		ID:        "ask-1",
+		Questions: []event.AskQuestion{{ID: "q1", Prompt: "Continue?"}},
+	}}))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), `"context"`) {
+		t.Fatalf("ask JSON = %s, empty context must be omitted for legacy clients", b)
+	}
+}
+
 func TestToWireStreamAttemptJSON(t *testing.T) {
 	w := ToWire(event.Event{
 		Kind: event.StreamAttempt,
@@ -464,13 +477,13 @@ func TestToWireInteractionAndLifecyclePayloads(t *testing.T) {
 		{
 			name: "ask",
 			in: event.Event{Kind: event.AskRequest, Ask: event.Ask{
-				ID: "ask-1",
+				ID: "ask-1", Context: "## Outline",
 				Questions: []event.AskQuestion{{
 					ID: "q1", Header: "Pick", Prompt: "Choose", Multi: true,
 					Options: []event.AskOption{{Label: "A", Description: "Alpha"}, {Label: "B"}},
 				}},
 			}},
-			want: []string{`"kind":"ask_request"`, `"ask":{"id":"ask-1"`, `"header":"Pick"`, `"description":"Alpha"`, `"multi":true`},
+			want: []string{`"kind":"ask_request"`, `"ask":{"id":"ask-1","context":"## Outline"`, `"header":"Pick"`, `"description":"Alpha"`, `"multi":true`},
 		},
 		{
 			name: "compaction",

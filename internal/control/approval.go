@@ -435,13 +435,13 @@ func (a *approvalManager) resolveTool(id, tool string) (pendingApproval, bool) {
 // returns the reply channel. The ask starts queued: registering before the
 // prompt lock is what makes a question waiting behind another prompt visible
 // at all, instead of existing only inside a blocked goroutine.
-func (a *approvalManager) registerAsk(questions []event.AskQuestion) (string, chan []event.AskAnswer) {
+func (a *approvalManager) registerAsk(reviewContext string, questions []event.AskQuestion) (string, chan []event.AskAnswer) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.nextID++
 	id := strconv.Itoa(a.nextID)
 	reply := make(chan []event.AskAnswer, 1)
-	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true}
+	a.asks[id] = pendingAsk{context: reviewContext, questions: questions, reply: reply, queued: true}
 	return id, reply
 }
 
@@ -571,7 +571,7 @@ func (a *approvalManager) snapshotPrompts() ([]event.Approval, []event.Ask) {
 		if p.queued {
 			continue
 		}
-		asks = append(asks, event.Ask{ID: id, Questions: p.questions})
+		asks = append(asks, event.Ask{ID: id, Context: p.context, Questions: p.questions})
 	}
 	return approvals, asks
 }

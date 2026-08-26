@@ -20,18 +20,25 @@ import (
 // answered.
 type AskTool struct{}
 
+// ContextualAsker extends Asker for decisions that need reviewable Markdown.
+// The ask tool falls back to Asker when a frontend does not implement it.
+type ContextualAsker interface {
+	AskWithContext(ctx context.Context, reviewContext string, questions []event.AskQuestion) ([]event.AskAnswer, error)
+}
+
 func NewAskTool() *AskTool { return &AskTool{} }
 
 func (*AskTool) Name() string { return "ask" }
 
 func (*AskTool) Description() string {
-	return "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply."
+	return "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Use optional Markdown `context` when the user must review concrete content such as an outline or plan before answering. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply."
 }
 
 func (*AskTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 "type":"object",
 "properties":{
+  "context":{"type":"string","description":"Optional Markdown content the user must review before answering, such as an outline, plan, or change summary."},
   "questions":{
     "type":"array",
     "minItems":1,
@@ -70,6 +77,7 @@ func (*AskTool) ReadOnly() bool { return true }
 
 func (*AskTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
+		Context   string `json:"context"`
 		Questions []struct {
 			Header      string `json:"header"`
 			Question    string `json:"question"`
@@ -122,7 +130,14 @@ func (*AskTool) Execute(ctx context.Context, args json.RawMessage) (string, erro
 		return "No interactive user answered. This is a model-assumption fallback, not a user answer. Proceed with your best judgment, state the assumption you made, and prefer the safest reversible option when choices differ in risk.", nil
 	}
 
-	answers, err := asker.Ask(ctx, qs)
+	var answers []event.AskAnswer
+	var err error
+	reviewContext := strings.TrimSpace(p.Context)
+	if contextual, contextualOK := asker.(ContextualAsker); contextualOK && reviewContext != "" {
+		answers, err = contextual.AskWithContext(ctx, reviewContext, qs)
+	} else {
+		answers, err = asker.Ask(ctx, qs)
+	}
 	if err != nil {
 		return "", fmt.Errorf("ask: %w", err)
 	}

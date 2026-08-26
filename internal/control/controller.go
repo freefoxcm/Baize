@@ -352,6 +352,7 @@ type pendingApproval struct {
 // AskRequest can be re-emitted to a frontend that reconnected after the original
 // event (see ReplayPendingPrompts).
 type pendingAsk struct {
+	context   string
 	questions []event.AskQuestion
 	reply     chan []event.AskAnswer
 	queued    bool // registered but not yet shown; replay must skip it
@@ -2491,40 +2492,6 @@ func (c *Controller) lockPromptFor(ctx context.Context, kind string) bool {
 			c.approval.promptMu.Unlock()
 		}()
 		return false
-	}
-}
-
-// Ask implements agent.Asker: it emits an AskRequest and blocks until
-// AnswerQuestion(ID, …) answers or ctx is cancelled. promptMu serialises it
-// against tool-approval prompts so at most one user prompt is outstanding.
-// Unlike tool-approval gates, Ask is NOT bypassed in YOLO mode — the `ask`
-// tool exists to get a genuine user decision, and YOLO only auto-approves
-// tool calls; it must not answer the user's questions for them.
-func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error) {
-	// Registering after the lock left a queued question invisible everywhere:
-	// no event, absent from the snapshot, unreachable by ReplayPendingPrompts.
-	id, reply := c.approval.registerAsk(questions)
-
-	if !c.lockPromptFor(ctx, "question") {
-		c.approval.cancelAsk(id)
-		return nil, ctx.Err()
-	}
-	defer c.approval.promptMu.Unlock()
-
-	c.approval.promptEmitMu.Lock()
-	c.approval.markAskEmitted(id)
-	c.sink.Emit(event.Event{Kind: event.AskRequest, Ask: event.Ask{ID: id, Questions: questions}})
-	c.approval.promptEmitMu.Unlock()
-
-	waitCtx, cancelWait := c.approval.waitContext(ctx)
-	defer cancelWait()
-
-	select {
-	case ans := <-reply:
-		return ans, nil
-	case <-waitCtx.Done():
-		c.approval.cancelAsk(id)
-		return nil, waitCtx.Err()
 	}
 }
 
