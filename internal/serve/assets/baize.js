@@ -86,6 +86,8 @@ const __T = {
     'delivery_raw_detail': 'Technical detail',
     'todo_signable': 'sign off now',
     'todo_phase_signoff': 'phase sign-off',
+    'todo_pending': 'pending',
+    'todo_completed': 'completed',
     'stats': 'Stats',
     'statistics': 'Statistics',
     'model': 'Model',
@@ -492,6 +494,8 @@ const __T = {
     'delivery_raw_detail': '技术详情',
     'todo_signable': '当前可签收',
     'todo_phase_signoff': '阶段签收',
+    'todo_pending': '待办',
+    'todo_completed': '已完成',
     'stats': '统计',
     'statistics': '统计',
     'model': '模型',
@@ -3094,7 +3098,7 @@ function renderAskCard() {
   d.appendChild(head);
   const reviewContext = String(ask.context || '').trim();
   if (reviewContext) {
-    if (typeof ask._contextCollapsed !== 'boolean') ask._contextCollapsed = false;
+    if (typeof ask._contextExpanded !== 'boolean') ask._contextExpanded = false;
     if (!Number.isFinite(ask._contextScrollTop)) ask._contextScrollTop = 0;
     const context = el('section', 'ask__context');
     const contextHead = el('div', 'ask__context-head');
@@ -3110,13 +3114,16 @@ function renderAskCard() {
     fixImageSrcs(contextMarkdown);
     highlightBlocks(contextMarkdown);
     contextBody.appendChild(contextMarkdown);
+    const contextSummary = el('div', 'ask__context-summary', contextMarkdown.textContent.replace(/\s+/g, ' ').trim());
     const syncContextDisclosure = () => {
-      contextBody.hidden = ask._contextCollapsed;
-      contextToggle.textContent = ask._contextCollapsed ? __('ask_context_show') : __('ask_context_hide');
-      contextToggle.setAttribute('aria-expanded', ask._contextCollapsed ? 'false' : 'true');
+      context.classList.toggle('ask__context--expanded', ask._contextExpanded);
+      contextSummary.hidden = ask._contextExpanded;
+      contextBody.hidden = !ask._contextExpanded;
+      contextToggle.textContent = ask._contextExpanded ? __('ask_context_hide') : __('ask_context_show');
+      contextToggle.setAttribute('aria-expanded', ask._contextExpanded ? 'true' : 'false');
     };
     contextToggle.onclick = () => {
-      ask._contextCollapsed = !ask._contextCollapsed;
+      ask._contextExpanded = !ask._contextExpanded;
       syncContextDisclosure();
       scheduleComposerLayoutSync();
       scrollDown(true);
@@ -3124,10 +3131,11 @@ function renderAskCard() {
     contextBody.addEventListener('scroll', () => { ask._contextScrollTop = contextBody.scrollTop; }, {passive:true});
     contextHead.appendChild(contextToggle);
     context.appendChild(contextHead);
+    context.appendChild(contextSummary);
     context.appendChild(contextBody);
     d.appendChild(context);
     syncContextDisclosure();
-    if (!ask._contextCollapsed && ask._contextScrollTop > 0) requestAnimationFrame(() => { contextBody.scrollTop = ask._contextScrollTop; });
+    if (ask._contextExpanded && ask._contextScrollTop > 0) requestAnimationFrame(() => { contextBody.scrollTop = ask._contextScrollTop; });
   }
   d.appendChild(el('div', 'ask__prompt', q.prompt));
   // rows: options + "other answer" + "skip and keep chatting"
@@ -4423,11 +4431,11 @@ function parseTodos(args){
   try{const a=JSON.parse(args);return Array.isArray(a.todos)?a.todos:[];}
   catch{return[];}
 }
-function todoStatusLabel(s){
-  switch(String(s||'').trim()){
-    case'completed':return '✓';
-    case'in_progress':return '▶';
-    default:return '○';
+function todoStatusIcon(s){
+  switch(s){
+    case'completed':return '<svg viewBox="0 0 20 20" aria-hidden="true"><path class="todos__status-check" d="m5.5 10.2 2.8 2.8 6.2-6.4"/></svg>';
+    case'in_progress':return '<svg viewBox="0 0 20 20" aria-hidden="true"><path class="todos__status-play" d="M7.4 5.8 14.6 10l-7.2 4.2Z"/></svg>';
+    default:return '<svg viewBox="0 0 20 20" aria-hidden="true"><circle class="todos__status-ring" cx="10" cy="10" r="7"/></svg>';
   }
 }
 function todoIsPhaseSignoff(ts,index){
@@ -4451,10 +4459,11 @@ function renderTodoPanel(){
   if(allDone)panel.classList.add('todos--collapsed');
   list.innerHTML='';
   todosState.forEach((t,i)=>{
-    const st=String(t.status||'').trim();
+    const rawStatus=String(t.status||'').trim();
+    const st=rawStatus==='completed'||rawStatus==='in_progress'?rawStatus:'pending';
     const li=el('li','todos__item todos__item--'+st+(t.level?' todos__item--sub':''));
-    const statusText=st==='in_progress'?(todoIsPhaseSignoff(todosState,i)?__('todo_phase_signoff'):__('todo_signable')):todoStatusLabel(st);
-    li.innerHTML='<span class="todos__status todos__status--'+st+'">'+escHtml(statusText)+'</span><span class="todos__text">'+escHtml((st==='in_progress'&&t.activeForm)?t.activeForm:t.content)+'</span>';
+    const statusText=st==='in_progress'?(todoIsPhaseSignoff(todosState,i)?__('todo_phase_signoff'):__('todo_signable')):(st==='completed'?__('todo_completed'):__('todo_pending'));
+    li.innerHTML='<span class="todos__status todos__status--'+st+'" role="img" aria-label="'+escHtml(statusText)+'" title="'+escHtml(statusText)+'">'+todoStatusIcon(st)+'</span><span class="todos__text">'+escHtml((st==='in_progress'&&t.activeForm)?t.activeForm:t.content)+'</span>';
     list.appendChild(li);
   });
   panel.classList.add('todos--visible');
