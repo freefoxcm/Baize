@@ -370,6 +370,7 @@ input,textarea{font:inherit;color:inherit}
 
 .notice{max-width:var(--chat-maxw);margin:5px auto;font-size:13px;color:var(--fg-2);padding:5px 12px;border-left:2px solid var(--border);border-radius:0 var(--radius) var(--radius) 0;white-space:pre-wrap}
 .notice--warn{color:var(--warning);border-left-color:var(--warning);background:var(--warning-soft)}
+.notice--audit{width:max-content;max-width:min(var(--chat-maxw),calc(100% - 24px));margin-block:3px;padding:3px 9px;border:1px solid var(--border);border-radius:999px;background:var(--panel);color:var(--muted);font:11px/1.4 var(--mono)}
 .app-toast-region{position:fixed;z-index:220;top:max(18px,env(safe-area-inset-top));right:20px;display:flex;width:min(360px,calc(100vw - 40px));justify-content:flex-end;pointer-events:none}
 .app-toast{display:flex;max-width:100%;align-items:center;gap:9px;padding:10px 13px;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));border-radius:9px;background:color-mix(in srgb,var(--glass-popover) 94%,var(--accent-soft));box-shadow:var(--shadow-lg);color:var(--fg);font-size:12.5px;line-height:1.4;animation:app-toast-in .16s ease-out;pointer-events:auto}
 .app-toast::before{content:'i';display:grid;place-items:center;flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:var(--accent);color:var(--accent-fg);font-size:11px;font-weight:700}
@@ -1013,6 +1014,32 @@ html[lang="zh"] .settings-check--task-errors small{font-size:10px;letter-spacing
 @media(max-width:640px){.app-toast-region{top:max(12px,env(safe-area-inset-top));right:12px;width:calc(100vw - 24px)}.app-toast{width:100%;box-sizing:border-box}}
 @media(prefers-reduced-motion:reduce){.app-toast{animation:none}.app-toast--leaving{transition:none}}
 
+/* Workbench compact mode is intentionally wider than the composer breakpoint.
+   Touch-first devices also use it at larger CSS widths so closing the drawer
+   never exposes the desktop-only 56px activity rail. */
+@media(max-width:840px),(hover:none) and (pointer:coarse){
+  .app,.app--sidebar-collapsed,.app--workspace-open,.app--settings-open{grid-template-columns:1fr}
+  .menu-btn{display:flex;align-items:center;justify-content:center;position:fixed;top:max(8px,env(safe-area-inset-top));left:max(8px,env(safe-area-inset-left));z-index:98;width:34px;height:34px;border:1px solid var(--border);border-radius:var(--radius);background:var(--glass-popover);color:var(--fg-2);transition:background .15s;-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter)}
+  .menu-btn:hover{background:var(--card-hover);color:var(--fg)}
+  .menu-btn svg{width:16px;height:16px}
+  .sidebar-overlay{display:block;position:fixed;inset:0;z-index:99;background:oklch(0% 0 0/.45);opacity:0;pointer-events:none;transition:opacity .25s ease}
+  .sidebar-overlay--visible{opacity:1;pointer-events:auto}
+  .activity-rail{position:fixed;inset:0 auto auto 0;width:56px;height:var(--app-viewport-height,100dvh);z-index:101;padding:max(8px,env(safe-area-inset-top)) 0 calc(8px + env(safe-area-inset-bottom));transform:translateX(-100%);transition:transform .2s ease;box-shadow:none}
+  .context-panel{position:fixed;inset:0 0 auto 56px;width:calc(100vw - 56px);height:var(--app-viewport-height,100dvh);z-index:100;transform:translateX(calc(-100% - 56px));opacity:1;transition:transform .2s ease;box-shadow:var(--shadow-lg)}
+  .app--mobile-workbench-open .activity-rail,.app--mobile-workbench-open .context-panel{transform:translateX(0)}
+  .app--mobile-workbench-open .context-panel{pointer-events:auto}
+  .context-panel__head{padding-top:calc(17px + env(safe-area-inset-top))}
+  .context-panel__status{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .workspace-panel,.app--workspace-open .workspace-panel{position:relative;inset:auto;width:100%;max-width:none;border:0;transform:none;visibility:visible}
+  .workspace-resizer{display:none}
+  .workspace-panel__body{grid-template-columns:minmax(120px,34%) minmax(0,1fr)}
+  .workspace-panel__head{height:auto;min-height:52px;padding-top:calc(8px + env(safe-area-inset-top))}
+  .settings-drawer{width:100%;border:0}
+  .settings-drawer__head{padding-top:calc(18px + env(safe-area-inset-top))}
+  .settings-form{padding-bottom:0}
+  .settings-actions{bottom:0;margin-bottom:0;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+}
+
 @media(max-width:768px){
   :root{--composer-overlay-height:126px;--composer-window-left:max(12px,env(safe-area-inset-left));--composer-window-top:8px;--composer-window-width:calc(100% - max(12px,env(safe-area-inset-left)) - max(12px,env(safe-area-inset-right)));--composer-window-height:102px}
   .app,.app--sidebar-collapsed,.app--workspace-open,.app--settings-open{grid-template-columns:1fr}
@@ -1059,7 +1086,7 @@ html[lang="zh"] .settings-check--task-errors small{font-size:10px;letter-spacing
   .workspace-tree{padding-inline:3px}
   .workspace-preview__markdown{padding:12px}
 }
-@media(max-width:768px) and (hover:none) and (pointer:coarse) and (any-hover:none){.activity-rail__tooltip{display:none!important}}
+@media(hover:none) and (pointer:coarse) and (any-hover:none){.activity-rail__tooltip{display:none!important}}
 @media(prefers-reduced-motion:reduce){
   .app,.activity-rail,.context-panel,.timeline-lines__travel{transition:none!important}
   .timeline-lines__travel.is-travelling{filter:none}

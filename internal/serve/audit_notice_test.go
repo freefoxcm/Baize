@@ -39,11 +39,21 @@ func TestServeIndexFoldsExecutionAuditNoticesIntoToolCards(t *testing.T) {
 		"function attachAuditNotice(e)",
 		"e.code==='capability_proxy'",
 		"JSON.parse(String(tool.args||'{}')).capability_id",
-		"e.code!=='decision_receipt'",
+		"e.code==='tool_output_truncated'",
+		"String(tool.id||'')===toolCallId",
+		"String(tool.id||'')===String(receipt.id||'')",
+		"function auditEntryText(entry)",
+		"function standaloneAuditNotice(e)",
+		"if(receipt.kind==='ask'&&receipt.outcome==='answered')return null",
 		"if(attachAuditNotice(e)){scrollDown();break;}",
 		".card[data-open=\"false\"] .card-audit",
 		"'tool_audit': 'Execution audit'",
 		"'tool_audit': '运行审计'",
+		"'tool_output_truncated': '输出过长，模型仅接收首尾内容；已省略 {elided} / 共 {total}'",
+		"'decision_ask_answered': '问题已回答'",
+		".notice--audit{",
+		`window.matchMedia('(max-width:840px), (hover:none) and (pointer:coarse)')`,
+		`let mobileWorkbenchOpen=false`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing folded execution audit support %q", want)

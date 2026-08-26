@@ -702,10 +702,10 @@ func TestServeWorkbenchFollowupLayoutContract(t *testing.T) {
 	}
 	js := string(baizeJS)
 	for _, marker := range []string{
-		`workbenchMode==='files'&&workspaceOpen&&!sidebarCollapsed`,
-		`workbenchMode==='settings'&&settingsDrawer.classList.contains('settings-drawer--open')&&!sidebarCollapsed`,
+		`workbenchMode==='files'&&workspaceOpen&&workbenchExpanded()`,
+		`workbenchMode==='settings'&&settingsDrawer.classList.contains('settings-drawer--open')&&workbenchExpanded()`,
 		`element.inert=hidden`,
-		`setSurfaceHidden(contextPanel,mobile?!mobileOpen:sidebarCollapsed)`,
+		`setSurfaceHidden(contextPanel,compact?!mobileOpen:sidebarCollapsed)`,
 		`setSurfaceHidden($('#log'),mobileOpen)`,
 		`setSurfaceHidden($('.footer'),mobileOpen)`,
 		`menuBtn.setAttribute('aria-expanded',mobileOpen?'true':'false')`,

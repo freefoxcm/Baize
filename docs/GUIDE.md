@@ -817,13 +817,16 @@ $tmpFile = Join-Path $env:TEMP "result.json"
 
 For read-only analysis, prefer the built-in `analyze_data` tool. It evaluates a
 deterministic Starlark program over JSON in process, with no file, environment,
-clock, random, network, module-loading, or subprocess access. When Python is
+clock, random, network, module-loading, or subprocess access. Starlark is not
+Python: use `== None` and `sorted()`; `is`, `**`, built-in `round`, and Python
+width/precision `%` formatting are unavailable. Keep `analyze_data` for simple
+JSON calculations. When standard Python math or formatting is genuinely
 needed, Bash supports `execution_scope: "scratch"`: the workspace is read-only,
 the session-private temporary directory is its only writable root, networking,
 background processes, extra write directories, and sandbox escape are disabled,
 and Linux maps that directory to `/tmp`. Scratch execution requires a proven OS
-sandbox and fails closed when one is unavailable; use `analyze_data` in that
-case. Foreground Bash also accepts an optional UTF-8 `stdin` string of at most
+sandbox and fails closed when one is unavailable; do not fall back to normal
+Bash in that case. Foreground Bash also accepts an optional UTF-8 `stdin` string of at most
 2 MiB. Use it for bounded JSON or similar structured requests instead of shell
 interpolation or a workspace request file; it is unavailable with background or
 preserved-process execution. Writing a script to ordinary `/tmp` from normal

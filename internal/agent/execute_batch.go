@@ -372,7 +372,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 		a.svc.sink.Emit(event.Event{Kind: event.ToolResult, Tool: tr})
 		if o.truncated && o.truncMsg != "" {
-			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: o.truncMsg})
+			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeToolOutputTruncated, Text: o.truncMsg, Detail: c.ID})
 		}
 	}
 	a.applyBatchGuards(ctx, cancelled, calls, outcomes, results, receiptMark)

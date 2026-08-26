@@ -1,7 +1,7 @@
 [
   {
     "Name": "analyze_data",
-    "Description": "Run deterministic, side-effect-free data calculations over JSON. Use MCP/read tools to obtain facts first, then pass their JSON here for grouping, aggregation, intersections, rankings, or trends without creating temporary files. The Starlark program receives `input` and must assign its JSON-compatible answer to global `result`; put loops inside a function and call it when assigning result. It has no file, environment, clock, random, network, module-loading, or subprocess access. Prefer this tool over writing analysis scripts with bash.",
+    "Description": "Run simple deterministic, side-effect-free Starlark calculations over JSON. Use MCP/read tools to obtain facts first, then pass their JSON here for grouping, aggregation, intersections, rankings, or straightforward trends without temporary files. The program receives `input` and must assign its JSON-compatible answer to global `result`; put loops inside a function and call it when assigning result. Starlark is not Python: use `== None` instead of `is`, use `sorted()` for ordering, and do not use `**` or built-in `round`; string `%` does not support Python width or precision formatting. It has no file, environment, clock, random, network, module-loading, or subprocess access. When ordinary Python math or formatting is genuinely required, use a fixed script through bash with `execution_scope=scratch`; never fall back to normal bash when scratch isolation is unavailable.",
     "ReadOnly": true,
     "Schema": {
       "properties": {
@@ -9,7 +9,7 @@
           "description": "JSON data to analyze (maximum encoded size 2 MiB)."
         },
         "program": {
-          "description": "Starlark source. It receives global input and must assign a JSON-compatible value to global result.",
+          "description": "Starlark source for simple JSON calculations. It receives global input and must assign a JSON-compatible value to global result. This is not Python: use == None, sorted(), and explicit arithmetic; is, **, built-in round, and Python width/precision % formatting are unavailable.",
           "maxLength": 32768,
           "type": "string"
         }
