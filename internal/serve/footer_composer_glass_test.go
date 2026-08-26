@@ -12,6 +12,7 @@ func TestServeFooterComposerGlassContract(t *testing.T) {
 		`--composer-glass-filter:none;--composer-glass-toolbar:var(--composer-bg);--composer-glass-control:var(--panel-2);`,
 		`--transcript-scrollbar-width:0px;--composer-overlay-height:156px`,
 		`--composer-window-left:max(28px,calc((100% - var(--chat-maxw))/2))`,
+		`--composer-window-width:min(var(--chat-maxw),calc(100% - 56px))`,
 		`--composer-window-radius:var(--radius-lg)`,
 		`--glass-composer:rgba(48,44,40,.58)`,
 		`--composer-glass-filter:blur(20px) saturate(125%)`,
