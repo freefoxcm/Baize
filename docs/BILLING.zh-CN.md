@@ -65,8 +65,8 @@ stats 的历史报价不会回填或重算。
 或请求失败不会影响费用事实。
 
 ```sh
-reasonix doctor billing
-reasonix doctor billing --json
+baize doctor billing
+baize doctor billing --json
 ```
 
 兼容保留的 `fx` 对象固定为 `enabled=false`、无缓存；正文同时展示自动选择策略、价表

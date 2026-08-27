@@ -128,7 +128,7 @@ func terminalHostKeyPrompt(_ context.Context, q remote.HostKeyQuestion) (bool, e
 	return answer == "y" || answer == "yes", nil
 }
 
-// remoteConnectSyntax is the parsed form of `reasonix remote connect|open …`.
+// remoteConnectSyntax is the parsed form of `baize remote connect|open …`.
 type remoteConnectSyntax struct {
 	name        string
 	workspace   string
@@ -138,12 +138,12 @@ type remoteConnectSyntax struct {
 	forwardOnly bool
 }
 
-const remoteConnectUsage = "usage: reasonix remote connect <name> [flags]"
+const remoteConnectUsage = "usage: baize remote connect <name> [flags]"
 
 // parseRemoteConnectSyntax accepts both documented orders:
 //
-//	reasonix remote connect <name> [flags]
-//	reasonix remote connect [flags] <name>
+//	baize remote connect <name> [flags]
+//	baize remote connect [flags] <name>
 //
 // Go's flag package stops at the first positional, so `<name> --open` used to
 // fail even though help/GUIDE show that form. We keep stdlib flags (so `-open`
@@ -349,7 +349,7 @@ func fetchRemoteCLIBinary(ctx context.Context, version, goos, goarch string) ([]
 	return releaseasset.DownloadCLI(ctx, client, version, goos, goarch)
 }
 
-const remoteServeUsage = "usage: reasonix remote serve start|stop|status|logs <name> [--workspace PATH] [-n N]"
+const remoteServeUsage = "usage: baize remote serve start|stop|status|logs <name> [--workspace PATH] [-n N]"
 
 // remoteServeCLI: serve start|stop|status|logs <name>.
 func remoteServeCLI(args []string, version string) int {
@@ -462,7 +462,7 @@ func remoteStatusCLI(args []string) int {
 // remoteForwardCLI manages persisted forward rules (applied on next connect).
 func remoteForwardCLI(args []string) int {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote forward add <host> (-L|-R) <spec> | rm <host> <name> | ls <host>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote forward add <host> (-L|-R) <spec> | rm <host> <name> | ls <host>")
 		return 2
 	}
 	switch args[0] {
@@ -501,7 +501,7 @@ func remoteForwardLs(host string) int {
 
 func remoteForwardAdd(args []string) int {
 	if len(args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote forward add <host> (-L|-R) <spec>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote forward add <host> (-L|-R) <spec>")
 		return 2
 	}
 	host := args[0]
@@ -543,7 +543,7 @@ func remoteForwardAdd(args []string) int {
 
 func remoteForwardRm(args []string) int {
 	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote forward rm <host> <bind>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote forward rm <host> <bind>")
 		return 2
 	}
 	host, bind := args[0], args[1]
@@ -579,7 +579,7 @@ func remoteForwardRm(args []string) int {
 // remoteFSCLI: fs ls|get|put with <name>:<path> operands.
 func remoteFSCLI(args []string) int {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote fs ls <name>:<path> | get <name>:<remote> [local] | put <local> <name>:<remote>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote fs ls <name>:<path> | get <name>:<remote> [local] | put <local> <name>:<remote>")
 		return 2
 	}
 	switch args[0] {
@@ -623,7 +623,7 @@ func withRemoteFS(name string, fn func(ctx context.Context, client *remote.Clien
 func remoteFSLs(operand string) int {
 	host, p, ok := splitHostPath(operand)
 	if !ok {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote fs ls <name>:<path>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote fs ls <name>:<path>")
 		return 2
 	}
 	return withRemoteFS(host, func(ctx context.Context, client *remote.Client) int {
@@ -650,12 +650,12 @@ func remoteFSLs(operand string) int {
 
 func remoteFSGet(args []string) int {
 	if len(args) < 1 || len(args) > 2 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote fs get <name>:<remote> [local]")
+		fmt.Fprintln(os.Stderr, "usage: baize remote fs get <name>:<remote> [local]")
 		return 2
 	}
 	host, remotePath, ok := splitHostPath(args[0])
 	if !ok {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote fs get <name>:<remote> [local]")
+		fmt.Fprintln(os.Stderr, "usage: baize remote fs get <name>:<remote> [local]")
 		return 2
 	}
 	localPath := path.Base(remotePath)
@@ -691,13 +691,13 @@ func remoteFSGet(args []string) int {
 
 func remoteFSPut(args []string) int {
 	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote fs put <local> <name>:<remote>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote fs put <local> <name>:<remote>")
 		return 2
 	}
 	localPath := args[0]
 	host, remotePath, ok := splitHostPath(args[1])
 	if !ok {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote fs put <local> <name>:<remote>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote fs put <local> <name>:<remote>")
 		return 2
 	}
 	in, err := os.Open(localPath)

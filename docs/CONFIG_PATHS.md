@@ -120,7 +120,7 @@ remain active. The default is `true`.
 
 ### Custom provider `api_key_env` names
 
-When a custom provider is added from the desktop settings or `reasonix setup`,
+When a custom provider is added from the desktop settings or `baize setup`,
 Reasonix stores a generated `api_key_env` in `config.toml` and writes the secret
 value to the matching key in the global `.env`. The generated name is stable, so
 the same provider keeps using the same credential slot after restart.

@@ -19,10 +19,10 @@ Two kinds of plugin capabilities exist:
 Extensions install exactly like any plugin package:
 
 ```bash
-reasonix plugin install git:github.com/owner/extension --dry-run   # preview
-reasonix plugin install git:github.com/owner/extension --yes       # install
-reasonix plugin show <name>                                        # details
-reasonix plugin doctor <name>                                      # validate
+baize plugin install git:github.com/owner/extension --dry-run   # preview
+baize plugin install git:github.com/owner/extension --yes       # install
+baize plugin show <name>                                        # details
+baize plugin doctor <name>                                      # validate
 ```
 
 For a plugin with a `runtime` block, the preview and `show` output include a
@@ -123,9 +123,9 @@ development loop is:
    [generated method index](./EXTENSION_PROTOCOL.generated.md) are the
    language-neutral references.
 3. Build the runtime binary, preview its trust and capabilities with
-   `reasonix plugin install /path/to/plugin --dry-run`, then install it with
+   `baize plugin install /path/to/plugin --dry-run`, then install it with
    `--link --yes`.
-4. Validate with `reasonix plugin doctor <name>`, run `/reload` while idle,
+4. Validate with `baize plugin doctor <name>`, run `/reload` while idle,
    and exercise the contributed intercept, Provider, UI action, or resource.
 
 SDK releases use immutable `sdk/go/vX.Y.Z` tags. The first public version is

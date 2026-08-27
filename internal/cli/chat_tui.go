@@ -5092,7 +5092,7 @@ func (m *chatTUI) runExportCommand(input string) {
 	}
 
 	var b strings.Builder
-	b.WriteString("# reasonix session\n\n")
+	b.WriteString("# baize session\n\n")
 	lastRole := provider.Role("")
 	exportedMessages := 0
 	for _, msg := range msgs {
@@ -5305,8 +5305,8 @@ func (m *chatTUI) notice(note string) {
 }
 
 // showRemoteHosts renders a read-only summary of configured remote hosts. The
-// remote session lives in a `reasonix serve` on the remote host, so connecting
-// happens from a terminal (`reasonix remote connect`), not inside this chat.
+// remote session lives in a `baize serve` on the remote host, so connecting
+// happens from a terminal (`baize remote connect`), not inside this chat.
 func (m *chatTUI) showRemoteHosts() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -5328,7 +5328,7 @@ func (m *chatTUI) showRemoteHosts() {
 		}
 		fmt.Fprintf(&b, "  · %s  %s\n", h.Name, target)
 	}
-	fmt.Fprintf(&b, "  run `reasonix remote connect <name>` in a terminal to open the remote workspace")
+	fmt.Fprintf(&b, "  run `baize remote connect <name>` in a terminal to open the remote workspace")
 	m.commitLine(dim(b.String()))
 }
 
@@ -5432,7 +5432,7 @@ func interruptedTurnDisplayNotice() string {
 // at the top of the session.
 func renderTUIBanner(label, missing string, width int) string {
 	var b strings.Builder
-	b.WriteString(accent("◆") + " " + bold("reasonix") + "  " + dim("· "+label) + "\n")
+	b.WriteString(accent("◆") + " " + bold("baize") + "  " + dim("· "+label) + "\n")
 	b.WriteString(dim("  "+i18n.M.ChatTip) + "\n")
 	if missing != "" {
 		b.WriteString(wrapForViewport("  ! "+missing, width, activeCLITheme.warn) + "\n")

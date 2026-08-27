@@ -46,7 +46,7 @@ func TestRegisterContinueFlagShorthandParses(t *testing.T) {
 		{[]string{}, false},
 	}
 	for _, tc := range cases {
-		fs := pflag.NewFlagSet("reasonix", pflag.ContinueOnError)
+		fs := pflag.NewFlagSet("baize", pflag.ContinueOnError)
 		cont := registerContinueFlag(fs)
 		if err := fs.Parse(tc.args); err != nil {
 			t.Fatalf("Parse(%#v): %v", tc.args, err)
@@ -61,7 +61,7 @@ func TestRegisterContinueFlagShorthandParses(t *testing.T) {
 // leaves "-c" unparseable ("unknown shorthand flag") while accidentally
 // accepting "--c" as a long flag name (the pre-fix bug, #7156/#7171).
 func TestRegisterContinueFlagRejectsAccidentalLongC(t *testing.T) {
-	fs := pflag.NewFlagSet("reasonix", pflag.ContinueOnError)
+	fs := pflag.NewFlagSet("baize", pflag.ContinueOnError)
 	cont := registerContinueFlag(fs)
 	if err := fs.Parse([]string{"--c"}); err == nil {
 		t.Fatalf("Parse(--c) should fail: --c must not exist as a long flag name")

@@ -7,7 +7,7 @@ var ChineseTraditional = Messages{
 	WelcomeTitleFmt: "歡迎使用 %s",
 	NoConfigYet:     "還沒有設定 — 現在來設定一下吧。",
 
-	InitHint: "專案記憶（AGENTS.md）在會話內由模型生成：執行 `reasonix`，然後 `/init` —— 模型會分析程式碼庫並寫入。設定請用 `reasonix setup`。",
+	InitHint: "專案記憶（AGENTS.md）在會話內由模型生成：執行 `baize`，然後 `/init` —— 模型會分析程式碼庫並寫入。設定請用 `baize setup`。",
 
 	ChatTip:                "對話上下文將跨輪保留。輸入 'exit' 或按 Ctrl-D 退出。",
 	TurnCancelled:          "已取消 — 回到提示符",
@@ -29,7 +29,7 @@ var ChineseTraditional = Messages{
 		"unreviewed_change":   "改動後再沒看過",
 		"declared_unverified": "自己申報未驗證",
 	},
-	NoSessionToResume: "沒有可恢復的會話 — 用 `reasonix` 開一個新的",
+	NoSessionToResume: "沒有可恢復的會話 — 用 `baize` 開一個新的",
 	ResumeRequiresTTY: "--resume 需要互動式終端；用 --continue 直接恢復最近一次",
 	PickSessionLabel:  "恢復哪個會話？",
 
@@ -384,7 +384,7 @@ var ChineseTraditional = Messages{
 	SetupComplete:            "設定完成。",
 	SetupCancelled:           "設定已取消。",
 	TryHintFmt:               "試試: %s",
-	NextHint:                 "下一步：設定 API key（執行 `reasonix setup` 或 export DEEPSEEK_API_KEY=...），然後執行 `reasonix run \"你的任務\"`。",
+	NextHint:                 "下一步：設定 API key（執行 `baize setup` 或 export DEEPSEEK_API_KEY=...），然後執行 `baize run \"你的任務\"`。",
 	ConfirmReconfigureFmt:    "%s 已存在。重新設定並覆蓋？",
 	NotOverwritingFmt:        "%s 已存在，不覆蓋",
 	SetupManagerTitle:        "供應商設定",
@@ -479,10 +479,10 @@ var ChineseTraditional = Messages{
 	RemotePassphrasePromptFmt: "%s 的金鑰通關密語：",
 	RemotePasswordPromptFmt:   "%s 的登入密碼：",
 	RemoteBootstrapStepFmt:    "遠端 serve：%s %s",
-	RemoteNoHostsHint:         "尚未設定遠端主機；用 `reasonix remote add <名稱> [user@]host` 新增",
+	RemoteNoHostsHint:         "尚未設定遠端主機；用 `baize remote add <名稱> [user@]host` 新增",
 
 	UnknownCommandFmt:         "未知命令 %q",
-	UsageRunHint:              "用法：reasonix -p [--model NAME] <task>",
+	UsageRunHint:              "用法：baize -p [--model NAME] <task>",
 	ErrorPrefix:               "錯誤：",
 	ReconfigureOnUnknownModel: "設定的模型已不可用 —— 重新執行引導設定。",
 	WriteConfigErr:            "寫入設定失敗：",
@@ -490,7 +490,7 @@ var ChineseTraditional = Messages{
 
 	ProviderErrBadRequest:          "請求格式錯誤 (HTTP 400)：請求體被拒絕，通常是程式缺陷。若持續出現請回報。",
 	ProviderErrContextOverflowFmt:  "請求超出共用上下文視窗：prompt %d + 輸出 %d = %d tokens，視窗只有 %d。請壓縮、用更小的輸出上限重試、分叉或回溯後再發送。",
-	ProviderErrAuth:                "認證失敗 (HTTP 401)：未讀到 API key（缺失或未設定）。請在 .env 中設定金鑰，或執行 `reasonix setup`。",
+	ProviderErrAuth:                "認證失敗 (HTTP 401)：未讀到 API key（缺失或未設定）。請在 .env 中設定金鑰，或執行 `baize setup`。",
 	ProviderErrModelFormatMismatch: "模型/API 格式不相容：服務端不支援目前模型使用所選 provider 線路。這不是 API key 失效；請選擇支援該模型的 provider 線路。",
 	ProviderErrOpenCodeGoGrokRoute: "OpenCode Go 的 `grok-4.5` 請使用 OpenCode Go Responses 預設。",
 	ProviderErrInsufficientBalance: "餘額不足 (HTTP 402)：帳戶餘額不足，請前往儲值後重試。",
@@ -507,7 +507,7 @@ var ChineseTraditional = Messages{
 	ReportNoPending:           "沒有待處理的 CLI 當機報告。",
 	ReportHeaderFmt:           "CLI 當機報告 %s",
 	ReportCapturedFmt:         "擷取時間：%s",
-	ReportPreviewOnlyFmt:      "目前僅預覽。執行 `reasonix report send %s` 可傳送這份報告。",
+	ReportPreviewOnlyFmt:      "目前僅預覽。執行 `baize report send %s` 可傳送這份報告。",
 	ReportSendPrompt:          "將這份已脫敏報告傳送到 crash.reasonix.io？",
 	ReportKept:                "報告已保留在本機。",
 	ReportDeletedFmt:          "已刪除 CLI 當機報告 %s。",
@@ -516,67 +516,67 @@ var ChineseTraditional = Messages{
 	ReportUploadFailedFmt:     "報告上傳失敗；本機報告已保留：%v",
 	ReportSentDeleteFailedFmt: "報告已傳送，但無法刪除本機副本：%v",
 	ReportUsageBody: `用法：
-  reasonix report                 預覽最新本機報告並確認是否傳送
-  reasonix report list            列出本機 CLI 當機報告
-  reasonix report show [ID]       預覽報告（省略 ID 時使用最新一份）
-  reasonix report send [ID]       傳送已審閱報告，成功後刪除本機副本
-  reasonix report delete [ID]     不傳送，直接刪除本機報告`,
+  baize report                 預覽最新本機報告並確認是否傳送
+  baize report list            列出本機 CLI 當機報告
+  baize report show [ID]       預覽報告（省略 ID 時使用最新一份）
+  baize report send [ID]       傳送已審閱報告，成功後刪除本機副本
+  baize report delete [ID]     不傳送，直接刪除本機報告`,
 
-	CLITelemetryConsentNotice:           "Reasonix 可以向 crash.reasonix.io 傳送匿名、完全不含內容的 CLI 使用統計：隨機安裝 ID、版本、作業系統和固定品質分桶。絕不會傳送 prompt、回答、程式碼、路徑、模型或工具內容、環境變數。之後可執行 `reasonix config telemetry off` 關閉。",
+	CLITelemetryConsentNotice:           "Reasonix 可以向 crash.reasonix.io 傳送匿名、完全不含內容的 CLI 使用統計：隨機安裝 ID、版本、作業系統和固定品質分桶。絕不會傳送 prompt、回答、程式碼、路徑、模型或工具內容、環境變數。之後可執行 `baize config telemetry off` 關閉。",
 	CLITelemetryConsentPrompt:           "允許傳送匿名 CLI 使用統計嗎？",
 	CLITelemetryConsentInvalid:          "請輸入 y 或 n。",
 	CLITelemetryConsentSaveFailedFmt:    "由於無法儲存偏好設定，CLI 使用統計仍維持關閉：%v",
 	CLITelemetryConsentCleanupFailedFmt: "CLI 使用統計已關閉，但無法刪除待傳送統計：%v",
 
-	UsageBody: `reasonix — 由設定和插件驅動的 coding agent（多模型）
+	UsageBody: `baize — 由設定和插件驅動的 coding agent（多模型）
 
 用法：
-  reasonix [--model NAME] [-c|--continue] [-r|--resume [QUERY]] [--permission-mode MODE] [--effort LEVEL] [--add-dir PATH]   互動式會話
-  reasonix -p|--print [--model NAME] [--output-format text|json|stream-json] [--allowed-tools RULES] [--add-dir PATH] <task>
-  reasonix run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>
-  reasonix run --events-jsonl [--model NAME] <task>      輸出脫敏結構化事件 JSONL
-  reasonix review [--base BRANCH] [--commit SHA] [--model NAME]  AI 程式碼審查（基於本機 diff）
-  reasonix web [--model NAME] [--dir PATH] [--addr HOST:PORT] [--no-open]  啟動本機 Web UI 並用預設瀏覽器開啟
-  reasonix serve [--model NAME] [--dir PATH] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  透過 HTTP+SSE 提供服務（支援可選認證）
-  reasonix acp [--model NAME]                           透過 stdio 提供 Agent Client Protocol（也可用：reasonix --acp）
-  reasonix setup [path]                                 互動式設定精靈；生成 reasonix.toml（及 .env）
-  reasonix config reasoning-language [auto|zh|en]        設定可見思考語言
-  reasonix config compact-ratio [--local] [65..85]       設定自動壓縮閾值
-  reasonix config telemetry [auto|on|off]                設定不含內容的 CLI 使用統計
-  reasonix report [list|show|send|delete] [ID]           審閱並明確傳送本機 CLI 當機報告
-  reasonix mcp <add|remove|list|import>                 管理 reasonix.toml 裡的 MCP 伺服器
-  reasonix subagent <list|create|edit|delete|try|run>   管理和執行隔離子智慧體 profile
-  reasonix init                                         查看如何產生專案記憶（AGENTS.md）
-  reasonix doctor [--json]                              輸出脫敏的本機診斷資訊
-  reasonix doctor session <branch-id> [--zip] [--out PATH]  匯出會話衝突診斷 zip
-  reasonix session list --json [--dir PATH]             為機器客戶列出脫敏會話
-  reasonix session show|status <machine-session-id> --json [--dir PATH]  查詢單一脫敏會話
-  reasonix session recovery [<machine-session-id>] --json [--dir PATH]  查詢脫敏復原狀態
-  reasonix hook list|status --json [--dir PATH]         檢視脫敏 Hook 狀態
-  reasonix task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
+  baize [--model NAME] [-c|--continue] [-r|--resume [QUERY]] [--permission-mode MODE] [--effort LEVEL] [--add-dir PATH]   互動式會話
+  baize -p|--print [--model NAME] [--output-format text|json|stream-json] [--allowed-tools RULES] [--add-dir PATH] <task>
+  baize run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>
+  baize run --events-jsonl [--model NAME] <task>      輸出脫敏結構化事件 JSONL
+  baize review [--base BRANCH] [--commit SHA] [--model NAME]  AI 程式碼審查（基於本機 diff）
+  baize web [--model NAME] [--dir PATH] [--addr HOST:PORT] [--no-open]  啟動本機 Web UI 並用預設瀏覽器開啟
+  baize serve [--model NAME] [--dir PATH] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  透過 HTTP+SSE 提供服務（支援可選認證）
+  baize acp [--model NAME]                           透過 stdio 提供 Agent Client Protocol（也可用：baize --acp）
+  baize setup [path]                                 互動式設定精靈；生成 reasonix.toml（及 .env）
+  baize config reasoning-language [auto|zh|en]        設定可見思考語言
+  baize config compact-ratio [--local] [65..85]       設定自動壓縮閾值
+  baize config telemetry [auto|on|off]                設定不含內容的 CLI 使用統計
+  baize report [list|show|send|delete] [ID]           審閱並明確傳送本機 CLI 當機報告
+  baize mcp <add|remove|list|import>                 管理 reasonix.toml 裡的 MCP 伺服器
+  baize subagent <list|create|edit|delete|try|run>   管理和執行隔離子智慧體 profile
+  baize init                                         查看如何產生專案記憶（AGENTS.md）
+  baize doctor [--json]                              輸出脫敏的本機診斷資訊
+  baize doctor session <branch-id> [--zip] [--out PATH]  匯出會話衝突診斷 zip
+  baize session list --json [--dir PATH]             為機器客戶列出脫敏會話
+  baize session show|status <machine-session-id> --json [--dir PATH]  查詢單一脫敏會話
+  baize session recovery [<machine-session-id>] --json [--dir PATH]  查詢脫敏復原狀態
+  baize hook list|status --json [--dir PATH]         檢視脫敏 Hook 狀態
+  baize task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
                                                          檢視或控制脫敏 Task
-  reasonix bot start|doctor|weixin-login                多管道 IM bot 閘道
-  reasonix upgrade [--check] [--force]                   更新到最新正式版（別名：reasonix update）
-  reasonix completion bash|zsh|fish                     列印 shell 補全腳本到 stdout
-  reasonix version [--verbose|--json]                   列印版本（單行）或建置元資訊
-  reasonix --version | -v                               單行版本（腳本安全）
-  reasonix help
+  baize bot start|doctor|weixin-login                多管道 IM bot 閘道
+  baize upgrade [--check] [--force]                   更新到最新正式版（別名：baize update）
+  baize completion bash|zsh|fish                     列印 shell 補全腳本到 stdout
+  baize version [--verbose|--json]                   列印版本（單行）或建置元資訊
+  baize --version | -v                               單行版本（腳本安全）
+  baize help
 
 範例：
-  reasonix
-  reasonix --continue
-  reasonix --resume provider-config
-  reasonix web
-  reasonix run "把 main.go 裡的 TODO 實現掉"
-  reasonix run --model mimo-pro "給這個函式補單元測試"
-  reasonix -p "總結這個倉庫" --output-format json
-  reasonix subagent run review "審查目前變更"
-  echo "解釋這段程式碼" | reasonix run
+  baize
+  baize --continue
+  baize --resume provider-config
+  baize web
+  baize run "把 main.go 裡的 TODO 實現掉"
+  baize run --model mimo-pro "給這個函式補單元測試"
+  baize -p "總結這個倉庫" --output-format json
+  baize subagent run review "審查目前變更"
+  echo "解釋這段程式碼" | baize run
 
 設定：
   優先順序：flag > ./reasonix.toml > <Reasonix home>/config.toml > 內建預設值
   金鑰透過 api_key_env 從環境變數注入（如 DEEPSEEK_API_KEY）。
-  執行 'reasonix setup' 生成設定；詳見 docs/SPEC.md。
+  執行 'baize setup' 生成設定；詳見 docs/SPEC.md。
 `,
 	RenameUsage:                "用法：/rename <新名稱>  或  /rename <序號> <新名稱>",
 	RenameNoSession:            "當前沒有活躍會話可重新命名",
@@ -604,7 +604,7 @@ var ChineseTraditional = Messages{
 	GoalPausedFmt:              "目標已暫停（%s）— 使用 /goal resume 繼續",
 	GoalRuntimeFmt:             "執行狀態：輪次 %d · 請求 %d · token %d · 工作時間 %s",
 	GoalRuntimeLastReason:      "最近原因",
-	ProviderErrAuthRejected:    "認證失敗 (HTTP 401)：服務端拒絕了你的 API key。可能是 key 錯誤或已過期，也可能是服務端出現瞬時鑑權/額度問題——已退避重試仍失敗。請稍後再試，或檢查 .env 中的金鑰 / 執行 `reasonix setup`。",
+	ProviderErrAuthRejected:    "認證失敗 (HTTP 401)：服務端拒絕了你的 API key。可能是 key 錯誤或已過期，也可能是服務端出現瞬時鑑權/額度問題——已退避重試仍失敗。請稍後再試，或檢查 .env 中的金鑰 / 執行 `baize setup`。",
 	SelectMoreAboveFmt:         "  ↑ 上方還有 %d 個",
 	SelectMoreBelowFmt:         "  ↓ 下方還有 %d 個",
 	SelectSearchHint:           "/ 搜尋 · 輸入關鍵詞過濾 · Esc 取消搜尋",

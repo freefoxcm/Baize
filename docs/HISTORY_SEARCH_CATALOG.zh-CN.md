@@ -26,8 +26,8 @@ Agent 的 `history` 工具与 Desktop 历史管理器共享该投影。搜索不
 诊断与安全重建命令：
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex history [--dir PATH ...] [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex history [--dir PATH ...] [--json]
 ```
 
 诊断不会输出 query、token、snippet、消息、tool arguments 或 provider 内容；reindex

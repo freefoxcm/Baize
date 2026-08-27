@@ -13,7 +13,7 @@ import (
 	"reasonix/internal/remote"
 )
 
-// remoteCommand dispatches `reasonix remote <sub>`, mirroring mcpCommand.
+// remoteCommand dispatches `baize remote <sub>`, mirroring mcpCommand.
 func remoteCommand(args []string, version string) int {
 	if len(args) == 0 {
 		remoteUsage()
@@ -61,7 +61,7 @@ func remoteCommand(args []string, version string) int {
 // with an actionable message instead of "unknown subcommand"; the following
 // stable release deletes the stubs and the routes entirely.
 func removedWorkbenchCommand(name string) int {
-	fmt.Fprintf(os.Stderr, "reasonix remote %s: Remote Workbench 已移除，请使用 `reasonix remote connect <host> --open`\n", name)
+	fmt.Fprintf(os.Stderr, "baize remote %s: Remote Workbench 已移除，请使用 `baize remote connect <host> --open`\n", name)
 	return 1
 }
 
@@ -95,7 +95,7 @@ func editUserConfig(mutate func(*config.Config) error) error {
 	return cfg.SaveTo(path)
 }
 
-const remoteAddUsage = "usage: reasonix remote add <name> [user@]host[:port] [flags]"
+const remoteAddUsage = "usage: baize remote add <name> [user@]host[:port] [flags]"
 
 func remoteAddCLI(args []string) int {
 	// Positionals come first (name, target); Go's flag package stops at the
@@ -191,7 +191,7 @@ func remoteListCLI() int {
 
 func remoteRemoveCLI(args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote remove <name>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote remove <name>")
 		return 2
 	}
 	name := args[0]
@@ -289,7 +289,7 @@ func remotePrintImportCandidates(cands []remote.ImportedHost) {
 
 func remoteTestCLI(args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix remote test <name|user@host>")
+		fmt.Fprintln(os.Stderr, "usage: baize remote test <name|user@host>")
 		return 2
 	}
 	client, cleanup, err := buildRemoteClient(args[0])
@@ -318,17 +318,17 @@ func remoteUsage() {
 	fmt.Println(`Manage remote SSH hosts and their persistent serve (user-global config).
 
 Usage:
-  reasonix remote add <name> [user@]host[:port] [--identity F] [--jump SPEC]
+  baize remote add <name> [user@]host[:port] [--identity F] [--jump SPEC]
                      [--workspace PATH] [--use-ssh-config] [--serve-install auto|npm|upload|never]
                      [--passphrase-env NAME] [--password-env NAME]
-  reasonix remote list
-  reasonix remote remove <name>
-  reasonix remote import [alias...|--all]      # from ~/.ssh/config
-  reasonix remote test <name|user@host>        # dial + auth + host-key check
-  reasonix remote connect <name> [--workspace PATH] [--local-port N] [--no-serve] [--open] [--forward-only]
-  reasonix remote open <name>                  # connect --open
-  reasonix remote status [<name>]
-  reasonix remote forward add <host> (-L|-R) <spec> | forward rm <host> <name> | forward ls <host>
-  reasonix remote serve start|stop|status|logs <name> [--workspace PATH] [-n N]
-  reasonix remote fs ls <name>:<path> | fs get <name>:<remote> [local] | fs put <local> <name>:<remote>`)
+  baize remote list
+  baize remote remove <name>
+  baize remote import [alias...|--all]      # from ~/.ssh/config
+  baize remote test <name|user@host>        # dial + auth + host-key check
+  baize remote connect <name> [--workspace PATH] [--local-port N] [--no-serve] [--open] [--forward-only]
+  baize remote open <name>                  # connect --open
+  baize remote status [<name>]
+  baize remote forward add <host> (-L|-R) <spec> | forward rm <host> <name> | forward ls <host>
+  baize remote serve start|stop|status|logs <name> [--workspace PATH] [-n N]
+  baize remote fs ls <name>:<path> | fs get <name>:<remote> [local] | fs put <local> <name>:<remote>`)
 }

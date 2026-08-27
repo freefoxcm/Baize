@@ -100,7 +100,7 @@ CJK 双宽字符；如果偏好其它形状，可以设为 `block` 或 `underlin
 
 ### 自定义 provider 的 `api_key_env` 命名
 
-通过桌面端设置或 `reasonix setup` 添加自定义 provider 时，Reasonix 会把生成的
+通过桌面端设置或 `baize setup` 添加自定义 provider 时，Reasonix 会把生成的
 `api_key_env` 保存到 `config.toml`，并把真实密钥值写入全局 `.env` 中同名的 key。
 生成结果是稳定的，因此同一个 provider 重启后仍会读取同一个凭据槽位。
 

@@ -783,7 +783,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if len(plugins) == 0 {
 		b.WriteString("# [[plugins]]\n")
 		b.WriteString("# name    = \"example\"\n")
-		b.WriteString("# command = \"reasonix-plugin-example\"\n")
+		b.WriteString("# command = \"baize-plugin-example\"\n")
 		b.WriteString("# startup_timeout_seconds = 60    # optional initialize + tools/list cap\n")
 		b.WriteString("# call_timeout_seconds = 600       # optional per-server MCP call timeout\n")
 		b.WriteString("# tool_timeout_seconds = { \"generate_video\" = 1800 }   # raw MCP tool names\n")

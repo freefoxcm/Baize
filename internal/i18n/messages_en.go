@@ -6,7 +6,7 @@ var English = Messages{
 	WelcomeTitleFmt: "Welcome to %s",
 	NoConfigYet:     "No configuration found yet — let's set it up.",
 
-	InitHint: "Project memory (AGENTS.md) is generated in-session: run `reasonix`, then `/init` — the model analyzes the codebase and writes it. For configuration, use `reasonix setup`.",
+	InitHint: "Project memory (AGENTS.md) is generated in-session: run `baize`, then `/init` — the model analyzes the codebase and writes it. For configuration, use `baize setup`.",
 
 	ChatTip:                "Context is kept across turns. Type 'exit' or Ctrl-D to quit.",
 	TurnCancelled:          "cancelled — back to prompt",
@@ -28,7 +28,7 @@ var English = Messages{
 		"unreviewed_change":   "changed, never looked at again",
 		"declared_unverified": "declared unverified",
 	},
-	NoSessionToResume: "no saved session to resume — start a new one with `reasonix`",
+	NoSessionToResume: "no saved session to resume — start a new one with `baize`",
 	ResumeRequiresTTY: "--resume needs an interactive terminal; pass --continue for the most recent session",
 	PickSessionLabel:  "Resume which session?",
 
@@ -410,7 +410,7 @@ var English = Messages{
 	SetupComplete:            "Setup complete.",
 	SetupCancelled:           "setup cancelled.",
 	TryHintFmt:               "Try: %s",
-	NextHint:                 "Next: set your API key (run `reasonix setup` or export DEEPSEEK_API_KEY=...), then run `reasonix run \"your task\"`.",
+	NextHint:                 "Next: set your API key (run `baize setup` or export DEEPSEEK_API_KEY=...), then run `baize run \"your task\"`.",
 	ConfirmReconfigureFmt:    "%s already exists. Reconfigure and overwrite?",
 	NotOverwritingFmt:        "%s already exists; not overwriting",
 	SetupManagerTitle:        "Provider configuration",
@@ -505,10 +505,10 @@ var English = Messages{
 	RemotePassphrasePromptFmt: "passphrase for %s:",
 	RemotePasswordPromptFmt:   "password for %s:",
 	RemoteBootstrapStepFmt:    "remote serve: %s %s",
-	RemoteNoHostsHint:         "no remote hosts configured; add one with `reasonix remote add <name> [user@]host`",
+	RemoteNoHostsHint:         "no remote hosts configured; add one with `baize remote add <name> [user@]host`",
 
 	UnknownCommandFmt:         "unknown command %q",
-	UsageRunHint:              "usage: reasonix -p [--model NAME] <task>",
+	UsageRunHint:              "usage: baize -p [--model NAME] <task>",
 	ErrorPrefix:               "error:",
 	ReconfigureOnUnknownModel: "Configured model is no longer available — re-running setup.",
 	WriteConfigErr:            "write config:",
@@ -516,8 +516,8 @@ var English = Messages{
 
 	ProviderErrBadRequest:          "Malformed request (HTTP 400): the request body was rejected. This is likely a bug — please report it if it persists.",
 	ProviderErrContextOverflowFmt:  "This request exceeds the shared context window: prompt %d + completion %d = %d tokens, but the window is %d. Compact, retry with a smaller output cap, fork, or rewind, then send again.",
-	ProviderErrAuth:                "Authentication failed (HTTP 401): your API key is missing or unset. Add it to .env or run `reasonix setup`.",
-	ProviderErrAuthRejected:        "Authentication failed (HTTP 401): the server rejected your API key. It may be wrong or expired, or the provider hit a transient auth/quota issue — retried with backoff and still failed. Try again shortly, or check the key in .env / run `reasonix setup`.",
+	ProviderErrAuth:                "Authentication failed (HTTP 401): your API key is missing or unset. Add it to .env or run `baize setup`.",
+	ProviderErrAuthRejected:        "Authentication failed (HTTP 401): the server rejected your API key. It may be wrong or expired, or the provider hit a transient auth/quota issue — retried with backoff and still failed. Try again shortly, or check the key in .env / run `baize setup`.",
 	ProviderErrModelFormatMismatch: "Model/API format mismatch: the server does not support this model on the selected provider route. This is not an invalid API key; choose a provider route that supports the model.",
 	ProviderErrOpenCodeGoGrokRoute: "For OpenCode Go, use the OpenCode Go Responses preset with `grok-4.5`.",
 	ProviderErrInsufficientBalance: "Insufficient balance (HTTP 402): your account is out of credit. Top up your account, then retry.",
@@ -566,7 +566,7 @@ var English = Messages{
 	ReportNoPending:           "No pending CLI crash reports.",
 	ReportHeaderFmt:           "CLI crash report %s",
 	ReportCapturedFmt:         "Captured: %s",
-	ReportPreviewOnlyFmt:      "Preview only. Run `reasonix report send %s` to send this report.",
+	ReportPreviewOnlyFmt:      "Preview only. Run `baize report send %s` to send this report.",
 	ReportSendPrompt:          "Send this sanitized report to crash.reasonix.io?",
 	ReportKept:                "Report kept locally.",
 	ReportDeletedFmt:          "Deleted CLI crash report %s.",
@@ -575,66 +575,66 @@ var English = Messages{
 	ReportUploadFailedFmt:     "report upload failed; the local report was kept: %v",
 	ReportSentDeleteFailedFmt: "report was sent but the local copy could not be deleted: %v",
 	ReportUsageBody: `Usage:
-  reasonix report                 preview the newest local report and confirm sending
-  reasonix report list            list local CLI crash reports
-  reasonix report show [ID]       preview a report (newest when ID is omitted)
-  reasonix report send [ID]       send a reviewed report and delete it after success
-  reasonix report delete [ID]     delete a local report without sending`,
+  baize report                 preview the newest local report and confirm sending
+  baize report list            list local CLI crash reports
+  baize report show [ID]       preview a report (newest when ID is omitted)
+  baize report send [ID]       send a reviewed report and delete it after success
+  baize report delete [ID]     delete a local report without sending`,
 
-	CLITelemetryConsentNotice:           "Reasonix can send anonymous, content-free CLI usage statistics to crash.reasonix.io: a random install ID, version, OS, and fixed quality buckets. It never sends prompts, answers, code, paths, model or tool content, or environment variables. You can disable this later with `reasonix config telemetry off`.",
+	CLITelemetryConsentNotice:           "Reasonix can send anonymous, content-free CLI usage statistics to crash.reasonix.io: a random install ID, version, OS, and fixed quality buckets. It never sends prompts, answers, code, paths, model or tool content, or environment variables. You can disable this later with `baize config telemetry off`.",
 	CLITelemetryConsentPrompt:           "Allow anonymous CLI usage statistics?",
 	CLITelemetryConsentInvalid:          "Please answer y or n.",
 	CLITelemetryConsentSaveFailedFmt:    "CLI telemetry remains disabled because the preference could not be saved: %v",
 	CLITelemetryConsentCleanupFailedFmt: "CLI telemetry is disabled, but pending statistics could not be deleted: %v",
 
-	UsageBody: `reasonix — a config- and plugin-driven coding agent (multi-model)
+	UsageBody: `baize — a config- and plugin-driven coding agent (multi-model)
 
 Usage:
-  reasonix [--model NAME] [-c|--continue] [-r|--resume [QUERY]] [--permission-mode MODE] [--effort LEVEL] [--add-dir PATH]   interactive session
-  reasonix -p|--print [--model NAME] [--output-format text|json|stream-json] [--allowed-tools RULES] [--add-dir PATH] <task>
-  reasonix run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>
-  reasonix run --events-jsonl [--model NAME] <task>      emit redacted structured events as JSONL
-  reasonix review [--base BRANCH] [--commit SHA] [--model NAME]  AI-powered code review on local diffs
-  reasonix web [--model NAME] [--dir PATH] [--addr HOST:PORT] [--no-open]  start the local Web UI and open it in the default browser
-  reasonix serve [--model NAME] [--dir PATH] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  serve over HTTP+SSE (with optional auth)
-  reasonix acp [--model NAME]                           serve Agent Client Protocol over stdio (also: reasonix --acp)
-  reasonix setup [path]                                 interactive config wizard; writes reasonix.toml (+ .env)
-  reasonix config reasoning-language [auto|zh|en]        configure visible reasoning language
-  reasonix config compact-ratio [--local] [65..85]       configure automatic compaction threshold
-  reasonix config telemetry [auto|on|off]                configure content-free CLI usage metrics
-  reasonix report [list|show|send|delete] [ID]           review and explicitly send local CLI crash reports
-  reasonix mcp <add|remove|list|import>                 manage MCP servers in reasonix.toml
-  reasonix subagent <list|create|edit|delete|try|run>   manage and run isolated subagent profiles
-  reasonix init                                         show how to generate project memory (AGENTS.md)
-  reasonix doctor [--json]                              print redacted local diagnostics
-  reasonix doctor session <branch-id> [--zip] [--out PATH]  export a session conflict diagnostic zip
-  reasonix session list --json [--dir PATH]             list redacted sessions for machine clients
-  reasonix session show|status <machine-session-id> --json [--dir PATH]  query one redacted session
-  reasonix session recovery [<machine-session-id>] --json [--dir PATH]  query redacted recovery state
-  reasonix hook list|status --json [--dir PATH]         inspect redacted hook state
-  reasonix task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
+  baize [--model NAME] [-c|--continue] [-r|--resume [QUERY]] [--permission-mode MODE] [--effort LEVEL] [--add-dir PATH]   interactive session
+  baize -p|--print [--model NAME] [--output-format text|json|stream-json] [--allowed-tools RULES] [--add-dir PATH] <task>
+  baize run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>
+  baize run --events-jsonl [--model NAME] <task>      emit redacted structured events as JSONL
+  baize review [--base BRANCH] [--commit SHA] [--model NAME]  AI-powered code review on local diffs
+  baize web [--model NAME] [--dir PATH] [--addr HOST:PORT] [--no-open]  start the local Web UI and open it in the default browser
+  baize serve [--model NAME] [--dir PATH] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  serve over HTTP+SSE (with optional auth)
+  baize acp [--model NAME]                           serve Agent Client Protocol over stdio (also: baize --acp)
+  baize setup [path]                                 interactive config wizard; writes reasonix.toml (+ .env)
+  baize config reasoning-language [auto|zh|en]        configure visible reasoning language
+  baize config compact-ratio [--local] [65..85]       configure automatic compaction threshold
+  baize config telemetry [auto|on|off]                configure content-free CLI usage metrics
+  baize report [list|show|send|delete] [ID]           review and explicitly send local CLI crash reports
+  baize mcp <add|remove|list|import>                 manage MCP servers in reasonix.toml
+  baize subagent <list|create|edit|delete|try|run>   manage and run isolated subagent profiles
+  baize init                                         show how to generate project memory (AGENTS.md)
+  baize doctor [--json]                              print redacted local diagnostics
+  baize doctor session <branch-id> [--zip] [--out PATH]  export a session conflict diagnostic zip
+  baize session list --json [--dir PATH]             list redacted sessions for machine clients
+  baize session show|status <machine-session-id> --json [--dir PATH]  query one redacted session
+  baize session recovery [<machine-session-id>] --json [--dir PATH]  query redacted recovery state
+  baize hook list|status --json [--dir PATH]         inspect redacted hook state
+  baize task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
                                                          inspect or control redacted tasks
-  reasonix bot start|doctor|weixin-login                multi-channel IM bot gateway
-  reasonix upgrade [--check] [--force]                   update to the latest official release (also: reasonix update)
-  reasonix completion bash|zsh|fish                     print a shell completion script to stdout
-  reasonix version [--verbose|--json]                   print version (single line) or build metadata
-  reasonix --version | -v                               single-line version (script-safe)
-  reasonix help
+  baize bot start|doctor|weixin-login                multi-channel IM bot gateway
+  baize upgrade [--check] [--force]                   update to the latest official release (also: baize update)
+  baize completion bash|zsh|fish                     print a shell completion script to stdout
+  baize version [--verbose|--json]                   print version (single line) or build metadata
+  baize --version | -v                               single-line version (script-safe)
+  baize help
 
 Examples:
-  reasonix
-  reasonix --continue
-  reasonix --resume provider-config
-  reasonix web
-  reasonix run "implement the TODOs in main.go"
-  reasonix run --model mimo-pro "add unit tests for this function"
-  reasonix -p "summarize this repository" --output-format json
-  reasonix subagent run review "review the current changes"
-  echo "explain this code" | reasonix run
+  baize
+  baize --continue
+  baize --resume provider-config
+  baize web
+  baize run "implement the TODOs in main.go"
+  baize run --model mimo-pro "add unit tests for this function"
+  baize -p "summarize this repository" --output-format json
+  baize subagent run review "review the current changes"
+  echo "explain this code" | baize run
 
 Configuration:
   Resolution: flag > ./reasonix.toml > <Reasonix home>/config.toml > built-in defaults
   Secrets come from the environment via api_key_env (e.g. DEEPSEEK_API_KEY).
-  Run 'reasonix setup' to scaffold a config; see docs/SPEC.md.
+  Run 'baize setup' to scaffold a config; see docs/SPEC.md.
 `,
 }

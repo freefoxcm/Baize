@@ -11,7 +11,7 @@ changed and how to move over.
 | Language | TypeScript / Node | Go |
 | Branch | [`v1`](https://github.com/esengine/DeepSeek-Reasonix/tree/v1) (maintenance only) | `main-v2` (default, active) |
 | Versions | `0.x` (up to v0.54.x) | `1.0.0`+ |
-| Install | `npm i -g reasonix@0.53.2` (pin a `0.x` version) | `npm i -g reasonix` — `latest` points at the current official `1.x` release; or a release archive / `go build` |
+| Install | `npm i -g reasonix@0.53.2` (pin a `0.x` version) | `npm i -g reasonix` — `latest` points at the current official `1.x` release; or a Baize fork release archive / `go build` |
 | Code intelligence | embedding semantic search + tree-sitter symbols | LSP-assisted code reading plus grep/read_file/glob; semantic index is not yet ported |
 
 "v1" and "v2" are **codebase generations**, not semver: the v1 line never reached
@@ -35,7 +35,8 @@ npm i -g reasonix          # current official 1.x release
 npm i -g reasonix@0.53.2   # pin the legacy TS build
 ```
 
-Prebuilt archives (`reasonix-<os>-<arch>.tar.gz` / `.zip`) and the desktop
+The Baize fork publishes CLI archives as `baize-<os>-<arch>.tar.gz` / `.zip`.
+Upstream prebuilt archives (`reasonix-<os>-<arch>.tar.gz` / `.zip`) and the desktop
 installer are attached to each GitHub release. These are a **separate channel**
 from npm: the installer drops a standalone desktop/binary build and does not
 touch a CLI you installed with `npm i -g`, so the two coexist — an npm `0.53` in
@@ -44,7 +45,7 @@ from source:
 
 ```sh
 git clone https://github.com/esengine/DeepSeek-Reasonix   # default: main-v2 (Go)
-cd DeepSeek-Reasonix && make build                        # -> bin/reasonix(.exe)
+cd DeepSeek-Reasonix && make build                        # -> bin/baize(.exe)
 ```
 
 ## Configuration
@@ -182,7 +183,7 @@ and DeepSeek prefix-cache–oriented design.
   out of those explicitly read-only child registries. Ordinary writer-capable
   delegation in Plan uses Permissions/Sandbox.
 - **Web dashboard remains available; desktop is recommended**: run
-  `reasonix serve` when a local browser UI is useful. For the primary visual
+  `baize serve` when a local browser UI is useful. For the primary visual
   experience, prefer the Wails desktop app; CLI/TUI remains the terminal-native
   path.
 - Some granular v1 tools are intentionally consolidated (e.g. file-management ops

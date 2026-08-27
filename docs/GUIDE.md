@@ -119,12 +119,12 @@ workspace_quota_mib = 1024     # .reasonix/attachments quota; must be >= max_fil
 [serve]
 auth_mode = "none"             # none|token|password; use auth before binding beyond localhost
 # token = ""                   # optional fixed token; empty token mode generates one at startup
-# password_hash = ""           # bcrypt hash generated with reasonix serve --hash-password --password '...'
+# password_hash = ""           # bcrypt hash generated with baize serve --hash-password --password '...'
 # behind_proxy = false         # true only behind a trusted reverse proxy
 
 [[plugins]]
 name    = "example"
-command = "reasonix-plugin-example"
+command = "baize-plugin-example"
 startup_timeout_seconds = 60   # optional initialize + tools/list cap
 call_timeout_seconds = 600   # optional per-server MCP call timeout
 tool_timeout_seconds = { "generate_video" = 1800 }   # optional raw MCP tool names
@@ -162,10 +162,10 @@ content-free event counters to `https://crash.reasonix.io`. Configure the
 user-global policy with:
 
 ```bash
-reasonix config telemetry          # print the effective mode
-reasonix config telemetry auto     # default: local interactive TTY only
-reasonix config telemetry on       # also allow local headless `reasonix run`
-reasonix config telemetry off      # disable and delete pending counter files
+baize config telemetry          # print the effective mode
+baize config telemetry auto     # default: local interactive TTY only
+baize config telemetry on       # also allow local headless `baize run`
+baize config telemetry off      # disable and delete pending counter files
 ```
 
 On the first eligible release-build interactive session, Reasonix explains the
@@ -206,14 +206,14 @@ before sending.
 Crash reports are never uploaded automatically. Review and manage them with:
 
 ```bash
-reasonix report                 # preview newest; prompt before sending on a TTY
-reasonix report list            # list local reports
-reasonix report show [ID]       # preview without sending
-reasonix report send [ID]       # explicit send; delete locally only after success
-reasonix report delete [ID]     # delete without sending
+baize report                 # preview newest; prompt before sending on a TTY
+baize report list            # list local reports
+baize report show [ID]       # preview without sending
+baize report send [ID]       # explicit send; delete locally only after success
+baize report delete [ID]     # delete without sending
 ```
 
-Piped or redirected `reasonix report` calls only preview and never prompt or
+Piped or redirected `baize report` calls only preview and never prompt or
 send. The CLI telemetry setting does not auto-send or auto-delete
 these separately reviewed reports. Runtime fatal throws, operating-system kills,
 and panics in unwrapped background goroutines cannot be recovered by Go and do
@@ -221,7 +221,7 @@ not produce this local report.
 
 ## Web frontend
 
-For local use, `reasonix web` starts the browser UI and opens it in your default
+For local use, `baize web` starts the browser UI and opens it in your default
 browser. Inside an interactive CLI session, `/web` snapshots the current session,
 restores the terminal, and opens an explicit `/sessions/<id>#token=...` deep link.
 Even a never-used session keeps its reserved ID without forcing an empty
@@ -229,23 +229,23 @@ transcript onto disk, so the first Web turn continues the same session identity.
 
 ```bash
 cd your-project
-reasonix web
+baize web
 
 # Equivalent when starting from another directory:
-reasonix web --dir /path/to/your-project
+baize web --dir /path/to/your-project
 ```
 
 `--dir` fixes the workspace for the lifetime of the Web process. The path is
 resolved on the machine running Reasonix, not on the machine running the
 browser. All browser tabs connected to that process share the same workspace.
 
-Use `reasonix web --no-open` when you want to start the foreground Web server
+Use `baize web --no-open` when you want to start the foreground Web server
 and print its URL without opening a browser tab. The lower-level
-`reasonix serve` command starts the same engine without opening a browser by
+`baize serve` command starts the same engine without opening a browser by
 default. It remains the right entry point for remote development boxes,
 supervisors, tunnels, reverse proxies, and shareable authenticated sessions.
 
-`reasonix web` starts at `127.0.0.1:8787`, automatically tries 8788, 8789, and
+`baize web` starts at `127.0.0.1:8787`, automatically tries 8788, 8789, and
 so on when a port is busy (up to 100 retries), and defaults to a newly generated
 token even when `[serve].auth_mode` is `none`. Each live process registers a
 single-writer heartbeat file under `<Reasonix home>/server/instances/`; clean
@@ -254,18 +254,18 @@ owner process is confirmed dead. Multiple Web instances can therefore share one
 Reasonix home without overwriting registry state. The process stays attached to
 the terminal; stop it with Ctrl-C.
 
-An explicit `reasonix web --auth none` disables the default token and should be
-used only when the listener is intentionally trusted. `reasonix serve` keeps its
+An explicit `baize web --auth none` disables the default token and should be
+used only when the listener is intentionally trusted. `baize serve` keeps its
 backward-compatible, config-driven `auth_mode = "none"` default on
 `127.0.0.1:8787`. If you bind Serve outside loopback, expose it through a tunnel,
 or put it behind a reverse proxy, enable authentication before sharing the URL:
 
 ```bash
-reasonix serve --auth token
-reasonix serve --dir /srv/project --auth token
-reasonix serve --addr 0.0.0.0:8787 --auth token
-reasonix serve --auth password --password 'temporary-password'
-reasonix serve --auth password --password-hash-file /run/secrets/reasonix-password.hash
+baize serve --auth token
+baize serve --dir /srv/project --auth token
+baize serve --addr 0.0.0.0:8787 --auth token
+baize serve --auth password --password 'temporary-password'
+baize serve --auth password --password-hash-file /run/secrets/reasonix-password.hash
 ```
 
 Token mode prints a share URL with `#token=...`; the Web page exchanges the
@@ -275,8 +275,8 @@ token out of request URLs, browser history, referrers, and access logs. Pass `--
 `--password` at startup or a stored bcrypt hash:
 
 ```bash
-reasonix serve --hash-password # securely prompts on a TTY
-reasonix serve --hash-password --password 'strong-password'
+baize serve --hash-password # securely prompts on a TTY
+baize serve --hash-password --password 'strong-password'
 
 # <Reasonix home>/config.toml
 [serve]
@@ -320,7 +320,7 @@ not copied from the desktop machine.
 
 ## Editor integrations over ACP
 
-`reasonix acp` exposes Reasonix as an ACP v1 stdio agent for editors and other
+`baize acp` exposes Reasonix as an ACP v1 stdio agent for editors and other
 host clients. The dedicated **[ACP editor integration](./ACP.md)** guide covers
 startup, capability negotiation, session lifecycle, independent model/work/
 collaboration/approval controls, client filesystem and terminal capabilities,
@@ -330,7 +330,7 @@ MCP servers, permission requests, and the Reasonix mid-turn steering extension.
 
 The remote module runs Reasonix on a remote host and reaches it over your own
 SSH connection — VS Code Remote-SSH style. It bootstraps a persistent headless
-`reasonix serve` on the remote host, forwards a local loopback port to it, and
+`baize serve` on the remote host, forwards a local loopback port to it, and
 opens the existing serve web client through that tunnel. The agent, its tools,
 and its files all live on the remote host at full fidelity; nothing runs through
 a lossy file proxy. V1 supports Linux and macOS remote hosts.
@@ -361,12 +361,12 @@ target = "127.0.0.1:5432"
 CLI:
 
 ```bash
-reasonix remote add gpu-box dev@203.0.113.7 --workspace '~/projects/app'
-reasonix remote import --all              # import aliases; ssh -G resolves Include/Match rules when connecting
-reasonix remote test gpu-box              # dial + auth + host-key confirmation
-reasonix remote connect gpu-box --open    # bootstrap serve, tunnel, open the URL
-reasonix remote serve status gpu-box
-reasonix remote fs ls gpu-box:'~/projects/app'
+baize remote add gpu-box dev@203.0.113.7 --workspace '~/projects/app'
+baize remote import --all              # import aliases; ssh -G resolves Include/Match rules when connecting
+baize remote test gpu-box              # dial + auth + host-key confirmation
+baize remote connect gpu-box --open    # bootstrap serve, tunnel, open the URL
+baize remote serve status gpu-box
+baize remote fs ls gpu-box:'~/projects/app'
 ```
 
 Hosts with `use_ssh_config` enabled resolve the final effective configuration
@@ -737,7 +737,7 @@ Permissions gate each tool call: `deny` > `ask` > `allow` > fallback. Bash and
 file mutation tools require approval by default; read-only tools generally do
 not. Approvals are stored and matched as permission rules, not button labels:
 for example `Bash(npm run build)`, `Bash(npm run test:*)`, and `Edit(docs/**)`.
-`reasonix` can grant Bash as an exact command or as a conservative command
+`baize` can grant Bash as an exact command or as a conservative command
 prefix (for example `Bash(go test:*)`), while file-editing tools share session
 edit grants and persist path-scoped rules such as `Edit(src/app.go)`.
 Parameter/arithmetic expansions, assignments, heredocs, file redirects, and globs cannot reuse a bare
@@ -752,7 +752,7 @@ Allow fallback, including Auto, cover that class; explicit `ask` and `deny`
 rules still take precedence.
 Because a headless run has no approval UI, the default Ask posture also fails
 closed on ordinary writer fallback and explicit ask rules. Use
-`reasonix run --auto ...`, `-y`, or `--permission-mode auto` when unattended
+`baize run --auto ...`, `-y`, or `--permission-mode auto` when unattended
 automation should allow ordinary writer fallback; configured `ask` and `deny`
 rules always remain authoritative.
 
@@ -770,7 +770,7 @@ out. Writing outside the workspace is an interactive *extend write access*
 approval (once / this session / add to project `reasonix.toml` / deny), not a
 sandbox escape. Bash must name those directories with `additional_write_dirs`
 plus a `justification`; the host does not infer paths from the command text.
-Headless `reasonix run` does not prompt: pass `--add-dir` or configure
+Headless `baize run` does not prompt: pass `--add-dir` or configure
 `[sandbox].allow_write`. The whole home directory can be approved with a
 high-risk warning; the filesystem root and Reasonix session/state paths cannot. `forbid_read` optionally hides sensitive files or directories from the agent's
 read/list/search tools; use absolute paths or `${HOME}` / `${VAR}` references,
@@ -833,7 +833,7 @@ preserved-process execution. Writing a script to ordinary `/tmp` from normal
 Bash is still treated as a durable or unknown mutation and retains the normal
 verification and review requirements.
 
-`reasonix doctor` reports this capability as `scratch available` or includes
+`baize doctor` reports this capability as `scratch available` or includes
 the backend failure reason when scratch analysis cannot be isolated.
 
 Independent sandboxes such as MCP servers keep their own isolation and do not
@@ -843,7 +843,7 @@ literal `/tmp` is no longer mapped by bubblewrap.
 
 **Windows note:** Reasonix does not ship an OS-level Bash sandbox on Windows.
 The effective mode is fixed to `off`; even an older config containing
-`bash = "enforce"` resolves to `off`, `reasonix doctor` flags the ignored value,
+`bash = "enforce"` resolves to `off`, `baize doctor` flags the ignored value,
 and the desktop selector is read-only. Bash commands therefore run unconfined,
 while the dedicated file tools still enforce `workspace_root`, `allow_write`,
 and `forbid_read` in process. Saved credential variables are still removed from
@@ -856,14 +856,14 @@ execution instead of running unconfined. Install the platform sandbox backend
 `[sandbox] bash = "off"` to explicitly restore the pre-1.16 unconfined shell
 behavior. On Windows the compatible value is always `off`.
 
-For coding-quality reports, run `reasonix doctor quality <branch-id-or-path>`
+For coding-quality reports, run `baize doctor quality <branch-id-or-path>`
 (add `--json` for structured output). This reads the selected session but emits
 only content-free counts and profile categories: model family, runtime profile,
 collaboration / approval modes, message and tool-call counts, verification and persisted
 compaction-summary counts, plus desktop token/cache telemetry when available.
 It omits transcript text, paths, session identifiers, tool arguments and output,
 endpoints, and custom model names, so the result is suitable for a public issue
-or Discussion. This differs from `reasonix doctor session`, whose support zip
+or Discussion. This differs from `baize doctor session`, whose support zip
 contains the complete unredacted transcript and must remain in a trusted support
 channel.
 
@@ -876,27 +876,27 @@ reference, JSON schema, and issue codes:
 
 ```bash
 # Static (default): no network, no MCP child processes
-reasonix doctor capabilities
+baize doctor capabilities
 
 # Machine-readable (stdout is pure JSON)
-reasonix doctor capabilities --json
+baize doctor capabilities --json
 
 # Another workspace root
-reasonix doctor capabilities --root /path/to/project
+baize doctor capabilities --root /path/to/project
 
 # Live MCP probe — only when you explicitly allow starting third-party servers
-reasonix doctor capabilities --live --timeout 5s
+baize doctor capabilities --live --timeout 5s
 ```
 
 | Surface | How |
 | --- | --- |
-| CLI | `reasonix doctor capabilities` (above) |
+| CLI | `baize doctor capabilities` (above) |
 | Desktop | **Settings → Diagnostics** — refresh, copy redacted JSON, optional “include current session runtime” (reads the active tab Host only; does **not** start MCP) |
 | Agent | `/reasonix-guide` (built-in inline skill) or ask naturally; it prefers static doctor JSON before `--live` |
 
 Exit code `0` allows warnings/info; `1` means at least one `error` (or a live
-start failure); `2` is bad flags. This is separate from `reasonix doctor`
-(providers/sandbox) and `reasonix plugin doctor <name>` (one package).
+start failure); `2` is bad flags. This is separate from `baize doctor`
+(providers/sandbox) and `baize plugin doctor <name>` (one package).
 
 ## Plugins (MCP)
 
@@ -909,7 +909,7 @@ GET + announced POST endpoint transport.
 
 For a remote HTTP server without a static `Authorization` header, an
 authentication challenge is shown as **Sign in**. Run
-`reasonix mcp auth <name>` in the CLI, or click **Sign in** for that server in
+`baize mcp auth <name>` in the CLI, or click **Sign in** for that server in
 the Desktop MCP panel. Reasonix performs OAuth metadata discovery, dynamic
 client registration, PKCE S256 authorization, and refresh-token
 rotation. Discovery and token requests use the same Reasonix network-proxy
@@ -926,8 +926,8 @@ OAuth state unless a lower-priority declaration for the same resource becomes
 effective.
 
 Browse the official MCP Registry from **Settings → MCP servers → Browse
-registry**, or use `reasonix mcp browse [query]` and
-`reasonix mcp install <registry-name>`. Registry access is explicit and never
+registry**, or use `baize mcp browse [query]` and
+`baize mcp install <registry-name>`. Registry access is explicit and never
 runs during startup. Entries that need secrets or required arguments are shown
 as manual setup instead of being installed with an incomplete configuration;
 query-specific cached results remain available during a registry outage.
@@ -986,14 +986,14 @@ loading older files and removed the next time Reasonix saves that MCP entry.
 A server's **prompts** surface as `/mcp__<server>__<prompt>` slash commands
 (positional args after the command); its **resources** are pulled in by writing
 `@<server>:<uri>` in a message; `/mcp` lists connected servers and what each
-exposes. `make build` also produces `bin/reasonix-plugin-example` — a runnable
+exposes. `make build` also produces `bin/baize-plugin-example` — a runnable
 reference stdio server (`echo`, `wordcount`, a `review` prompt, a style-guide
 resource) you can copy.
 
 ```toml
 [[plugins]]                       # local stdio server
 name    = "example"
-command = "reasonix-plugin-example"
+command = "baize-plugin-example"
 # startup_timeout_seconds = 60    # optional initialize + tools/list cap
 # call_timeout_seconds = 600       # optional per-server MCP call timeout
 # tool_timeout_seconds = { "generate_video" = 1800 }   # optional raw MCP tool names
@@ -1011,7 +1011,7 @@ desktop MCP panel to refresh status, reconnect a server, inspect failures, or
 disable a server for the current session. For a read-only config/runtime health
 report across skills, hooks, packages, and MCP (without changing settings), see
 [Capability diagnostics](./CAPABILITY_DIAGNOSTICS.md)
-(`reasonix doctor capabilities` or **Settings → Diagnostics**).
+(`baize doctor capabilities` or **Settings → Diagnostics**).
 
 An interactive caller waits only briefly for a cold server. If that wait ends,
 the shared startup continues in the background rather than being killed and
@@ -1041,7 +1041,7 @@ convenient.
 
 ## Slash commands
 
-In an interactive `reasonix` session, built-in commands (`/compact`, `/context`, `/new`, `/clear`, `/rewind`,
+In an interactive `baize` session, built-in commands (`/compact`, `/context`, `/new`, `/clear`, `/rewind`,
 `/tree`, `/branch`, `/switch`, `/todo`, `/model`, `/mcp`, `/skills`, `/hooks`,
 `/memory`, `/goal`, `/output-style`, `/sandbox`, `/language`,
 `/reasoning-language`, `/help`) run
@@ -1049,7 +1049,7 @@ locally — `/help` lists them all. Built-in **skills** such as `/init`,
 `/explore`, `/test`, and `/reasonix-guide` also appear in the slash menu and via
 `run_skill` (bodies load on demand; only the index line is cache-stable). Use
 `/reasonix-guide` when you need config or capability troubleshooting; it points
-at `reasonix doctor capabilities` (see
+at `baize doctor capabilities` (see
 [Capability diagnostics](./CAPABILITY_DIAGNOSTICS.md)). `/new` starts a new
 session while saving the previous transcript for history/resume; `/clear` asks
 for confirmation, then discards the current context without saving it. `/tree`
@@ -1079,15 +1079,15 @@ one with `/<name> <task>`; Reasonix runs an isolated child loop and keeps only
 the task and final answer in the parent conversation.
 
 The headless CLI provides explicit management and execution commands without
-changing the ordinary `reasonix run` task semantics:
+changing the ordinary `baize run` task semantics:
 
 ```bash
-reasonix subagent list
-reasonix subagent create reviewer --description "Review changes" --prompt-file reviewer.md --tools read_file,grep,bash
-reasonix subagent edit reviewer --effort high --model deepseek-pro
-reasonix subagent try reviewer "review the current diff"   # always read-only
-reasonix subagent run reviewer "review and fix the current diff"
-reasonix subagent delete reviewer --yes
+baize subagent list
+baize subagent create reviewer --description "Review changes" --prompt-file reviewer.md --tools read_file,grep,bash
+baize subagent edit reviewer --effort high --model deepseek-pro
+baize subagent try reviewer "review the current diff"   # always read-only
+baize subagent run reviewer "review and fix the current diff"
+baize subagent delete reviewer --yes
 ```
 
 `create` defaults to project scope when a workspace is available and to global
@@ -1289,7 +1289,7 @@ time, descend into folders) plus MCP resources.
 
 ## Two-model collaboration
 
-`reasonix setup` manages providers, model lists, credentials, connection tests,
+`baize setup` manages providers, model lists, credentials, connection tests,
 per-model image input, and the default model. It stages changes until Save and
 exit, and synchronizes provider access with the desktop app. See the
 [CLI reference](./CLI.md#configure-providers).
@@ -1420,7 +1420,7 @@ the strict read-only entrances:
 | `parallel_tasks` (read-only) | Concurrent read-only research children |
 | `fleet` with `read_only: true` | Parallel profile-aware batch (forced read-only per item) |
 | `read_only_skill` | The same isolation driving an existing skill |
-| `reasonix review` (CLI) | Read-only review of a diff or branch |
+| `baize review` (CLI) | Read-only review of a diff or branch |
 | Desktop preview/review subagents | Read-only desktop analysis surfaces |
 
 In persisted sessions, `parallel_tasks` and `fleet` return a bounded preview
@@ -1523,7 +1523,7 @@ still use the current Permissions and Sandbox. Legacy `agent.auto_plan` and
 `agent.auto_plan_classifier` values are ignored and removed from the user config
 during upgrade. The visible reasoning language can be changed with
 `/reasoning-language auto|zh|en` in the
-session, or `reasonix config reasoning-language auto|zh|en` in a shell/script.
+session, or `baize config reasoning-language auto|zh|en` in a shell/script.
 Pass `--local`
 to the reasoning-language shell command only when you intentionally want a
 project-local override.

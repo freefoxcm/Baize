@@ -128,7 +128,7 @@ The CLI build requires **Go 1.25+**. The module pins a `toolchain` directive;
 keep `GOTOOLCHAIN=auto` so Go downloads the pinned toolchain, or install it.
 
 ```sh
-make build      # -> bin/reasonix(.exe)
+make build      # -> bin/baize(.exe)
 make cross      # -> dist/ (darwin|linux|windows × amd64|arm64)
 ```
 
@@ -155,9 +155,9 @@ webview dependencies and Linux build tags.
 These commands are for the CLI/TUI installed through Path A:
 
 ```sh
-reasonix setup                      # configure a provider and model
-reasonix                            # start an interactive session
-reasonix run "implement the TODOs in main.go"
+baize setup                         # configure a provider and model
+baize                               # start an interactive session
+baize run "implement the TODOs in main.go"
 ```
 
 In an interactive session, run `/init` when you want Reasonix to create project

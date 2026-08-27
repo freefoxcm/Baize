@@ -49,14 +49,14 @@ func pluginCommand(args []string) int {
 
 func pluginUsage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  reasonix plugin install <source> [--yes] [--dry-run] [--link] [--replace]
-  reasonix plugin list
-  reasonix plugin show <name>
-  reasonix plugin enable <name>
-  reasonix plugin disable <name>
-  reasonix plugin remove <name>
-  reasonix plugin doctor <name>
-  reasonix plugin migrate <name> --to-v2`)
+  baize plugin install <source> [--yes] [--dry-run] [--link] [--replace]
+  baize plugin list
+  baize plugin show <name>
+  baize plugin enable <name>
+  baize plugin disable <name>
+  baize plugin remove <name>
+  baize plugin doctor <name>
+  baize plugin migrate <name> --to-v2`)
 }
 
 func pluginInstallCommand(args []string) int {
@@ -402,7 +402,7 @@ func pluginDoctorCommand(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "invalid:", err)
 		if strings.Contains(err.Error(), "missing apiVersion") {
-			fmt.Fprintf(os.Stderr, "remediation: reasonix plugin migrate %s --to-v2\n", args[0])
+			fmt.Fprintf(os.Stderr, "remediation: baize plugin migrate %s --to-v2\n", args[0])
 		}
 		return 1
 	}

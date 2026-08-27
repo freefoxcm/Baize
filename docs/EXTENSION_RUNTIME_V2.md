@@ -41,9 +41,9 @@ Component states: `Inactive → Preparing → Active → Draining → Inactive` 
 ## Diagnostics
 
 ```bash
-reasonix doctor runtime
-reasonix doctor runtime --json
-reasonix plugin doctor <name>
+baize doctor runtime
+baize doctor runtime --json
+baize plugin doctor <name>
 ```
 
 Reports component status, plan, effect receipts, recoverability, lifecycle

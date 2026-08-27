@@ -142,7 +142,7 @@ func TestSlashExportFiltersInternalAndReferencedContext(t *testing.T) {
 	}
 	got := string(data)
 	for _, want := range []string{
-		"# reasonix session",
+		"# baize session",
 		"## User",
 		"please explain @auth_private.go",
 		"## Assistant",

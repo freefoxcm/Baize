@@ -17,10 +17,10 @@ prompts 和主题——全部基于稳定、带版本号的契约。
 扩展的安装方式与普通插件包完全一致：
 
 ```bash
-reasonix plugin install git:github.com/owner/extension --dry-run   # 预览
-reasonix plugin install git:github.com/owner/extension --yes       # 安装
-reasonix plugin show <name>                                        # 详情
-reasonix plugin doctor <name>                                      # 校验
+baize plugin install git:github.com/owner/extension --dry-run   # 预览
+baize plugin install git:github.com/owner/extension --yes       # 安装
+baize plugin show <name>                                        # 详情
+baize plugin doctor <name>                                      # 校验
 ```
 
 带有 `runtime` 块的插件，其预览与 `show` 输出会包含 **FULL TRUST**
@@ -108,9 +108,9 @@ go test ./internal/extension/... -run '^$' -bench 'Extension|Dispatch' -benchmem
    [线协议](./EXTENSION_PROTOCOL.zh-CN.md)和
    [生成方法索引](./EXTENSION_PROTOCOL.generated.md)。
 3. 构建 Runtime 二进制，先用
-   `reasonix plugin install /path/to/plugin --dry-run` 检查信任与能力，再用
+   `baize plugin install /path/to/plugin --dry-run` 检查信任与能力，再用
    `--link --yes` 安装。
-4. 用 `reasonix plugin doctor <name>` 校验，在空闲时运行 `/reload`，然后验证
+4. 用 `baize plugin doctor <name>` 校验，在空闲时运行 `/reload`，然后验证
    插件贡献的拦截器、Provider、UI action 或资源。
 
 SDK 使用不可变的 `sdk/go/vX.Y.Z` 标签发布，首个公开版本为

@@ -47,7 +47,7 @@ reasonix/
     ├── remote/              # SSH transport for the Remote-SSH module
     │   ├── forward/         # -L / -R port-forward lifecycle
     │   ├── sftpfs/          # SFTP file layer (quarantines pkg/sftp)
-    │   └── bootstrap/       # detached `reasonix serve` bootstrap over SSH
+    │   └── bootstrap/       # detached `baize serve` bootstrap over SSH
     └── agent/               # Session + harness loop
 ```
 
@@ -277,7 +277,7 @@ when the sole automatic threshold is crossed.
   the hard ceiling the latest durable projection continues; at overflow or the
   hard ceiling an insufficient prune returns `ErrCompactionRequired`.
 - Users inspect or change the threshold with
-  `reasonix config compact-ratio [--local] [VALUE]`. Project config overrides the
+  `baize config compact-ratio [--local] [VALUE]`. Project config overrides the
   user-global value used by desktop and new CLI sessions. UI always shows the
   **effective** ratio.
 - `max_output_tokens` is an independent **per-turn** completion ceiling and
@@ -435,7 +435,7 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
   grant is path-scoped when a path is available, stored as `Edit(<path>)` so all
   built-in file-mutating tools share it. A
   non-interactive run
-  (`reasonix run`, a sub-agent, anything with no TTY / no approver) cannot prompt.
+  (`baize run`, a sub-agent, anything with no TTY / no approver) cannot prompt.
   Its explicit posture therefore resolves without blocking: Ask/manual fails
   closed, Auto allows only ordinary writer fallback, and YOLO may bypass ordinary
   Ask decisions. Nested or indirect Bash remains stricter: headless
@@ -552,8 +552,8 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
 | Approved-plan execution window | Approved plan's writer fallback is auto-allowed; explicit `ask` / `deny` rules remain | Future plans still wait | Waits for user |
 
 Out of the box (`mode = "ask"`, no rules), interactive `reasonix` prompts before
-each writer/bash call and `reasonix run` fails closed on those calls because it
-has no approver. Use `reasonix run --auto ...` / `-y` to allow ordinary writer
+each writer/bash call and `baize run` fails closed on those calls because it
+has no approver. Use `baize run --auto ...` / `-y` to allow ordinary writer
 fallback in unattended automation; `--permission-mode auto` is equivalent.
 Explicit `ask` rules still fail closed under Auto, and `deny` rules harden every
 posture.
@@ -645,10 +645,10 @@ the profile with the Boot-wired Skill runners. Each run gets an isolated child
 session and returns only its final answer to the caller. The headless contract is
 explicit:
 
-- `reasonix subagent try <name> ... <task>` uses the read-only Skill runner;
-- `reasonix subagent run <name> ... <task>` uses the normal permission and
+- `baize subagent try <name> ... <task>` uses the read-only Skill runner;
+- `baize subagent run <name> ... <task>` uses the normal permission and
   sandbox path; and
-- ordinary `Controller.Run` / `reasonix run` remains unchanged and does not
+- ordinary `Controller.Run` / `baize run` remains unchanged and does not
   reinterpret slash-prefixed input as a subagent command.
 
 Desktop and CLI profile mutations share
@@ -802,7 +802,7 @@ writer is never abandoned mid-write.
 ### 3.15 One child-construction primitive
 
 The APIs that spawn a child are many — `task`, `read_only_task`, `fleet`,
-`parallel_tasks`, `run_skill`, `/<profile>`, `reasonix subagent run|try`,
+`parallel_tasks`, `run_skill`, `/<profile>`, `baize subagent run|try`,
 desktop preview. The execution primitive behind them must stay one. Each entry
 point compiles its request into a `ProfileExecSpec` and hands it to
 `TaskTool.RunProfileSpec`, which is the only place that resolves depth, tool
@@ -862,7 +862,7 @@ Orchestration is easy to add and hard to justify: more agents always cost more
 tokens, and the extra tokens alone can look like an improvement. Comparing arms
 therefore has to hold the model fixed and read host-recorded facts, not prose.
 
-`reasonix run --json` emits per-run delegation counters alongside the existing
+`baize run --json` emits per-run delegation counters alongside the existing
 token, cache, cost, and duration totals:
 
 | Counter | Answers |
@@ -1082,12 +1082,12 @@ workspace_quota_mib = 1024     # must be >= max_file_mib
 [serve]
 auth_mode = "none"             # none|token|password; use auth before binding beyond localhost
 # token = ""                   # optional fixed token; empty token mode generates one at startup
-# password_hash = ""           # bcrypt hash generated with reasonix serve --hash-password --password '...'
+# password_hash = ""           # bcrypt hash generated with baize serve --hash-password --password '...'
 # behind_proxy = false         # trust X-Forwarded-* only behind a trusted reverse proxy
 
 [[plugins]]
 name    = "example"            # type defaults to "stdio"
-command = "reasonix-plugin-example"
+command = "baize-plugin-example"
 args    = []
 # env   = { FOO = "bar" }
 # startup_timeout_seconds = 60         # initialize + tools/list cap; 0 = global/default cap
@@ -1118,14 +1118,14 @@ parseable for upgrade compatibility, but are ignored and removed by a one-time
 migration. The CLI `--max-steps` flag and `[bot].max_steps` remain separate,
 explicit controls for one-off and unattended execution; bot `0` means continuous.
 
-`reasonix setup` writes this default config so the CLI is usable out of the box.
+`baize setup` writes this default config so the CLI is usable out of the box.
 
 `[ui].cursor_shape` is normalized to `underline`, `block`, or `bar`; empty or
 unknown values fall back to `bar`. It applies to the Bubble Tea CLI/TUI
 textarea only, while desktop and browser inputs keep their platform-native
 cursor behavior.
 
-`[serve]` controls the HTTP browser frontend used by `reasonix serve`. The
+`[serve]` controls the HTTP browser frontend used by `baize serve`. The
 default `auth_mode = "none"` is intended for the loopback default
 `127.0.0.1:8787`; deployments reachable from another machine must use `token` or
 `password`. Password mode requires either a startup `--password` or a stored
@@ -1169,7 +1169,7 @@ roots. Interactive sessions can extend those roots with a write-access approval
 (once / session / project `reasonix.toml` / deny). File tools request the target
 parent directory automatically. Bash must declare `additional_write_dirs` and a
 `justification`; the host does not infer paths from the command text. Headless
-`reasonix run` fails closed unless the directory is already in
+`baize run` fails closed unless the directory is already in
 `[sandbox].allow_write` or `--add-dir`. Granting `${HOME}` is allowed with a
 high-risk warning; the filesystem root and Reasonix session/state paths are not.
 Phase 0 confines the file-writing built-ins (`write_file`, `edit_file`,
@@ -1189,7 +1189,7 @@ under `forbid_read`, and allowed to reach the network only when
 `network = true`.
 **Windows status:** Reasonix does not ship an OS-level Bash sandbox on Windows.
 The effective mode is fixed to `off`; an older config containing
-`bash = "enforce"` remains readable but resolves to `off`, `reasonix doctor`
+`bash = "enforce"` remains readable but resolves to `off`, `baize doctor`
 reports the ignored value, and the desktop control is read-only. Bash therefore
 runs unconfined on Windows. The in-process file tools continue to enforce
 `workspace_root`, `allow_write`, and `forbid_read`.
@@ -1216,7 +1216,7 @@ behavior. The escape-prompt and broader OS support are Phase 1's remainder (§9)
 
 ## 8. Distribution
 
-- Build: `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(VERSION)" -o reasonix ./cmd/reasonix`
+- Build: `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(VERSION)" -o baize ./cmd/reasonix`
 - Cross matrix: `darwin|linux|windows` × `amd64|arm64`.
 - Version injected via ldflags (`git describe --tags --always`).
 - Install: prebuilt binary / `go install` / future `brew tap`.
@@ -1227,7 +1227,7 @@ behavior. The escape-prompt and broader OS support are Phase 1's remainder (§9)
   file-writer built-ins (Phase 0) — are confined to the workspace. **Seatbelt on
   macOS and bubblewrap on Linux ship, on by default when available** (see §5).
   Remaining: the escape-prompt — detect sandbox-unavailable or sandbox-denied failures and
-  offer an explicit, permission-gated unconfined rerun (in `reasonix run`, the
+  offer an explicit, permission-gated unconfined rerun (in `baize run`, the
   command just fails and the model adapts), which completes the "allow inside the
   box, prompt at its edge" model. With this in place, "always allow" rule
   persistence becomes optional rather than load-bearing.
@@ -1239,4 +1239,4 @@ behavior. The escape-prompt and broader OS support are Phase 1's remainder (§9)
 - An Anthropic-native provider `kind` (native prompt-cache control), proving the
   registry generalises beyond one wire format.
 - "Always allow" persistence writing learned rules back to project config; a
-  per-session permission override flag for `reasonix run`.
+  per-session permission override flag for `baize run`.

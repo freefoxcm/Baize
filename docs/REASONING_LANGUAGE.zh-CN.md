@@ -33,15 +33,15 @@
 在 shell 或脚本里修改：
 
 ```bash
-reasonix config reasoning-language auto
-reasonix config reasoning-language zh
-reasonix config reasoning-language en
+baize config reasoning-language auto
+baize config reasoning-language zh
+baize config reasoning-language en
 ```
 
 默认写入用户配置。要写入当前项目的覆盖配置：
 
 ```bash
-reasonix config reasoning-language --local zh
+baize config reasoning-language --local zh
 ```
 
 在 `reasonix` 内可以用斜杠命令：
@@ -57,7 +57,7 @@ reasonix config reasoning-language --local zh
 单次 headless 运行也会读取同一设置：
 
 ```bash
-reasonix run "解释这个模块"
+baize run "解释这个模块"
 ```
 
 ## 配置文件

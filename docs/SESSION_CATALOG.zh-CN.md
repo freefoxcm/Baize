@@ -65,15 +65,15 @@ topic 分页使用 `(pinned, last_activity_at, topic_id)` keyset cursor。默认
 只读检查 catalog，不创建或修改它：
 
 ```sh
-reasonix sessions diagnose
-reasonix sessions diagnose --json
+baize sessions diagnose
+baize sessions diagnose --json
 ```
 
 只替换一次性查询投影，并索引所有已保存的桌面项目：
 
 ```sh
-reasonix sessions reindex
-reasonix sessions reindex --json
+baize sessions reindex
+baize sessions reindex --json
 ```
 
 可重复传入 `--dir PATH`，从指定目录集合重建；显式目录按 global scope 处理。

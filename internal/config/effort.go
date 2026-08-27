@@ -33,6 +33,11 @@ type modelReasoningCapability struct {
 }
 
 var modelReasoningCapabilities = map[string]modelReasoningCapability{
+	"glm-5.3-flash": {
+		Protocol: ReasoningProtocolOpenAI,
+		Levels:   []string{"low", "high", "max"},
+		Default:  "auto",
+	},
 	"ox-alpha-free": {
 		Protocol: ReasoningProtocolOpenAI,
 		Levels:   []string{"low", "high", "max"},

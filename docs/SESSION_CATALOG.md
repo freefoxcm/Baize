@@ -76,15 +76,15 @@ longer has a synchronous filesystem fallback.
 Inspect the catalog without creating or changing it:
 
 ```sh
-reasonix sessions diagnose
-reasonix sessions diagnose --json
+baize sessions diagnose
+baize sessions diagnose --json
 ```
 
 Replace only the disposable projection and index all saved desktop projects:
 
 ```sh
-reasonix sessions reindex
-reasonix sessions reindex --json
+baize sessions reindex
+baize sessions reindex --json
 ```
 
 Use repeated `--dir PATH` flags to rebuild from an explicit set of directories.

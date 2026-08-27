@@ -30,7 +30,7 @@ func TestServeFooterComposerGlassContract(t *testing.T) {
 		`.footer{grid-column:3;grid-row:1;align-self:end;z-index:20;border:0;background:transparent;padding:12px calc(28px + var(--transcript-scrollbar-width,0px)) 16px 28px;`,
 		`.footer>*{pointer-events:auto}`,
 		`.activity-rail{grid-column:1;grid-row:1/-1;`,
-		`.context-panel{grid-column:2;grid-row:1/-1;`,
+		`.context-panel{position:relative;grid-column:2;grid-row:1/-1;`,
 		`.composer-card{position:relative;width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--glass-composer);`,
 		`-webkit-backdrop-filter:var(--composer-glass-filter);backdrop-filter:var(--composer-glass-filter);`,
 		`.composer-card:focus-within{border-color:color-mix(in srgb,var(--accent) 62%,var(--composer-glass-border));box-shadow:var(--composer-glass-shadow),0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}`,

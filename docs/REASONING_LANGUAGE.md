@@ -43,15 +43,15 @@ it with `./reasonix.toml`.
 For shell scripts or one-off configuration:
 
 ```bash
-reasonix config reasoning-language auto
-reasonix config reasoning-language zh
-reasonix config reasoning-language en
+baize config reasoning-language auto
+baize config reasoning-language zh
+baize config reasoning-language en
 ```
 
 By default this writes the user config. To write a project-local override:
 
 ```bash
-reasonix config reasoning-language --local zh
+baize config reasoning-language --local zh
 ```
 
 Inside `reasonix`, use the slash command:
@@ -69,7 +69,7 @@ controller for subsequent turns. It does not rewrite the current project's
 Headless runs also use the same setting:
 
 ```bash
-reasonix run "explain this module"
+baize run "explain this module"
 ```
 
 ## Config File

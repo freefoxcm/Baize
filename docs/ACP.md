@@ -24,9 +24,9 @@ See [Billing](./BILLING.md).
 An ACP host should launch one of these commands:
 
 ```sh
-reasonix acp
-reasonix acp --model deepseek-pro
-reasonix acp
+baize acp
+baize acp --model deepseek-pro
+baize acp
 ```
 
 `--model` selects the startup model when the client does not override it.
@@ -34,9 +34,9 @@ Ordinary requests always enter the executor. There is no automatic simple /
 light / full task mode. Verification obligations come from real tool actions.
 
 Standard output is reserved for ACP messages. Reasonix sends diagnostics to
-standard error, so hosts must not merge the two streams. Run `reasonix setup`
+standard error, so hosts must not merge the two streams. Run `baize setup`
 beforehand when no provider is configured; the initialize response also
-advertises a terminal authentication method that launches `reasonix setup`.
+advertises a terminal authentication method that launches `baize setup`.
 
 ## Initialize and negotiate capabilities
 
@@ -313,7 +313,7 @@ earlier prefix remains reusable.
 
 ## Client integration checklist
 
-1. Launch `reasonix acp` with separate stdin, stdout, and stderr streams.
+1. Launch `baize acp` with separate stdin, stdout, and stderr streams.
 2. Call `initialize` and honor both standard and `_meta` capabilities.
 3. Open sessions with absolute workspace paths and keep their ids isolated.
 4. Process agent-to-client filesystem, terminal, and permission requests while

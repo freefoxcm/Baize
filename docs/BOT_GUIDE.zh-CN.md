@@ -25,7 +25,7 @@
 ## 能做什么
 
 连接机器人后，你可以在飞书、Lark、微信或 QQ 里给 Reasonix 发消息，让桌面端
-Reasonix 或 `reasonix bot start` 进程在本机执行同一套模型、工具、权限与
+Reasonix 或 `baize bot start` 进程在本机执行同一套模型、工具、权限与
 沙盒逻辑。
 
 典型场景：
@@ -47,12 +47,12 @@ Bot gateway 是一套共享的 Go runtime。核心行为在 Windows、macOS 和 
 - **桌面端 runtime**：在 **设置 -> 机器人** 中配置。桌面端会启动 gateway，
   在应用内维护状态，持久化每个连接的工具审批模式变化，并允许打开匹配的
   本地 IM 会话。
-- **CLI runtime**：执行 `reasonix bot start` 启动无界面长期进程。它复用
+- **CLI runtime**：执行 `baize bot start` 启动无界面长期进程。它复用
   与桌面端相同的配置、白名单、路由、队列设置、配对存储、适配器和
   项目/会话索引。
 
-普通 `reasonix run` 不会自动启动 IM 网关。只有桌面端 bot runtime 正在运行，
-或存在一个存活的 `reasonix bot start` 进程时，远端 IM bot 能力才会生效。
+普通 `baize run` 不会自动启动 IM 网关。只有桌面端 bot runtime 正在运行，
+或存在一个存活的 `baize bot start` 进程时，远端 IM bot 能力才会生效。
 
 ## 连接四个渠道
 
@@ -134,9 +134,9 @@ HTTP 调用使用带超时的 client，避免平台请求卡住后无限阻塞 g
 无界面网关启动：
 
 ```sh
-reasonix bot doctor
-reasonix bot doctor --deep
-reasonix bot start --channels qq,feishu,lark,weixin --dir /path/to/project
+baize bot doctor
+baize bot doctor --deep
+baize bot start --channels qq,feishu,lark,weixin --dir /path/to/project
 ```
 
 `--channels` 用来选择接受哪些已配置的 IM 输入。`feishu` 和 `lark` 会选择对应
@@ -174,7 +174,7 @@ Bot。`--dir` 用来把远端消息绑定到某个项目工作区，`--model` �
 旧的全局 `[bot.allowlist]` 仍然作为兼容兜底，适用于旧配置或没有启用单
 Bot access 的连接。你可以有意设置 `allow_all = true`，也可以为单个 Bot
 启用 `pairing_enabled`，或全局启用 `[bot.pairing]`，让未知私聊用户先收到
-一次性配对码。配对码需要在本机执行 `reasonix bot pairing approve <code>`
+一次性配对码。配对码需要在本机执行 `baize bot pairing approve <code>`
 后才会放行；如果该请求带有连接 ID，批准后会把发送者加入对应 Bot 自己的
 access 名单。列在 `admins` / `approvers` 或旧的 `*_admins` /
 `*_approvers` 里的用户也会获得基础 bot 准入，不需要再重复写进 `users` /
@@ -182,9 +182,9 @@ access 名单。列在 `admins` / `approvers` 或旧的 `*_admins` /
 条件。常用配对管理命令：
 
 ```sh
-reasonix bot pairing list
-reasonix bot pairing approve CODE
-reasonix bot pairing reject CODE
+baize bot pairing list
+baize bot pairing approve CODE
+baize bot pairing reject CODE
 ```
 
 如果配置了 `qq_admins`、`feishu_admins`、`weixin_admins` 或对应
@@ -321,7 +321,7 @@ sequenceDiagram
 | `/queue delete <n\|id>` / `/queue move <n\|id> <位置>` | 删除或调整待处理项顺序 | `/queue move 2 1` |
 | `/queue pause` / `/queue resume` | 暂停或恢复自动派发 | `/queue resume` |
 | `/queue retry <n\|id>` / `/queue refresh <n\|id>` | 重试不确定项或刷新冻结引用 | `/queue retry 1` |
-| `/projects [关键词]` | 查看已索引项目工作区 | `/projects reasonix` |
+| `/projects [关键词]` | 查看已索引项目工作区 | `/projects baize` |
 | `/use project <id\|名称>` | 将当前远端会话路由到已索引项目 | `/use project p1` |
 | `/use project default` | 清除项目覆盖，恢复配置路由 | `/use project default` |
 | `/sessions search <关键词>` | 搜索已索引桌面/bot 会话 | `/sessions search 发布 bug` |
@@ -340,7 +340,7 @@ sequenceDiagram
 任务的 mid-turn guidance 注入；当前回合无法接收时，同一条消息会保留为后续
 回合。容量采用失败关闭：每个会话最多 64 条、单条 4 MiB、合计 64 MiB，
 `queue_drop` 不再删除旧消息。崩溃恢复后 Inbox 默认暂停，需检查后执行
-`/queue resume`。`reasonix bot doctor --deep` 会显示队列、配对和角色诊断信息。
+`/queue resume`。`baize bot doctor --deep` 会显示队列、配对和角色诊断信息。
 
 队列模式：
 
@@ -432,7 +432,7 @@ flowchart TD
 | 现象 | 可以检查 |
 | --- | --- |
 | 扫码提示链接失效 | 回到设置页重新生成二维码；二维码有有效期（飞书、Lark、微信；QQ 不使用扫码，请检查手动配置）。 |
-| 已连接但没有回复 | 确认桌面端 bot runtime 或 `reasonix bot start` 进程正在运行，Bot 连接已开启，用户 ID 在白名单内、已配对或允许所有人。 |
+| 已连接但没有回复 | 确认桌面端 bot runtime 或 `baize bot start` 进程正在运行，Bot 连接已开启，用户 ID 在白名单内、已配对或允许所有人。 |
 | 飞书或 Lark 按钮提示失败 | 直接发送卡片里的命令，例如 `/approve <id>` 或 `/deny <id>`。 |
 | QQ 按钮提示失败 | 与飞书/Lark 相同 —— 直接发送卡片里的命令，例如 `/approve <id>` 或 `/deny <id>`。 |
 | 微信回复 `1` 没反应 | 只有存在待审批或 Ask 时数字快捷回复才生效；也可以使用完整命令。 |

@@ -5,7 +5,7 @@ and code extensions behind one installable unit.
 
 ## CLI Mode
 
-Use `reasonix plugin` when installing or managing plugin packages from a
+Use `baize plugin` when installing or managing plugin packages from a
 terminal. Plugin packages are installed globally under the Reasonix home
 directory.
 
@@ -23,25 +23,25 @@ directory.
 Preview the install plan without writing files:
 
 ```bash
-reasonix plugin install git:github.com/obra/superpowers --dry-run
+baize plugin install git:github.com/obra/superpowers --dry-run
 ```
 
 Install a plugin after reviewing the plan:
 
 ```bash
-reasonix plugin install git:github.com/obra/superpowers --yes
+baize plugin install git:github.com/obra/superpowers --yes
 ```
 
 Install with an explicit name or replace an installed plugin with the same name:
 
 ```bash
-reasonix plugin install git:github.com/obra/superpowers --name superpowers --replace --yes
+baize plugin install git:github.com/obra/superpowers --name superpowers --replace --yes
 ```
 
 Use a local directory in developer mode:
 
 ```bash
-reasonix plugin install /path/to/plugin --link --replace --yes
+baize plugin install /path/to/plugin --link --replace --yes
 ```
 
 CLI install flags:
@@ -55,7 +55,7 @@ CLI install flags:
 - `--link` links a local plugin directory instead of copying it into Reasonix's
   plugin storage. Moving or deleting that directory breaks the linked plugin.
 
-Running `reasonix plugin install <source>` without `--dry-run` or `--yes`
+Running `baize plugin install <source>` without `--dry-run` or `--yes`
 refuses to write files and prints a reminder to rerun with one of those flags.
 Install and remove commands print the structured JSON response from the same
 install-source backend used by the desktop UI.
@@ -72,13 +72,13 @@ Installed plugin state is stored in:
 List installed plugins:
 
 ```bash
-reasonix plugin list
+baize plugin list
 ```
 
 Show one plugin's metadata, root, source, and exported capability counts:
 
 ```bash
-reasonix plugin show superpowers
+baize plugin show superpowers
 ```
 
 `show` also prints the concrete capability inventory when available:
@@ -92,14 +92,14 @@ reasonix plugin show superpowers
 Check that the manifest and skill roots are readable:
 
 ```bash
-reasonix plugin doctor superpowers
+baize plugin doctor superpowers
 ```
 
 For a workspace-wide capability report (skills, hooks, MCP merge, package roots), see
 [Capability diagnostics](./CAPABILITY_DIAGNOSTICS.md):
 
 ```bash
-reasonix doctor capabilities --json
+baize doctor capabilities --json
 # Desktop: Settings → Diagnostics
 # Agent:   /reasonix-guide
 ```
@@ -107,14 +107,14 @@ reasonix doctor capabilities --json
 Enable or disable a plugin without uninstalling it:
 
 ```bash
-reasonix plugin disable superpowers
-reasonix plugin enable superpowers
+baize plugin disable superpowers
+baize plugin enable superpowers
 ```
 
 Remove a plugin:
 
 ```bash
-reasonix plugin remove superpowers --yes
+baize plugin remove superpowers --yes
 ```
 
 `remove` also accepts `uninstall` as an alias. It requires `--yes` because it
@@ -363,7 +363,7 @@ environment, bypass permissions, and operate the machine directly; a
 Installing, updating, replacing, or `--link`ing a plugin with a `runtime`
 block *is* the authorization — there is no second confirmation prompt, and
 `--link` keeps trusting changed content automatically. The install preview,
-`reasonix plugin show`, capability diagnostics, and the Desktop installer
+`baize plugin show`, capability diagnostics, and the Desktop installer
 therefore display a prominent `FULL TRUST` block with the runtime command,
 interceptors, replacement slots, and provider/UI capabilities. Review that
 block before installing, and only install runtimes you trust completely.
@@ -483,8 +483,8 @@ declarations and do not apply these fallbacks:
   reports a clear prerequisite error instead of the localized `sh is not
   recognized` output. A non-standard or portable Bash configured with
   `[tools.shell] prefer = "bash"` and `path = ".../bash.exe"` is reused by
-  explicit Bash hooks. `reasonix plugin doctor <name>` and
-  `reasonix doctor capabilities` report a missing required shell before the
+  explicit Bash hooks. `baize plugin doctor <name>` and
+  `baize doctor capabilities` report a missing required shell before the
   first hook invocation. Captured legacy-code-page output is normalized to
   UTF-8 before it reaches the UI. A `PreToolUse` or
   `UserPromptSubmit` hook can still deny via exit code 2 or its JSON deny

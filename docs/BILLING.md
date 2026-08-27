@@ -74,8 +74,8 @@ prefix. Automatic mode uses a single valid wallet currency only as a runtime
 hint. Multiple/unknown/error responses do not affect the cost facts.
 
 ```sh
-reasonix doctor billing
-reasonix doctor billing --json
+baize doctor billing
+baize doctor billing --json
 ```
 
 The compatible `fx` report is always `enabled=false` and has no cache. The

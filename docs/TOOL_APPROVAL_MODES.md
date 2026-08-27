@@ -34,7 +34,7 @@ as `Bash=<literal>`.
 - Outside a pending CLI Plan confirmation, `Esc` stops the current task.
 - If you `Tab` to a button and press `Enter`, that focused button runs (it is not overridden by the highlight).
 
-Headless `reasonix run` has no approval card to answer. Its default Ask posture
+Headless `baize run` has no approval card to answer. Its default Ask posture
 therefore fails closed for writer fallback and explicit ask rules instead of
 adding prompts or silently approving them. Use the existing `--auto` / `-y`
 option when unattended automation should allow ordinary writer fallback; no

@@ -45,7 +45,7 @@ func doctorCatalogsCommand(args []string) int {
 		return code
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix doctor catalogs [--json]")
+		fmt.Fprintln(os.Stderr, "usage: baize doctor catalogs [--json]")
 		return 2
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -80,7 +80,7 @@ func doctorCatalogsCommand(args []string) int {
 
 func catalogsCommand(args []string) int {
 	if len(args) < 2 || args[0] != "reindex" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix catalogs reindex <catalog> [options]")
+		fmt.Fprintln(os.Stderr, "usage: baize catalogs reindex <catalog> [options]")
 		return 2
 	}
 	for _, command := range catalogCommands {

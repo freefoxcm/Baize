@@ -256,7 +256,7 @@ if (/\brm\s+-rf\b/.test(command) || /\bgit\s+push\b/.test(command)) {
 ## 排障
 
 - 保存后当前会话没有变化：Hooks 在会话构建时加载。重启桌面端后才会重新读取配置；`/new` 只开启新对话，不会重新加载 hooks。
-- 项目 hooks 不执行：确认当前是项目工作区、配置保存在 `.reasonix/settings.json`，并重启 Reasonix 重新加载。也可用只读诊断：`reasonix doctor capabilities` 或桌面端 **设置 → 诊断**（见 [能力诊断](./CAPABILITY_DIAGNOSTICS.zh-CN.md)），关注 `hook.invalid_matcher` / `hook.malformed_settings`。
+- 项目 hooks 不执行：确认当前是项目工作区、配置保存在 `.reasonix/settings.json`，并重启 Reasonix 重新加载。也可用只读诊断：`baize doctor capabilities` 或桌面端 **设置 → 诊断**（见 [能力诊断](./CAPABILITY_DIAGNOSTICS.zh-CN.md)），关注 `hook.invalid_matcher` / `hook.malformed_settings`。
 - `match` 没生效：它只对 `PreToolUse` 和 `PostToolUse` 生效，并且是锚定正则。
 - JSON 报 unknown hook event：事件 key 必须完全等于上表的大小写。
 - hook 输出太长：每路 stdout/stderr 最多捕获 256KB，超出会截断并显示截断提示。

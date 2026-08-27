@@ -18,8 +18,8 @@ background index catches up. Catalog failures never block provider events,
 turn completion, controller startup, or shutdown.
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex usage [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex usage [--json]
 ```
 
 Diagnostics expose schema, integrity, lag, counts, and failures without model

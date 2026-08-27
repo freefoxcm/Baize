@@ -6,9 +6,9 @@ Reasonix 不再提供产品化的 `reasonix-guard` 恢复壳。崩溃记录、pe
 ## 请使用这些命令
 
 ```text
-reasonix doctor
-reasonix doctor repair
-reasonix crash report   # 视构建是否包含而定
+baize doctor
+baize doctor repair
+baize crash report   # 视构建是否包含而定
 ```
 
 - **doctor**：检查配置、桌面派生状态与常见安装问题，不加载 Wails。

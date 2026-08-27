@@ -26,7 +26,7 @@
 ## What the bot does
 
 After a bot is connected, you can send Reasonix messages from Feishu, Lark,
-WeChat, or QQ. The desktop app or `reasonix bot start` process handles the
+WeChat, or QQ. The desktop app or `baize bot start` process handles the
 model, tools, permissions, sandboxing, and local context, then sends progress
 and results back to the IM channel.
 
@@ -51,13 +51,13 @@ There are two supported entry points:
 - **Desktop runtime**: configure bots in **Settings -> Bots**. The desktop app
   starts the gateway, keeps status in the app, persists per-connection tool
   approval mode changes, and lets you open matching local IM sessions.
-- **CLI runtime**: run `reasonix bot start` for a headless long-lived process.
+- **CLI runtime**: run `baize bot start` for a headless long-lived process.
   It uses the same config, allowlist, routes, queue settings, pairing store,
   adapters, and project/session index as the desktop runtime.
 
-The normal `reasonix run` command does not automatically start the IM gateway.
+The normal `baize run` command does not automatically start the IM gateway.
 Remote bot behavior is active only while the desktop bot runtime is running or
-while a `reasonix bot start` process is alive.
+while a `baize bot start` process is alive.
 
 ## Connect the four channels
 
@@ -146,9 +146,9 @@ The desktop app is the easiest way to create and test bot connections, but the
 runtime itself can also run as a long-lived headless gateway:
 
 ```sh
-reasonix bot doctor
-reasonix bot doctor --deep
-reasonix bot start --channels qq,feishu,lark,weixin --dir /path/to/project
+baize bot doctor
+baize bot doctor --deep
+baize bot start --channels qq,feishu,lark,weixin --dir /path/to/project
 ```
 
 Use `--channels` to choose which configured IM inputs to accept. `feishu` and
@@ -194,7 +194,7 @@ older configs and for connections without active per-bot access. You can
 deliberately set `allow_all = true`, or enable `pairing_enabled` for a single
 bot / `[bot.pairing]` globally so an unknown DM sender receives a one-time
 pairing code. That code must be approved locally with
-`reasonix bot pairing approve <code>` before the sender can drive the bot; when
+`baize bot pairing approve <code>` before the sender can drive the bot; when
 the request is tied to a connection, approval adds the sender to that
 connection's access list. Users listed in `admins` / `approvers` or the legacy
 `*_admins` / `*_approvers` also receive base bot admission, so they do not need
@@ -203,9 +203,9 @@ pairing or role admission; group IDs remain an additional narrowing layer.
 Use these commands to manage pending requests:
 
 ```sh
-reasonix bot pairing list
-reasonix bot pairing approve CODE
-reasonix bot pairing reject CODE
+baize bot pairing list
+baize bot pairing approve CODE
+baize bot pairing reject CODE
 ```
 
 If `qq_admins`, `feishu_admins`, `weixin_admins`, or the matching
@@ -347,7 +347,7 @@ These commands work in Feishu, Lark, WeChat, and QQ.
 | `/queue delete <n\|id>` / `/queue move <n\|id> <to>` | Delete or reorder pending work | `/queue move 2 1` |
 | `/queue pause` / `/queue resume` | Stop or resume automatic dispatch | `/queue resume` |
 | `/queue retry <n\|id>` / `/queue refresh <n\|id>` | Retry uncertain work or refresh frozen references | `/queue retry 1` |
-| `/projects [query]` | List indexed project workspaces | `/projects reasonix` |
+| `/projects [query]` | List indexed project workspaces | `/projects baize` |
 | `/use project <id\|name>` | Route this remote session to an indexed project | `/use project p1` |
 | `/use project default` | Clear the project override and return to configured routing | `/use project default` |
 | `/sessions search <query>` | Search indexed desktop/bot sessions | `/sessions search release bug` |
@@ -369,7 +369,7 @@ new message is persisted before it is injected as mid-turn guidance. If the
 active turn cannot accept it, the same durable item remains a follow-up.
 Capacity is fail-closed at 64 items, 4 MiB per item, and 64 MiB per session;
 `queue_drop` no longer removes older work. After recovery the inbox stays
-paused until `/queue resume`. `reasonix bot doctor --deep` reports queue,
+paused until `/queue resume`. `baize bot doctor --deep` reports queue,
 pairing, and role diagnostics.
 
 Queue modes:
@@ -470,7 +470,7 @@ You may need to bind again if:
 | Symptom | What to check |
 | --- | --- |
 | QR code says the link expired | Generate a new QR code in Settings; QR codes expire (Feishu, Lark, WeChat only — QQ uses manual setup and has no QR code). |
-| Connected but no reply | Make sure the desktop bot runtime or `reasonix bot start` process is running, the bot connection is enabled, and the sender ID is allowlisted, paired, or access is open. |
+| Connected but no reply | Make sure the desktop bot runtime or `baize bot start` process is running, the bot connection is enabled, and the sender ID is allowlisted, paired, or access is open. |
 | Feishu or Lark button action fails | Send the text command from the card, such as `/approve <id>` or `/deny <id>`. |
 | QQ button action fails | Same as Feishu/Lark — send the text command from the card, such as `/approve <id>` or `/deny <id>`. |
 | WeChat reply `1` does nothing | Numeric shortcuts only work when an approval or Ask is pending; use the full command if needed. |

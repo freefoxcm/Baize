@@ -199,10 +199,10 @@ In addition to the existing frozen table, v2 adds:
 
 ## Migration
 
-- `reasonix plugin migrate <name> --to-v2` rewrites only pre-extension native
+- `baize plugin migrate <name> --to-v2` rewrites only pre-extension native
   manifests that omit `apiVersion`, backs up the original, and errors on
   dependencies it cannot infer. It does not accept Manifest v1.
-- `reasonix plugin doctor` reports dependency and protocol errors
+- `baize plugin doctor` reports dependency and protocol errors
 - v1 / missing apiVersion native manifests fail install, doctor, and boot
 
 ## Acceptance
