@@ -266,6 +266,9 @@ const __T = {
     'cannot_delete_active': 'Cannot delete the active session',
     'delete_failed': 'Could not delete the session. Check your connection and try again.',
     'auth_failed': 'Web authentication failed',
+    'turn_stopped': 'Generation stopped',
+    'turn_failed': 'This turn could not finish. Check the details before retrying.',
+    'error_details': 'Technical details',
     'search_sessions': 'Search sessions',
     'workspace_navigation': 'Workspace navigation',
     'load_earlier_sessions': 'Load earlier sessions',
@@ -674,6 +677,9 @@ const __T = {
     'cannot_delete_active': '无法删除当前会话',
     'delete_failed': '无法删除会话，请检查连接后重试',
     'auth_failed': 'Web 认证失败',
+    'turn_stopped': '已停止生成',
+    'turn_failed': '本轮运行未完成，请查看详情后重试。',
+    'error_details': '技术详情',
     'search_sessions': '搜索会话',
     'workspace_navigation': '工作台导航',
     'load_earlier_sessions': '加载更早的会话',
@@ -1189,12 +1195,19 @@ function clearAppToast(key){
   if(appToastTimer){clearTimeout(appToastTimer);appToastTimer=0;}
   region.replaceChildren();appToastKey='';
 }
-function showAppToast(text,tone='info',duration,key=''){
+function showAppToast(text,tone='info',duration,key='',detail=''){
   const region=$('#app-toast-region');if(!region)return;
   clearAppToast();
   const kind=Object.hasOwn(APP_TOAST_DURATIONS,tone)?tone:'info';
   const toast=el('div','app-toast app-toast--'+kind);
-  toast.appendChild(el('span','app-toast__text',text));
+  const content=el('div','app-toast__text',text);
+  if(detail){
+    const details=el('details','app-toast__details');
+    details.appendChild(el('summary','',__('error_details')));
+    details.appendChild(el('pre','',detail));
+    content.appendChild(details);
+  }
+  toast.appendChild(content);
   if(kind==='danger'){
     toast.setAttribute('role','alert');
     const close=el('button','app-toast__close','\u00d7');close.type='button';close.title=__('close');close.setAttribute('aria-label',__('close'));close.onclick=()=>clearAppToast(key);toast.appendChild(close);
@@ -1203,6 +1216,10 @@ function showAppToast(text,tone='info',duration,key=''){
   region.replaceChildren(toast);
   const delay=duration===undefined?APP_TOAST_DURATIONS[kind]:duration;
   if(delay>0)appToastTimer=setTimeout(()=>{toast.classList.add('app-toast--leaving');setTimeout(()=>{if(region.firstChild===toast)clearAppToast(key);},160);appToastTimer=0;},delay);
+}
+function showTurnFeedback(e){
+  if(e.cancelled===true){showAppToast(__('turn_stopped'),'info',3000,'turn-feedback');return;}
+  if(e.err){showAppToast(__('turn_failed'),'danger',0,'turn-feedback',String(e.err));}
 }
 function hiddenTranscriptTool(name){
   const n=String(name||'').trim().toLowerCase();
@@ -1400,7 +1417,7 @@ let currentTurn = 0; // incremented by turn_started; user messages claim turn+1
 let historyPending = false;
 const turnEls = new Map(); // turn number -> { el, tools: Map, summary }
 function genItemId() { return 'it' + (nextItemId++); }
-function resetItems() { items = []; nextItemId = 1; liveAssistant = null; deliveryRecoveryActive = false; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; jumpScrollPinned = true; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
+function resetItems() { clearAppToast('turn-feedback'); items = []; nextItemId = 1; liveAssistant = null; deliveryRecoveryActive = false; currentTurn = 0; turnEls.clear(); if (jumpBarEl) { jumpBarEl.remove(); jumpBarEl = null; } jumpActiveId = null; jumpScrollPinned = true; if (scrollAnimFrame !== null) { cancelAnimationFrame(scrollAnimFrame); scrollAnimFrame = null; } }
 function hasVisibleItems() {
   return items.some(it => it.kind === 'user' || it.kind === 'assistant' || it.kind === 'tool');
 }
@@ -3597,7 +3614,7 @@ es.onmessage=ev=>{setConnState('connected');
   const e=JSON.parse(ev.data);
   if(e.kind!=='retrying')clearRetrying();
   switch(e.kind){
-    case 'turn_started': setRunning(true); clearPendingPrompts(); finalizeMsg(); currentTurn++; turnArgChars = 0; todosDismissed=false; break;
+    case 'turn_started': clearAppToast('turn-feedback'); setRunning(true); clearPendingPrompts(); finalizeMsg(); currentTurn++; turnArgChars = 0; todosDismissed=false; break;
     case 'reasoning': if(e.reasoning||e.text){turnOutputChars+=(e.reasoning||e.text).length;beginModelActivity();} appendReasoning(e.reasoning||e.text||''); break;
     case 'text': if(e.text){turnOutputChars+=e.text.length;beginModelActivity();} appendText(e.text||''); break;
     case 'message': finalizeMsg(); break;
@@ -3639,7 +3656,7 @@ es.onmessage=ev=>{setConnState('connected');
         if (tt && !tt.userOverride && tt.summary.style.display !== 'none') { tt.folded = true; applyTurnFold(tt); } }
       if(deliveryRecoveryActive&&e.outcome!=='final_readiness'&&!e.err)clearDeliveryCards();
       deliveryRecoveryActive=false;
-      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){appendTranscriptNotice('⏸ '+__('recovery_paused'));}else if(e.err){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
+      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){appendTranscriptNotice('⏸ '+__('recovery_paused'));}else{showTurnFeedback(e);} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
   }
 };
 es.onerror=()=>{

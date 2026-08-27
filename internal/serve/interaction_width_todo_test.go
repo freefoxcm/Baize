@@ -8,7 +8,7 @@ import (
 func TestServeInteractionWidthContract(t *testing.T) {
 	css := string(baizeCSS)
 	for _, want := range []string{
-		`--chat-maxw:960px;--todos-collapsed-maxw:760px`,
+		`--chat-maxw:960px;--todos-collapsed-maxw:360px`,
 		`.transcript>:not(.welcome){max-width:var(--chat-maxw);margin-inline:auto}`,
 		`.approval-slot{width:100%;max-width:var(--chat-maxw);margin:0 auto}`,
 		`.approval{width:100%;max-width:var(--chat-maxw);margin:0 auto;background:var(--interaction-glass);`,

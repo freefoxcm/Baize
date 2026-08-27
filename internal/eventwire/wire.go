@@ -30,6 +30,7 @@ type Event struct {
 	DecisionReceipt *DecisionReceipt    `json:"decisionReceipt,omitempty"`
 	Extension       *ExtensionSurface   `json:"extension,omitempty"`
 	Err             string              `json:"err,omitempty" externalizable:"true"`
+	Cancelled       bool                `json:"cancelled,omitempty"`
 	Outcome         string              `json:"outcome,omitempty"`
 	Readiness       *FinalReadiness     `json:"readiness,omitempty"`
 	Receipt         *CompletionReceipt  `json:"receipt,omitempty"`
@@ -170,15 +171,7 @@ func ToWire(e event.Event) Event {
 	case event.ExtensionSurface, event.ExtensionStatus:
 		w.Extension = ToWireExtensionSurface(e.Extension)
 	case event.TurnDone:
-		w.Outcome = e.Outcome
-		w.CheckpointTurn = e.CheckpointTurn
-		w.Receipt = completionReceiptWire(e.Receipt)
-		if e.Readiness != nil {
-			w.Readiness = &FinalReadiness{Attempts: e.Readiness.Attempts, Missing: append([]string(nil), e.Readiness.Missing...)}
-		}
-		if e.Err != nil {
-			w.Err = e.Err.Error()
-		}
+		w.setTurnDone(e)
 	case event.Retrying:
 		w.RetryAttempt = e.RetryAttempt
 		w.RetryMax = e.RetryMax
@@ -216,6 +209,19 @@ func ToWire(e event.Event) Event {
 		}
 	}
 	return w
+}
+
+func (w *Event) setTurnDone(e event.Event) {
+	w.Cancelled = e.Cancelled
+	w.Outcome = e.Outcome
+	w.CheckpointTurn = e.CheckpointTurn
+	w.Receipt = completionReceiptWire(e.Receipt)
+	if e.Readiness != nil {
+		w.Readiness = &FinalReadiness{Attempts: e.Readiness.Attempts, Missing: append([]string(nil), e.Readiness.Missing...)}
+	}
+	if e.Err != nil {
+		w.Err = e.Err.Error()
+	}
 }
 
 func toWireUsage(e event.Event) *Usage {
