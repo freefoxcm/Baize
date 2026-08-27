@@ -24,12 +24,12 @@ var setupSubagentCommand = func(ctx context.Context, modelName string, maxStepsO
 }
 
 const subagentUsageText = `usage:
-  reasonix subagent list [--dir PATH]
-  reasonix subagent create <name> --description TEXT (--prompt TEXT | --prompt-file PATH) [--scope project|global] [--model REF] [--effort LEVEL] [--tools a,b] [--color NAME] [--dir PATH]
-  reasonix subagent edit <name> [--description TEXT] [--prompt TEXT | --prompt-file PATH] [--model REF] [--effort LEVEL] [--tools a,b] [--color NAME] [--dir PATH]
-  reasonix subagent delete <name> --yes [--dir PATH]
-  reasonix subagent try <name> [--model REF] [--max-steps N] [--dir PATH] <task>
-  reasonix subagent run <name> [--model REF] [--max-steps N] [--dir PATH] <task>
+  baize subagent list [--dir PATH]
+  baize subagent create <name> --description TEXT (--prompt TEXT | --prompt-file PATH) [--scope project|global] [--model REF] [--effort LEVEL] [--tools a,b] [--color NAME] [--dir PATH]
+  baize subagent edit <name> [--description TEXT] [--prompt TEXT | --prompt-file PATH] [--model REF] [--effort LEVEL] [--tools a,b] [--color NAME] [--dir PATH]
+  baize subagent delete <name> --yes [--dir PATH]
+  baize subagent try <name> [--model REF] [--max-steps N] [--dir PATH] <task>
+  baize subagent run <name> [--model REF] [--max-steps N] [--dir PATH] <task>
 
 Use --prompt-file - or pipe stdin to read a system prompt from stdin.
 `

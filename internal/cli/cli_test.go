@@ -274,7 +274,7 @@ func TestMetadataCommandsDoNotProbeTerminalTheme(t *testing.T) {
 			t.Fatalf("version rc = %d, want 0", rc)
 		}
 	})
-	if !strings.Contains(out, "reasonix test-version") {
+	if !strings.Contains(out, "baize test-version") {
 		t.Fatalf("version output = %q", out)
 	}
 
@@ -286,7 +286,7 @@ func TestMetadataCommandsDoNotProbeTerminalTheme(t *testing.T) {
 	if !strings.Contains(out, "Usage:") && !strings.Contains(out, "用法：") {
 		t.Fatalf("help output missing usage:\n%s", out)
 	}
-	if !strings.Contains(out, "reasonix run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>") {
+	if !strings.Contains(out, "baize run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>") {
 		t.Fatalf("help output missing run resume flags:\n%s", out)
 	}
 }
@@ -379,7 +379,7 @@ func TestRunNoArgsNonInteractivePrintsUsage(t *testing.T) {
 			t.Fatalf("Run(nil) rc = %d, want 0", rc)
 		}
 	})
-	if !strings.Contains(out, "reasonix —") || !strings.Contains(out, "reasonix run") {
+	if !strings.Contains(out, "baize —") || !strings.Contains(out, "baize run") {
 		t.Fatalf("non-interactive no-arg Run should print usage, got:\n%s", out)
 	}
 }
@@ -458,7 +458,7 @@ func TestSubcommandHelpReturnsSuccess(t *testing.T) {
 		want string
 	}{
 		{name: "run", args: []string{"run", "--help"}, want: "Usage of run:"},
-		{name: "chat", args: []string{"chat", "--help"}, want: "Usage of reasonix:"},
+		{name: "chat", args: []string{"chat", "--help"}, want: "Usage of baize:"},
 		{name: "serve", args: []string{"serve", "--help"}, want: "Usage of serve:"},
 		{name: "upgrade", args: []string{"upgrade", "--help"}, want: "Usage of upgrade:"},
 		{name: "remote connect", args: []string{"remote", "connect", "--help"}, want: "Usage of remote connect:"},
@@ -507,7 +507,7 @@ func TestRunPrintAliasDispatchesRunFlags(t *testing.T) {
 	}
 }
 
-// TestRunPrintFlagAfterLeadingFlagsDispatchesRun covers `reasonix --model X -p`:
+// TestRunPrintFlagAfterLeadingFlagsDispatchesRun covers `baize --model X -p`:
 // a print flag trailing other top-level flags must still route to `run --print`,
 // not into the interactive session parser (which has no -p and returns 2).
 func TestRunPrintFlagAfterLeadingFlagsDispatchesRun(t *testing.T) {
@@ -661,7 +661,7 @@ func TestRunMetadataCommandsDoNotMigrateLegacyConfig(t *testing.T) {
 			t.Fatalf("version rc = %d, want 0", rc)
 		}
 	})
-	if !strings.Contains(out, "reasonix test-version") {
+	if !strings.Contains(out, "baize test-version") {
 		t.Fatalf("version output = %q", out)
 	}
 	if _, err := os.Stat(config.UserConfigPath()); !os.IsNotExist(err) {
@@ -1152,7 +1152,7 @@ func TestCLITelemetryConsentDefaultsYesAndPromptsOnlyOnce(t *testing.T) {
 	if got != want || starts != 1 {
 		t.Fatalf("first start = %p, calls=%d; want %p, 1", got, starts, want)
 	}
-	if !strings.Contains(out.String(), "crash.reasonix.io") || !strings.Contains(out.String(), "[Y/n]:") || !strings.Contains(out.String(), "reasonix config telemetry off") {
+	if !strings.Contains(out.String(), "crash.reasonix.io") || !strings.Contains(out.String(), "[Y/n]:") || !strings.Contains(out.String(), "baize config telemetry off") {
 		t.Fatalf("consent prompt is incomplete: %q", out.String())
 	}
 	if errOut.Len() != 0 {
@@ -1373,7 +1373,7 @@ func TestCLITelemetryConsentPromptIsLocalized(t *testing.T) {
 		startCLITelemetryWithIO(config.Default(), telemetry.Options{
 			Version: "v1.20.0", Interactive: true, CLIMode: "tui",
 		}, strings.NewReader("\n"), &out, io.Discard)
-		for _, required := range []string{"crash.reasonix.io", "reasonix config telemetry off", "[Y/n]:"} {
+		for _, required := range []string{"crash.reasonix.io", "baize config telemetry off", "[Y/n]:"} {
 			if !strings.Contains(out.String(), required) {
 				t.Fatalf("%s consent prompt missing %q: %q", lang, required, out.String())
 			}
@@ -2069,7 +2069,7 @@ func TestWithBuiltinFamiliesForLanguageUsesDeepSeekPricing(t *testing.T) {
 
 // TestWithBuiltinFamiliesRestoresSiblingEntries covers the re-run scenario:
 // a user previously selected only deepseek-v4-flash (saved as deepseek-flash
-// with a single model). Re-running `reasonix setup` must still surface the
+// with a single model). Re-running `baize setup` must still surface the
 // sibling deepseek-pro entry so the user can pick deepseek-v4-pro too,
 // rather than only showing the previously selected model.
 func TestWithBuiltinFamiliesRestoresSiblingEntries(t *testing.T) {

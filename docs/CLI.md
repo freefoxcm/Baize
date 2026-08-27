@@ -13,18 +13,18 @@ configuration, plugins, and sandbox policy, see the [Guide](./GUIDE.md).
 ## Start a session
 
 ```sh
-reasonix
-reasonix --model deepseek-pro
-reasonix --effort high
-reasonix --dir /path/to/project
+baize
+baize --model deepseek-pro
+baize --effort high
+baize --dir /path/to/project
 ```
 
 Ordinary requests always enter the executor. There is no automatic simple /
 light / full task mode to pick. The dedicated planner runs only for an
 explicit Plan, an approval boundary, or Goal start.
 
-Running `reasonix` without a subcommand starts the interactive terminal UI. Use
-`reasonix setup` first when no provider is configured.
+Running `baize` without a subcommand starts the interactive terminal UI. Use
+`baize setup` first when no provider is configured.
 
 | Flag | Purpose |
 | --- | --- |
@@ -45,27 +45,27 @@ Flags may appear before or after the prompt where applicable.
 ## Update the native CLI
 
 ```sh
-reasonix upgrade                  # install the latest official release
-reasonix upgrade --check          # report the target without installing
-reasonix upgrade --force          # reinstall the current official release
+baize upgrade                  # install the latest official release
+baize upgrade --check          # report the target without installing
+baize upgrade --force          # reinstall the current official release
 ```
 
 The updater selects only strict `vX.Y.Z` non-prerelease GitHub Releases. During
 the 1.x compatibility period, old channel arguments and `--channel` are still
 accepted, but resolve to the same official release and print a deprecation
 notice. Legacy `[cli].update_channel` values are ignored and removed the next
-time Reasonix saves the configuration. The `reasonix update` alias behaves the
+time Reasonix saves the configuration. The `baize update` alias behaves the
 same way.
 
 ## Configure providers
 
 ```sh
-reasonix setup                    # manage the user-global config
-reasonix setup --local            # manage ./reasonix.toml
-reasonix setup /path/to/config.toml
+baize setup                    # manage the user-global config
+baize setup --local            # manage ./reasonix.toml
+baize setup /path/to/config.toml
 ```
 
-In an interactive terminal, `reasonix setup` is a staged provider manager. It
+In an interactive terminal, `baize setup` is a staged provider manager. It
 lists configured providers and lets you:
 
 - add OpenAI-compatible or Anthropic-compatible providers;
@@ -101,10 +101,10 @@ desktop app.
 Use the user-global command to inspect or select the display currency:
 
 ```sh
-reasonix config currency             # show the saved and resolved currency
-reasonix config currency auto        # wallet hint, then original price currency
-reasonix config currency CNY
-reasonix config currency USD
+baize config currency             # show the saved and resolved currency
+baize config currency auto        # wallet hint, then original price currency
+baize config currency CNY
+baize config currency USD
 ```
 
 `auto` remains unresolved in configuration. With one valid wallet currency it
@@ -124,9 +124,9 @@ Inspect the effective percentage and its source, set the global default, or add
 a project override:
 
 ```sh
-reasonix config compact-ratio              # show effective value and source
-reasonix config compact-ratio 75           # set the user-global default
-reasonix config compact-ratio --local 75   # override in ./reasonix.toml
+baize config compact-ratio              # show effective value and source
+baize config compact-ratio 75           # set the user-global default
+baize config compact-ratio --local 75   # override in ./reasonix.toml
 ```
 
 The editable range is 65–85%, with 80% as the built-in default. Lower values
@@ -142,14 +142,14 @@ keeps the threshold it loaded at startup.
 Use `-p` / `--print` when a script needs only the final answer:
 
 ```sh
-reasonix -p "summarize this repository"
-reasonix -p "summarize this repository" --output-format json
-reasonix run "implement the TODOs in main.go"
-reasonix run --auto "implement the TODOs in main.go"
-echo "explain this code" | reasonix run
+baize -p "summarize this repository"
+baize -p "summarize this repository" --output-format json
+baize run "implement the TODOs in main.go"
+baize run --auto "implement the TODOs in main.go"
+echo "explain this code" | baize run
 ```
 
-`reasonix run` keeps the normal streamed terminal presentation unless `-p` or a
+`baize run` keeps the normal streamed terminal presentation unless `-p` or a
 structured output format is selected. It also accepts `--model`,
 `--max-steps`, `--effort`, `--dir`, `--add-dir`,
 `--continue`, `--resume QUERY`, `--copy`, `--allowed-tools`, `--permission-mode`,
@@ -164,7 +164,7 @@ everything on) and `all`. Sub-agents inherit the parent's arm, and the arm name
 is written to the `--metrics` file so a recorded run is self-describing.
 
 ```sh
-reasonix run --ablate evidence,planner --metrics run.json "fix the failing test"
+baize run --ablate evidence,planner --metrics run.json "fix the failing test"
 ```
 
 This is a measurement tool, not a tuning knob: switching a subsystem off makes
@@ -183,7 +183,7 @@ the file contains prompts, tool arguments, and reasoning: treat it with the
 same care as a session transcript.
 
 ```sh
-reasonix run --metrics run.json --trajectory run.trajectory.jsonl "fix the failing test"
+baize run --metrics run.json --trajectory run.trajectory.jsonl "fix the failing test"
 ```
 
 ### Output formats
@@ -195,9 +195,9 @@ reasonix run --metrics run.json --trajectory run.trajectory.jsonl "fix the faili
 | `stream-json` | Emits one shared `eventwire` JSON object per line, followed by the final result object. |
 
 ```sh
-reasonix -p "list the risky changes" --output-format text
-reasonix -p "summarize the diff" --output-format json
-reasonix run "run the tests" --output-format stream-json
+baize -p "list the risky changes" --output-format text
+baize -p "summarize the diff" --output-format json
+baize run "run the tests" --output-format stream-json
 ```
 
 The final structured object has this shape:
@@ -239,7 +239,7 @@ totals so clients never invent a cross-currency sum.
 Global display preference is `[billing].display_currency` (`auto|CNY|USD`);
 legacy `[desktop].currency` still migrates. Provider list prices use each
 entry's frozen `billing_currency` and are never rewritten by display switches.
-Diagnose with `reasonix doctor billing`.
+Diagnose with `baize doctor billing`.
 
 Execution failures use `subtype: "error_during_execution"` and
 `is_error: true`. Structured modes keep runtime errors in JSON instead of also
@@ -252,7 +252,7 @@ must not receive prompts, reasoning, tool arguments, tool output, or approval
 text:
 
 ```sh
-reasonix run --events-jsonl "run the focused tests"
+baize run --events-jsonl "run the focused tests"
 ```
 
 Every line has `schema_version`, `sequence`, and `kind`; the final line is
@@ -267,17 +267,17 @@ first redacted-machine invocation may initialize a private identity key in the
 Reasonix user-state directory:
 
 ```sh
-reasonix session list --json [--dir SESSION_DIR | --project-root PATH]
-reasonix session show <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
-reasonix session status <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
-reasonix session recovery [<machine-session-id>] --json [--dir SESSION_DIR | --project-root PATH]
-reasonix task list --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
-reasonix task show <task-id> --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
-reasonix task monitor list --json [--dir PROJECT_DIR]
-reasonix task monitor status <task-id> --json [--dir PROJECT_DIR]
-reasonix task monitor events <task-id> --json|--jsonl [--dir PROJECT_DIR] [--after N] [--follow]
-reasonix hook list --json [--project-root PATH] [--home-dir PATH]
-reasonix hook status --json [--project-root PATH] [--home-dir PATH]
+baize session list --json [--dir SESSION_DIR | --project-root PATH]
+baize session show <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
+baize session status <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
+baize session recovery [<machine-session-id>] --json [--dir SESSION_DIR | --project-root PATH]
+baize task list --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
+baize task show <task-id> --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
+baize task monitor list --json [--dir PROJECT_DIR]
+baize task monitor status <task-id> --json [--dir PROJECT_DIR]
+baize task monitor events <task-id> --json|--jsonl [--dir PROJECT_DIR] [--after N] [--follow]
+baize hook list --json [--project-root PATH] [--home-dir PATH]
+baize hook status --json [--project-root PATH] [--home-dir PATH]
 ```
 
 For `session` and `task`, `--dir` explicitly selects the session storage
@@ -310,11 +310,11 @@ Schema compatibility rules for version 1:
 ## Resume sessions
 
 ```sh
-reasonix --continue
-reasonix --resume
-reasonix --resume provider-config
-reasonix --resume <session-id>
-reasonix --resume provider-config --copy
+baize --continue
+baize --resume
+baize --resume provider-config
+baize --resume <session-id>
+baize --resume provider-config --copy
 ```
 
 - `--continue` resumes the newest saved session immediately.
@@ -326,20 +326,20 @@ reasonix --resume provider-config --copy
 - `--copy` leaves the original transcript untouched and continues in a new
   writable session. Use it when another Reasonix process owns the original.
 
-For one-shot runs, `reasonix run --resume QUERY "task"` accepts a session file
+For one-shot runs, `baize run --resume QUERY "task"` accepts a session file
 path, a session ID, or an opaque machine session ID from `--events-jsonl` /
-`reasonix session show --json`. Session leases prevent the desktop app and CLI
+`baize session show --json`. Session leases prevent the desktop app and CLI
 from writing the same transcript concurrently.
 
 ## Permissions
 
 ```sh
-reasonix --permission-mode plan
-reasonix --permission-mode acceptEdits
-reasonix run -y "apply the requested changes"
-reasonix -p "run the focused tests" --allowed-tools "Bash(go test ./...)"
-reasonix --allowed-tools "Bash(git *) Edit"
-reasonix --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
+baize --permission-mode plan
+baize --permission-mode acceptEdits
+baize run -y "apply the requested changes"
+baize -p "run the focused tests" --allowed-tools "Bash(go test ./...)"
+baize --allowed-tools "Bash(git *) Edit"
+baize --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
 ```
 
 | Mode | Behavior |
@@ -352,7 +352,7 @@ reasonix --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
 | `bypassPermissions` | Bypass approval prompts; equivalent to YOLO. |
 
 For unattended execution with ordinary writer fallback enabled, use
-`reasonix run --auto ...` (or `-y`). The alias cannot be combined with an
+`baize run --auto ...` (or `-y`). The alias cannot be combined with an
 explicit `--permission-mode` value.
 
 `[permissions] allow_dynamic_bash = true` is an advanced opt-in that lets an
@@ -364,7 +364,7 @@ command names, shell `-c`, and other nested/indirect Bash forms. The default is
 filter. Rules may be comma- or space-separated, and the flag is repeatable.
 Configured deny rules always win over command-line allow rules.
 
-In non-interactive runs (`reasonix run` / `-p`) there is no prompt to answer, so
+In non-interactive runs (`baize run` / `-p`) there is no prompt to answer, so
 approval modes resolve without blocking. The default `ask` / `manual` posture
 fails closed for explicit Ask decisions and ordinary writer fallback; readers
 still run. `acceptEdits` allows its named file-edit tools, while other Ask
@@ -384,8 +384,8 @@ human.
 ## Additional directories
 
 ```sh
-reasonix --add-dir ../shared
-reasonix -p "update both projects" \
+baize --add-dir ../shared
+baize -p "update both projects" \
   --add-dir ../frontend \
   --add-dir ../backend
 ```
@@ -489,9 +489,9 @@ JSONL and sidecars remain authoritative. Inspect it read-only or replace only
 the projection:
 
 ```sh
-reasonix doctor sessions [--json]
-reasonix sessions reindex [--json]
-reasonix sessions reindex --dir /path/to/sessions --dir /another/path
+baize doctor sessions [--json]
+baize sessions reindex [--json]
+baize sessions reindex --dir /path/to/sessions --dir /another/path
 ```
 
 Without `--dir`, reindex includes global sessions and all projects saved by the
@@ -501,20 +501,20 @@ failure, migration, and data-safety guarantees.
 History search uses a separate disposable projection:
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex history [--dir PATH ...] [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex history [--dir PATH ...] [--json]
 ```
 
 See [History Search Catalog](./HISTORY_SEARCH_CATALOG.md).
 Usage statistics use a separate disposable rollup projection:
-reasonix catalogs reindex usage [--json]
+baize catalogs reindex usage [--json]
 See [Usage Catalog](./USAGE_CATALOG.md).
 
 Inspect or rebuild the disposable task projection independently:
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex tasks [--project PATH ...] [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex tasks [--project PATH ...] [--json]
 ```
 
 See [Task Catalog](./TASK_CATALOG.md) for the authoritative FileStore boundary,
@@ -537,7 +537,7 @@ names, and owned archive paths.
 | `/memory recover <archive-path>` | Recover an archive as a new revision without overwriting active data. |
 
 These commands run against the active session controller. When the session
-lives on a remote host (`reasonix remote connect` / a desktop remote web
+lives on a remote host (`baize remote connect` / a desktop remote web
 window), they use the remote memory catalog and never fall back to local
 desktop memory. See [Context Engine v2](./SESSION_MEMORY_RETRIEVAL.md) for
 authority, automatic recall, write confirmation, and migration behavior.

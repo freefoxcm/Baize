@@ -28,7 +28,7 @@ type Messages struct {
 	WelcomeTitleFmt string // first-run box title — %s = product name (styled)
 	NoConfigYet     string // first-run cue under the welcome box
 
-	// `reasonix init` — points to the in-session /init skill + setup
+	// `baize init` — points to the in-session /init skill + setup
 	InitHint string
 
 	// chat REPL
@@ -524,11 +524,11 @@ type Messages struct {
 	RemotePassphrasePromptFmt string // "passphrase for %s:"
 	RemotePasswordPromptFmt   string // "password for %s:"
 	RemoteBootstrapStepFmt    string // "remote serve: %s %s"
-	RemoteNoHostsHint         string // "no remote hosts configured; add one with `reasonix remote add`"
+	RemoteNoHostsHint         string // "no remote hosts configured; add one with `baize remote add`"
 
 	// top-level / runAgent
 	UnknownCommandFmt         string // "unknown command %q"
-	UsageRunHint              string // "usage: reasonix run [--model NAME] <task>"
+	UsageRunHint              string // "usage: baize run [--model NAME] <task>"
 	ErrorPrefix               string // "error:" — prefix for fatal-error output
 	ReconfigureOnUnknownModel string // shown when the configured model no longer resolves and setup is re-run
 	WriteConfigErr            string // "write config:" — prefix for write failure
@@ -564,7 +564,7 @@ type Messages struct {
 	ProviderPickLabel    string // label for provider model picker
 	ProviderNoModelsFmt  string // provider has no models
 
-	// `reasonix upgrade` / `reasonix update` — self-update
+	// `baize upgrade` / `baize update` — self-update
 	UpgradeChecking            string // "Checking for updates…"
 	UpgradeChannelDeprecated   string // legacy channel selection is ignored
 	UpgradeDevBuild            string // dev builds cannot self-update
@@ -585,7 +585,7 @@ type Messages struct {
 	UpgradeApplyFailed         string // "failed to apply update: %v"
 	UpgradeSuccessFmt          string // "Updated %s → %s"
 
-	// `reasonix report` — local CLI crash review and explicit upload
+	// `baize report` — local CLI crash review and explicit upload
 	ReportNoPending           string
 	ReportHeaderFmt           string
 	ReportCapturedFmt         string

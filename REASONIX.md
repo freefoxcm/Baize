@@ -94,15 +94,15 @@ package must still receive its own focused test when it is outside that set.
 
 ## Baize Windows release build
 
-- The runnable Windows deliverable is always `bin/reasonix.exe`. Never build or
-  leave `reasonix.exe` in the repository root.
+- The runnable Windows deliverable is always `bin/baize.exe`. Never build or
+  leave `baize.exe` in the repository root.
 - Release builds use `CGO_ENABLED=0`, `-trimpath`, and linker flags `-s -w`, and
   embed `main.version`, `main.gitCommit`, and `main.buildTimeUTC` using the same
   values as the Makefile. A plain `go build` is only a temporary debug build and
   must not replace the file under `bin/`.
 - In a POSIX-compatible build environment, `make build` is authoritative. It
-  also builds the optional `bin/reasonix-plugin-example.exe`; that example is
-  not a runtime dependency of `reasonix.exe`.
+  also builds the optional `bin/baize-plugin-example.exe`; that example is not
+  a runtime dependency of `baize.exe`.
 - In Windows PowerShell without `make`, build the primary executable from the
   repository root with:
 
@@ -112,14 +112,14 @@ $buildCommit = git rev-parse --short=12 HEAD
 $buildTimeUTC = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 $env:CGO_ENABLED = '0'
 $linkerFlags = "-s -w -X main.version=$buildVersion -X main.gitCommit=$buildCommit -X main.buildTimeUTC=$buildTimeUTC"
-go build -trimpath -ldflags $linkerFlags -o bin/reasonix.exe ./cmd/reasonix
+go build -trimpath -ldflags $linkerFlags -o bin/baize.exe ./cmd/reasonix
 ```
 
-- Before handoff, run `bin/reasonix.exe version`, record the file size and
+- Before handoff, run `bin/baize.exe version`, record the file size and
   SHA-256 hash, and confirm the executable starts. Embedded Web assets such as
   Baize CSS, JavaScript, and PDF.js require a rebuild and Serve restart before
   changes take effect.
-- Files named `reasonix.exe.pre-*` are local rollback copies, not build outputs
+- Files named `baize.exe.pre-*` are local rollback copies, not build outputs
   or runtime dependencies. Do not create them as part of a normal build, and do
   not delete an existing user rollback copy unless deletion was requested.
 

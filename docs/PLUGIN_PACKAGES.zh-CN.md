@@ -4,7 +4,7 @@ Reasonix 插件包把 skills、hooks、MCP servers、prompts、主题和代码�
 
 ## CLI 模式
 
-在终端里使用 `reasonix plugin` 安装和管理插件包。插件包当前按全局范围安装，
+在终端里使用 `baize plugin` 安装和管理插件包。插件包当前按全局范围安装，
 写入 Reasonix home 目录。
 
 ### 通过 CLI 安装
@@ -21,25 +21,25 @@ Reasonix 插件包把 skills、hooks、MCP servers、prompts、主题和代码�
 只预览安装计划，不写文件：
 
 ```bash
-reasonix plugin install git:github.com/obra/superpowers --dry-run
+baize plugin install git:github.com/obra/superpowers --dry-run
 ```
 
 确认计划后安装：
 
 ```bash
-reasonix plugin install git:github.com/obra/superpowers --yes
+baize plugin install git:github.com/obra/superpowers --yes
 ```
 
 指定安装名称，或覆盖已安装的同名插件：
 
 ```bash
-reasonix plugin install git:github.com/obra/superpowers --name superpowers --replace --yes
+baize plugin install git:github.com/obra/superpowers --name superpowers --replace --yes
 ```
 
 以开发模式使用本地目录：
 
 ```bash
-reasonix plugin install /path/to/plugin --link --replace --yes
+baize plugin install /path/to/plugin --link --replace --yes
 ```
 
 CLI 安装参数：
@@ -52,7 +52,7 @@ CLI 安装参数：
 - `--link` 链接本地插件目录，而不是复制到 Reasonix 的插件存储目录。
   移动或删除该目录会导致这个链接插件失效。
 
-如果运行 `reasonix plugin install <source>` 时既没有 `--dry-run`，
+如果运行 `baize plugin install <source>` 时既没有 `--dry-run`，
 也没有 `--yes`，CLI 会拒绝写文件，并提示使用其中一个参数重新运行。
 安装和移除命令会输出结构化 JSON，来源于桌面端同一套 install-source 后端。
 
@@ -68,13 +68,13 @@ CLI 安装参数：
 列出已安装插件：
 
 ```bash
-reasonix plugin list
+baize plugin list
 ```
 
 查看某个插件的元数据、根目录、来源以及导出的能力数量：
 
 ```bash
-reasonix plugin show superpowers
+baize plugin show superpowers
 ```
 
 如果能读取到能力明细，`show` 也会输出具体清单：
@@ -87,14 +87,14 @@ reasonix plugin show superpowers
 检查 manifest 和 skill roots 是否可读：
 
 ```bash
-reasonix plugin doctor superpowers
+baize plugin doctor superpowers
 ```
 
 工作区级能力总览（skills / hooks / MCP 合并 / 包根目录）见
 [能力诊断](./CAPABILITY_DIAGNOSTICS.zh-CN.md)：
 
 ```bash
-reasonix doctor capabilities --json
+baize doctor capabilities --json
 # 桌面端：设置 → 诊断
 # Agent：  /reasonix-guide
 ```
@@ -102,14 +102,14 @@ reasonix doctor capabilities --json
 在不卸载的情况下启用或禁用插件：
 
 ```bash
-reasonix plugin disable superpowers
-reasonix plugin enable superpowers
+baize plugin disable superpowers
+baize plugin enable superpowers
 ```
 
 移除插件：
 
 ```bash
-reasonix plugin remove superpowers --yes
+baize plugin remove superpowers --yes
 ```
 
 `remove` 也可以写成 `uninstall`。它需要 `--yes`，
@@ -327,7 +327,7 @@ Protocol（基于 stdio 的 JSON-RPC 2.0，方法索引见
 `permission.decision` 上的 "allow" 可以覆盖宿主的 deny。安装、更新、
 替换或 `--link` 一个带有 `runtime` 块的插件**即代表授权**——不会有二次
 确认，`--link` 模式在内容变化后自动保持信任。因此安装预览、
-`reasonix plugin show`、能力诊断和 Desktop 安装界面都会显著展示
+`baize plugin show`、能力诊断和 Desktop 安装界面都会显著展示
 `FULL TRUST` 区块，列出 Runtime 命令、Interceptors、替换槽和
 Provider/UI 能力。安装前请确认该区块内容，只安装你完全信任的运行时。
 只有通过插件安装流程写入插件状态的 Runtime 才能启动；项目配置无法
@@ -416,7 +416,7 @@ Reasonix 的对应实现，并不代表导入 Hook 的每一种运行时决策�
   不变。如果机器确实没有可用 Bash，hook 会返回清晰的依赖提示，而不是本地化的
   “无法识别 sh”乱码。通过 `[tools.shell] prefer = "bash"` 和
   `path = ".../bash.exe"` 配置的非标准目录或便携版 Bash 也会被显式 Bash Hook 复用。
-  `reasonix plugin doctor <名称>` 和 `reasonix doctor capabilities` 会在 Hook 首次触发前
+  `baize plugin doctor <名称>` 和 `baize doctor capabilities` 会在 Hook 首次触发前
   报告缺失的 Shell 依赖。旧代码页输出也会在进入界面前转换为 UTF-8。`PreToolUse` 和
   `UserPromptSubmit` hook 仍可
   通过退出码 2 或退出码 0 时的 JSON 拒绝形态拒绝该次调用（`PreToolUse` 用

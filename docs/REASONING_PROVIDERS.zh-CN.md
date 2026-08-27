@@ -28,7 +28,7 @@ Reasonix 只暴露一个 `/effort` 开关（以及 provider 级的 `effort` / `t
 | Kimi CN/Global `kimi-k3`   | `api.moonshot.cn/v1`、`api.moonshot.ai/v1` | `reasoning_effort`                            | `low`、`high`、`max`          | 始终思考；默认 `max`。Reasonix 会回放完整的 assistant 消息、使用 `max_completion_tokens`，并省略 K3 固定的采样字段。 |
 | 自定义 Kimi K3 网关        | 任意 OpenAI-compatible K3 端点             | `reasoning_effort`                            | `low`、`high`、`max`          | 设置 `reasoning_protocol = "kimi-k3"`，显式启用 K3 的完整消息回放与请求形态。 |
 | OpenCode Go `kimi-k3`      | `opencode.ai/zen/go/v1`                    | `reasoning_effort`                            | `high`、`max`                 | 中转站专属档位；默认 `max`，并保留中转站标准的 OpenAI-compatible 请求形态。 |
-| OpenCode Go 或代理 `ox-alpha-free` | `opencode.ai/zen/go/v1` 或任意 OpenAI-compatible 代理 | `reasoning_effort` | `auto`、`low`、`high`、`max` | 按精确模型 ID 识别；`auto` 不发送该字段，显式 `reasoning_protocol = "none"` 仍会关闭控制。 |
+| OpenCode Go 或代理 `glm-5.3-flash` | `opencode.ai/zen/go/v1` 或任意 OpenAI-compatible 代理 | `reasoning_effort` | `auto`、`low`、`high`、`max` | 按精确模型 ID 识别；`auto` 不发送该字段，显式 `reasoning_protocol = "none"` 仍会关闭控制。 |
 | Token Rhythm DeepSeek V4   | `tokenrhythm.studio/v1`                    | DeepSeek `thinking.type` + `reasoning_effort` | 模型专属的 DeepSeek 档位      | 通过预设的模型覆盖选择，与网关主机无关。 |
 | Token Rhythm GLM 5/5.1/5.2 | `tokenrhythm.studio/v1`                    | GLM `thinking.type`（`enabled`\|`disabled`）  | `auto`、`enabled`、`disabled` | 通过预设的模型覆盖选择；`reasoning_effort` 会被省略。 |
 

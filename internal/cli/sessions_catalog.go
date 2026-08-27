@@ -24,7 +24,7 @@ func sessionOrSessionsCommand(command string, args []string) int {
 
 func sessionsCommand(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix sessions <reindex|diagnose|cleanup> [--dir PATH] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: baize sessions <reindex|diagnose|cleanup> [--dir PATH] [--json]")
 		return 2
 	}
 	switch args[0] {
@@ -34,7 +34,7 @@ func sessionsCommand(args []string) int {
 		return sessionsRecoveryCommand(args[1:], true)
 	case "reindex":
 	default:
-		fmt.Fprintln(os.Stderr, "usage: reasonix sessions <reindex|diagnose|cleanup> [--dir PATH] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: baize sessions <reindex|diagnose|cleanup> [--dir PATH] [--json]")
 		return 2
 	}
 	fs := flag.NewFlagSet("sessions reindex", flag.ContinueOnError)
@@ -45,7 +45,7 @@ func sessionsCommand(args []string) int {
 		return code
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix sessions reindex [--dir PATH] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: baize sessions reindex [--dir PATH] [--json]")
 		return 2
 	}
 	if len(dirs) == 0 {
@@ -105,7 +105,7 @@ func sessionsRecoveryCommand(args []string, cleanup bool) int {
 		return code
 	}
 	if fs.NArg() != 0 || (!cleanup && *apply) {
-		fmt.Fprintf(os.Stderr, "usage: reasonix %s [--dir PATH] [--json]", name)
+		fmt.Fprintf(os.Stderr, "usage: baize %s [--dir PATH] [--json]", name)
 		if cleanup {
 			fmt.Fprint(os.Stderr, " [--apply]")
 		}

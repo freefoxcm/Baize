@@ -1329,7 +1329,7 @@ func TestRecoveryHeadlessModeUsesExplicitFrontendCapability(t *testing.T) {
 		t.Fatal("a bounded bot approval timeout must not make recovery headless")
 	}
 	if !recoveryHeadlessMode(Options{HeadlessApprovalMode: control.ToolApprovalAuto}) {
-		t.Fatal("reasonix run Auto mode must fail closed instead of waiting for a card")
+		t.Fatal("baize run Auto mode must fail closed instead of waiting for a card")
 	}
 	if !recoveryHeadlessMode(Options{HeadlessApprovalMode: control.ToolApprovalAsk}) {
 		t.Fatal("all explicit headless permission modes must use the non-waiting recovery path")
@@ -1494,7 +1494,7 @@ func TestNewProviderAppliesConfiguredDefaultEffort(t *testing.T) {
 	}
 }
 
-func TestNewProviderPreservesBuiltInOxAlphaMaxEffort(t *testing.T) {
+func TestNewProviderPreservesBuiltInModelMaxEffort(t *testing.T) {
 	var gotReq map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
@@ -1505,26 +1505,31 @@ func TestNewProviderPreservesBuiltInOxAlphaMaxEffort(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, err := NewProvider(&config.ProviderEntry{
-		Name: "opencode-proxy", Kind: "openai", BaseURL: srv.URL,
-		Model: "ox-alpha-free", Effort: "max",
-	})
-	if err != nil {
-		t.Fatalf("NewProvider: %v", err)
-	}
-	ch, err := p.Stream(context.Background(), provider.Request{
-		Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatalf("Stream: %v", err)
-	}
-	for chunk := range ch {
-		if chunk.Type == provider.ChunkError {
-			t.Fatalf("stream error: %v", chunk.Err)
-		}
-	}
-	if got := gotReq["reasoning_effort"]; got != "max" {
-		t.Fatalf("reasoning_effort = %#v, want built-in Ox Alpha max", got)
+	for _, model := range []string{"glm-5.3-flash", "ox-alpha-free"} {
+		t.Run(model, func(t *testing.T) {
+			gotReq = nil
+			p, err := NewProvider(&config.ProviderEntry{
+				Name: "opencode-proxy", Kind: "openai", BaseURL: srv.URL,
+				Model: model, Effort: "max",
+			})
+			if err != nil {
+				t.Fatalf("NewProvider: %v", err)
+			}
+			ch, err := p.Stream(context.Background(), provider.Request{
+				Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+			})
+			if err != nil {
+				t.Fatalf("Stream: %v", err)
+			}
+			for chunk := range ch {
+				if chunk.Type == provider.ChunkError {
+					t.Fatalf("stream error: %v", chunk.Err)
+				}
+			}
+			if got := gotReq["reasoning_effort"]; got != "max" {
+				t.Fatalf("reasoning_effort = %#v, want built-in %s max", got, model)
+			}
+		})
 	}
 }
 

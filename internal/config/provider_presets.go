@@ -140,8 +140,8 @@ var (
 	stepfunAPIVisionModels = []string{"step-3.7-flash"}
 
 	legacyOpenCodeGoModels           = []string{"glm-5.2", "glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
-	opencodeGoModels                 = []string{"ox-alpha-free", "glm-5.3", "glm-5.2", "glm-5.1", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5", "hy3"}
-	opencodeGoVisionModels           = []string{"ox-alpha-free", "kimi-k3"}
+	opencodeGoModels                 = []string{"glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5", "hy3"}
+	opencodeGoVisionModels           = []string{"glm-5.3-flash", "kimi-k3"}
 	opencodeZenAnthropicModels       = []string{"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5", "qwen3.6-plus", "qwen3.5-plus", "qwen3.6-plus-free"}
 	opencodeZenAnthropicVisionModels = []string{"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"}
 

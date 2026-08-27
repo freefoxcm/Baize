@@ -21,10 +21,10 @@ Commands、Hooks、插件包、MCP 服务器，以及指令文件（`AGENTS.md` 
 
 | 目标 | 命令 / 入口 |
 | --- | --- |
-| 检查当前工作区的 skills / hooks / MCP / 插件 | `reasonix doctor capabilities` |
-| 机器可读报告（CI / 报障） | `reasonix doctor capabilities --json` |
-| 指定项目根目录 | `reasonix doctor capabilities --root /path/to/project` |
-| 真实探测 MCP 启动（会启动第三方服务器） | `reasonix doctor capabilities --live --timeout 5s` |
+| 检查当前工作区的 skills / hooks / MCP / 插件 | `baize doctor capabilities` |
+| 机器可读报告（CI / 报障） | `baize doctor capabilities --json` |
+| 指定项目根目录 | `baize doctor capabilities --root /path/to/project` |
+| 真实探测 MCP 启动（会启动第三方服务器） | `baize doctor capabilities --live --timeout 5s` |
 | 让 Agent 按手册排障 | 会话中 `/reasonix-guide`，或自然语言描述症状 |
 | GUI 健康视图 | 桌面端 **设置 → 诊断** |
 
@@ -34,9 +34,9 @@ automatic MCP 时才用 `--live`。
 其它既有 doctor 命令（行为不变）：
 
 ```bash
-reasonix doctor                  # 环境 / provider / 沙箱快照
-reasonix doctor session <id>     # 支持用会话包
-reasonix doctor redact-sessions  # 脱敏会话中的密钥
+baize doctor                  # 环境 / provider / 沙箱快照
+baize doctor session <id>     # 支持用会话包
+baize doctor redact-sessions  # 脱敏会话中的密钥
 ```
 
 ## 日常工作流
@@ -44,7 +44,7 @@ reasonix doctor redact-sessions  # 脱敏会话中的密钥
 ### 1. 「Skill / 命令找不到或内容不对」
 
 ```bash
-reasonix doctor capabilities --json | jq '.skills.entries, .commands.entries, .issues'
+baize doctor capabilities --json | jq '.skills.entries, .commands.entries, .issues'
 ```
 
 关注：
@@ -59,7 +59,7 @@ reasonix doctor capabilities --json | jq '.skills.entries, .commands.entries, .i
 ### 2. 「项目 Hooks 不触发」
 
 ```bash
-reasonix doctor capabilities | sed -n '/Hooks/,/Plugins/p'
+baize doctor capabilities | sed -n '/Hooks/,/Plugins/p'
 ```
 
 项目 Hooks 会从 `.reasonix/settings.json` 自动加载。若没有触发，请确认当前工作区，
@@ -70,13 +70,13 @@ reasonix doctor capabilities | sed -n '/Hooks/,/Plugins/p'
 1. 先做静态检查（无副作用）：
 
    ```bash
-   reasonix doctor capabilities --json | jq '.mcp.servers, .issues[] | select(.subsystem=="mcp")'
+   baize doctor capabilities --json | jq '.mcp.servers, .issues[] | select(.subsystem=="mcp")'
    ```
 
 2. 仅在接受启动第三方服务器时：
 
    ```bash
-   reasonix doctor capabilities --live --timeout 10s --json
+   baize doctor capabilities --live --timeout 10s --json
    ```
 
 常见 code：`mcp.command_not_found`、`mcp.invalid_transport`、
@@ -105,7 +105,7 @@ reasonix doctor capabilities | sed -n '/Hooks/,/Plugins/p'
 该内置 Skill 是 **inline**（`runAs: inline`）。它会优先要求模型运行：
 
 ```bash
-reasonix doctor capabilities --json
+baize doctor capabilities --json
 ```
 
 只有你明确允许启动外部 MCP 时才建议 `--live`。项目或全局同名
@@ -115,7 +115,7 @@ reasonix doctor capabilities --json
 ## CLI 参考
 
 ```bash
-reasonix doctor capabilities [--root PATH] [--json] [--live] [--timeout 5s]
+baize doctor capabilities [--root PATH] [--json] [--live] [--timeout 5s]
 ```
 
 | 参数 | 含义 |
@@ -147,16 +147,16 @@ reasonix doctor capabilities [--root PATH] [--json] [--live] [--timeout 5s]
 
 ```bash
 # 当前目录、人类可读
-reasonix doctor capabilities
+baize doctor capabilities
 
 # CI：仅有 error 时非零退出
-reasonix doctor capabilities --json
+baize doctor capabilities --json
 
 # live 探测，超时 15 秒
-reasonix doctor capabilities --live --timeout 15s --json 2>live-warn.txt
+baize doctor capabilities --live --timeout 15s --json 2>live-warn.txt
 ```
 
-既有 `reasonix doctor` / `doctor session` / `doctor redact-sessions` 的 JSON
+既有 `baize doctor` / `doctor session` / `doctor redact-sessions` 的 JSON
 schema **不会**混入新字段。
 
 ## 桌面端
@@ -218,9 +218,9 @@ MCP 仅列出 env/header 的 **key**。可能携带 HTTP 响应体或 MCP stderr
 
 | 需求 | 改用 |
 | --- | --- |
-| Provider 密钥、代理、沙箱 OS 支持 | `reasonix doctor` |
-| 给支持用的完整会话包 | `reasonix doctor session <id>` |
-| 单个插件包 | `reasonix plugin doctor <name>` |
+| Provider 密钥、代理、沙箱 OS 支持 | `baize doctor` |
+| 给支持用的完整会话包 | `baize doctor session <id>` |
+| 单个插件包 | `baize plugin doctor <name>` |
 | 会话内 MCP 列表 | `/mcp` |
 
 ## 缓存影响

@@ -15,7 +15,7 @@ import (
 	"reasonix/internal/mcpregistry"
 )
 
-// mcp.go holds the MCP server-management surface shared by the `reasonix mcp`
+// mcp.go holds the MCP server-management surface shared by the `baize mcp`
 // subcommand (config-only; takes effect next session) and the in-chat `/mcp add`
 // / `/mcp remove` slash commands (which hot-connect via the controller). Both
 // parse arguments through parseMCPAdd so the grammar is identical everywhere.
@@ -35,8 +35,8 @@ func parseMCPAdd(args []string) (config.PluginEntry, error) {
 	}
 
 	// Simplified forms:
-	//   reasonix mcp add -- npx -y chrome-devtools-mcp@latest
-	//   reasonix mcp add https://example.com/mcp
+	//   baize mcp add -- npx -y chrome-devtools-mcp@latest
+	//   baize mcp add https://example.com/mcp
 	// keep the historical "name command..." form as well.
 	if args[0] == "--" {
 		if len(args) < 2 {
@@ -70,7 +70,7 @@ func parseMCPAdd(args []string) (config.PluginEntry, error) {
 	}
 	rest := args[1:]
 	if len(rest) > 0 && rest[0] == "--" {
-		// reasonix mcp add <name> -- <argv...>
+		// baize mcp add <name> -- <argv...>
 		if len(rest) < 2 {
 			return e, fmt.Errorf("mcp add: -- requires a command argv")
 		}
@@ -437,7 +437,7 @@ func mcpInstallCLI(args []string) int {
 
 func mcpInstallWithClient(args []string, client *mcpregistry.Client) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix mcp install <registry-name> [--as <local-name>]")
+		fmt.Fprintln(os.Stderr, "usage: baize mcp install <registry-name> [--as <local-name>]")
 		return 2
 	}
 	registryName := strings.TrimSpace(args[0])
@@ -494,7 +494,7 @@ func mcpInstallWithClient(args []string, client *mcpregistry.Client) int {
 		return 1
 	}
 	if installResult.State == "action_required" {
-		fmt.Printf("installed MCP Registry server %q as %q — authentication required; finish authentication and run `reasonix mcp retry %s`\n", entry.Name, pluginEntry.Name, pluginEntry.Name)
+		fmt.Printf("installed MCP Registry server %q as %q — authentication required; finish authentication and run `baize mcp retry %s`\n", entry.Name, pluginEntry.Name, pluginEntry.Name)
 		return 0
 	}
 	fmt.Printf("installed MCP Registry server %q as %q — ready with %d tools\n", entry.Name, pluginEntry.Name, installResult.ToolCount)
@@ -507,7 +507,7 @@ func mcpEnableCLI(args []string, enabled bool) int {
 		if !enabled {
 			action = "disable"
 		}
-		fmt.Fprintf(os.Stderr, "usage: reasonix mcp %s <name>\n", action)
+		fmt.Fprintf(os.Stderr, "usage: baize mcp %s <name>\n", action)
 		return 2
 	}
 	name := strings.TrimSpace(args[0])
@@ -545,7 +545,7 @@ func mcpEnableCLI(args []string, enabled bool) int {
 
 func mcpRetryCLI(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix mcp retry <name>")
+		fmt.Fprintln(os.Stderr, "usage: baize mcp retry <name>")
 		return 2
 	}
 	// Standalone CLI cannot talk to a live Host; enabling is the durable
@@ -555,7 +555,7 @@ func mcpRetryCLI(args []string) int {
 
 func mcpUpdateCLI(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix mcp update <name>")
+		fmt.Fprintln(os.Stderr, "usage: baize mcp update <name>")
 		return 2
 	}
 	name := strings.TrimSpace(args[0])
@@ -627,7 +627,7 @@ func mcpList() int {
 
 func mcpGetCLI(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix mcp get <name>")
+		fmt.Fprintln(os.Stderr, "usage: baize mcp get <name>")
 		return 2
 	}
 	name := args[0]
@@ -788,7 +788,7 @@ func persistCLIInstalledMCP(workspace string, entry config.PluginEntry) error {
 
 func mcpRemoveCLI(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix mcp remove <name>")
+		fmt.Fprintln(os.Stderr, "usage: baize mcp remove <name>")
 		return 2
 	}
 	name := args[0]
@@ -824,23 +824,23 @@ func mcpUsage() {
 	fmt.Println(`Manage MCP servers (global installs use config.toml; project entries stay in project config).
 
 Usage:
-  reasonix mcp list
-  reasonix mcp get <name>
-  reasonix mcp install <registry-name> [--as <name>]
-  reasonix mcp add -- <command> [args...]            stdio argv (no shell)
-  reasonix mcp add <name> -- <command> [args...]
-  reasonix mcp add <name> <command> [args...]        legacy stdio form
-  reasonix mcp add https://example.com/mcp           remote HTTP
-  reasonix mcp add <name> --http <url> [--header K=V]
-  reasonix mcp add <name> --sse  <url>
-  reasonix mcp enable <name>
-  reasonix mcp disable <name>
-  reasonix mcp retry <name>
-  reasonix mcp auth <name>                          remote OAuth (opens browser)
-  reasonix mcp update <name>
-  reasonix mcp browse [query] [--limit N] [--json]
-  reasonix mcp import
-  reasonix mcp remove <name>
+  baize mcp list
+  baize mcp get <name>
+  baize mcp install <registry-name> [--as <name>]
+  baize mcp add -- <command> [args...]            stdio argv (no shell)
+  baize mcp add <name> -- <command> [args...]
+  baize mcp add <name> <command> [args...]        legacy stdio form
+  baize mcp add https://example.com/mcp           remote HTTP
+  baize mcp add <name> --http <url> [--header K=V]
+  baize mcp add <name> --sse  <url>
+  baize mcp enable <name>
+  baize mcp disable <name>
+  baize mcp retry <name>
+  baize mcp auth <name>                          remote OAuth (opens browser)
+  baize mcp update <name>
+  baize mcp browse [query] [--limit N] [--json]
+  baize mcp import
+  baize mcp remove <name>
 
 Flags for add:
   --http <url> | --sse <url>   remote transport (omit for a stdio command)
@@ -848,13 +848,13 @@ Flags for add:
   --header K=V                 set an HTTP header (repeatable, remote)
 
 Examples:
-  reasonix mcp add fs npx -y @modelcontextprotocol/server-filesystem .
-  reasonix mcp add stripe --http https://mcp.stripe.com --header "Authorization=Bearer $STRIPE_KEY"
+  baize mcp add fs npx -y @modelcontextprotocol/server-filesystem .
+  baize mcp add stripe --http https://mcp.stripe.com --header "Authorization=Bearer $STRIPE_KEY"
 
 CLI config changes take effect on the next session. Inside a running chat, use
 /mcp add to save and connect a server immediately. Installing a server is also
 its launch authorization; there is no separate trust step. Remote OAuth, when
-requested by the server, is completed with reasonix mcp auth <name> and stored
+requested by the server, is completed with baize mcp auth <name> and stored
 in Reasonix-private MCP state.
 
 Servers declared by project reasonix.toml or .mcp.json are trusted configuration

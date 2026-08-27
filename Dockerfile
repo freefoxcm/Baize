@@ -17,7 +17,7 @@ RUN go mod download
 COPY . .
 RUN go build -trimpath \
     -ldflags "-s -w -X main.version=${BUILD_VERSION} -X main.gitCommit=${BUILD_COMMIT} -X main.buildTimeUTC=${BUILD_TIME_UTC}" \
-    -o /out/reasonix ./cmd/reasonix
+    -o /out/baize ./cmd/reasonix
 
 FROM ${NODE_IMAGE} AS runtime
 
@@ -46,9 +46,9 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/go /usr/local/go
-COPY --from=builder /out/reasonix /usr/local/bin/reasonix
+COPY --from=builder /out/baize /usr/local/bin/baize
 COPY docker/requirements-skills.lock /tmp/requirements-skills.lock
-COPY docker/reasonix-entrypoint.sh /usr/local/bin/reasonix-entrypoint
+COPY docker/baize-entrypoint.sh /usr/local/bin/baize-entrypoint
 
 RUN printf '[global]\nindex-url = %s\ntimeout = 60\nretries = 5\n' "${PYPI_INDEX}" > /etc/pip.conf \
     && printf 'registry=%s\ndisturl=%s\nfetch-retries=5\nfetch-timeout=60000\n' "${NPM_REGISTRY}" "${NODE_DIST_URL}" > /etc/npmrc \
@@ -58,11 +58,11 @@ RUN printf '[global]\nindex-url = %s\ntimeout = 60\nretries = 5\n' "${PYPI_INDEX
       'export PATH="/opt/reasonix-runtime/npm/bin:/opt/reasonix-runtime/pnpm:/opt/reasonix-skills/bin:/usr/local/go/bin:$PATH"' \
       > /etc/profile.d/reasonix-runtime.sh \
     && npm install --global --registry "${NPM_REGISTRY}" "pnpm@${PNPM_VERSION}" \
-    && groupadd --gid "${APP_GID}" reasonix \
-    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home reasonix \
+    && groupadd --gid "${APP_GID}" baize \
+    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home baize \
     && mkdir -p /workspace /var/lib/reasonix /opt/reasonix-runtime \
-    && chown -R reasonix:reasonix /workspace /var/lib/reasonix /opt/reasonix-runtime \
-    && chmod 0755 /usr/local/bin/reasonix-entrypoint \
+    && chown -R baize:baize /workspace /var/lib/reasonix /opt/reasonix-runtime \
+    && chmod 0755 /usr/local/bin/baize-entrypoint \
     && rm -f /tmp/requirements-skills.lock
 
 ENV REASONIX_HOME=/var/lib/reasonix \
@@ -81,7 +81,7 @@ ENV REASONIX_HOME=/var/lib/reasonix \
     PATH=/opt/reasonix-runtime/npm/bin:/opt/reasonix-runtime/pnpm:/opt/reasonix-skills/bin:/usr/local/go/bin:${PATH}
 
 WORKDIR /workspace
-USER reasonix
+USER baize
 EXPOSE 8787
-ENTRYPOINT ["reasonix-entrypoint"]
+ENTRYPOINT ["baize-entrypoint"]
 CMD ["serve", "--addr", "0.0.0.0:8787", "--dir", "/workspace", "--no-open"]

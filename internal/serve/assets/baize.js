@@ -1998,13 +1998,22 @@ function ensureAssistant() {
   liveAssistant = it;
   return it;
 }
-function setReasoningOpen(wrapper, open) {
+function reasoningDisplayMode() {
+  let display='closed';try{display=localStorage.getItem('baize-reasoning-display')||'closed';}catch{}
+  return display;
+}
+function setReasoningOpen(wrapper, open, showSummary = true) {
   const body = wrapper.querySelector('.reasoning__body');
+  const head = wrapper.querySelector('.reasoning__head');
   const chevron = wrapper.querySelector('.reasoning__chevron');
   const summary = wrapper.querySelector('.reasoning__summary');
   if (!body) return;
   body.style.display = open ? '' : 'none';
-  if (summary) summary.style.display = open ? 'none' : '';
+  if (summary) {
+    summary.style.display = open || !showSummary ? 'none' : '';
+    summary.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  if (head) head.setAttribute('aria-expanded', open ? 'true' : 'false');
   if (chevron) chevron.className = 'reasoning__chevron' + (open ? ' reasoning__chevron--open' : '');
 }
 // truncateReasoningText mirrors desktop's displayReasoningText streaming
@@ -2055,10 +2064,9 @@ function truncateReasoningText(text) {
   return s;
 }
 // appendAssistantReasoning inserts the reasoning block before the text block
-// (or appends it) and streams new chunks into it. Desktop behavior: opens
-// while streaming, auto-collapses on completion, and a manual toggle wins
-// over both (reasoningUserOverride). The head shows "Thinking…" while
-// running and "Thinking done · Ns" after, with a shimmer on the live label.
+// (or appends it) and streams new chunks into it. A manual toggle wins over
+// automatic open/close behavior. Closed mode keeps the live one-line signal,
+// then settles to the compact "Thinking done · Ns" header without a summary.
 function appendAssistantReasoning(it, container) {
   const w = el('div', 'reasoning');
   const b = el('button', 'reasoning__head');
@@ -2070,7 +2078,8 @@ function appendAssistantReasoning(it, container) {
   body.style.display = 'none';
   const toggle = () => {
     it.reasoningUserOverride = true; // manual toggle wins over auto collapse/expand
-    setReasoningOpen(w, body.style.display === 'none');
+    const display=reasoningDisplayMode();
+    setReasoningOpen(w, body.style.display === 'none', !it.done||display!=='closed');
   };
   b.onclick = toggle; summary.onclick = toggle;
   w.appendChild(b); w.appendChild(summary); w.appendChild(body);
@@ -2083,11 +2092,11 @@ function appendAssistantReasoning(it, container) {
   if (!it.done) it.reasoningStartedAt = Date.now();
   else b.querySelector('.reasoning__label').textContent = __('thinking_done'); // history rebuild: settled label, no duration
   w.dataset.running = it.done ? 'false' : 'true';
-  // Desktop parity: thinking renders collapsed with a horizontal summary by
-  // default (live turns included); clicking the head or summary expands the
-  // vertical trace.
-  let display='closed';try{display=localStorage.getItem('baize-reasoning-display')||'closed';}catch{}
-  setReasoningOpen(w,display==='open'||(display==='auto'&&!it.done));
+  const display=reasoningDisplayMode();
+  w.dataset.display=display;
+  // Closed mode keeps a horizontal summary only while the turn is live;
+  // clicking the head or summary still expands the full trace.
+  setReasoningOpen(w,display==='open'||(display==='auto'&&!it.done),!it.done||display!=='closed');
   return w;
 }
 function appendReasoning(t) {
@@ -2305,8 +2314,13 @@ function finalizeMsg() {
         if (label && it.reasoningStartedAt) {
           label.textContent = __('thinking_done') + ' · ' + fmtElapsed(Date.now() - it.reasoningStartedAt);
         }
+        const display=reasoningDisplayMode();
+        r.dataset.display=display;
         // Auto-collapse only when the user hasn't manually toggled the block.
-        if (!it.reasoningUserOverride) {let display='closed';try{display=localStorage.getItem('baize-reasoning-display')||'closed';}catch{}setReasoningOpen(r,display==='open');}
+        // In closed mode a settled collapsed block keeps only its header.
+        const body=r.querySelector('.reasoning__body');
+        const open=it.reasoningUserOverride?!!body&&body.style.display!=='none':display==='open';
+        setReasoningOpen(r,open,display!=='closed');
         const sm = r.querySelector('.reasoning__summary');
         if (sm) sm.textContent = reasoningSummaryText(it.reasoning, false); // head line once settled
       }

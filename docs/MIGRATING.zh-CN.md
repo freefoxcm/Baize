@@ -11,7 +11,7 @@ Reasonix 1.0 是一次从零开始的 **Go 重写**。它使用全新的代码�
 | 语言 | TypeScript / Node.js | Go |
 | 分支 | [`v1`](https://github.com/esengine/DeepSeek-Reasonix/tree/v1)（仅维护） | `main-v2`（默认、活跃开发） |
 | 版本 | `0.x`（最高 v0.54.x） | `1.0.0`+ |
-| 安装 | `npm i -g reasonix@0.53.2`（固定到某个 `0.x` 版本） | `npm i -g reasonix`；也可使用 release 归档或源码构建 |
+| 安装 | `npm i -g reasonix@0.53.2`（固定到某个 `0.x` 版本） | `npm i -g reasonix`；也可使用 Baize fork release 归档或源码构建 |
 | 代码智能 | embedding 语义搜索 + tree-sitter 符号索引 | LSP 辅助代码读取，以及 grep/read_file/glob；语义索引尚未移植 |
 
 “v1”和“v2”表示代码库代际，而不是 semver 主版本：v1 从未发布 1.0，因此 Go 重写版使用 `1.x` 版本号。
@@ -27,13 +27,13 @@ npm i -g reasonix          # 当前正式的 1.x
 npm i -g reasonix@0.53.2   # 固定到旧版 TypeScript 构建
 ```
 
-每个 GitHub release 都附带预编译归档（`reasonix-<os>-<arch>.tar.gz` / `.zip`）和桌面安装包。它们与 npm 是不同的安装渠道：桌面安装包不会改动通过 `npm i -g` 安装的 CLI，因此 shell 中的 npm `0.53` 与 `1.x` 桌面应用可以共存，并不冲突。
+Baize fork 的 CLI 归档命名为 `baize-<os>-<arch>.tar.gz` / `.zip`。上游 GitHub release 仍提供 `reasonix-<os>-<arch>.tar.gz` / `.zip` 和桌面安装包。它们与 npm 是不同的安装渠道：桌面安装包不会改动通过 `npm i -g` 安装的 CLI，因此 shell 中的 npm `0.53` 与 `1.x` 桌面应用可以共存，并不冲突。
 
 也可以从源码构建：
 
 ```sh
 git clone https://github.com/esengine/DeepSeek-Reasonix   # 默认分支 main-v2（Go）
-cd DeepSeek-Reasonix && make build                        # -> bin/reasonix(.exe)
+cd DeepSeek-Reasonix && make build                        # -> bin/baize(.exe)
 ```
 
 ## 配置
@@ -118,7 +118,7 @@ agent 核心延续了原有能力：循环、读写编辑与 glob/grep/bash 等�
 - 使用 `read_only_task` / `read_only_skill` 创建技术上只读的子智能体；普通 `task` / `run_skill` 仍可写入，并受权限与 Sandbox 控制。未声明 `readOnlyHint` 的 MCP 工具仍按 writer 处理。
 - `default_tools_approval_mode`、`tools.<raw>.approval_mode` 和 `approvals_reviewer` 已停用，加载时忽略并在下次保存时移除；安装或通过项目配置声明 server 后，其所有工具直接可用。
 - **Web Dashboard 仍然可用，桌面端更推荐**：需要浏览器访问时，可运行
-  `reasonix serve` 启动本地 Web UI；日常可视化使用优先选择 Wails 桌面端，
+  `baize serve` 启动本地 Web UI；日常可视化使用优先选择 Wails 桌面端，
   终端工作流继续使用 CLI/TUI。
 - 一些细粒度 v1 工具被合并，例如文件管理操作改由 `bash` 完成；少数工具尚未移植，进度在 Discussions 中跟踪。
 

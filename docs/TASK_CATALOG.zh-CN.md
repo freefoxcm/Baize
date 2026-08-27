@@ -14,8 +14,8 @@ snapshot。当前进程的 jobs/controller 状态始终覆盖 catalog；过期 l
 不回写 snapshot。
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex tasks [--project PATH ...] [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex tasks [--project PATH ...] [--json]
 ```
 
 Catalog 损坏或未完成索引不会禁用任务控制；reindex 只替换可丢弃投影。

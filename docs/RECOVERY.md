@@ -7,9 +7,9 @@ next launch into a global Safe Mode.
 ## Prefer these tools
 
 ```text
-reasonix doctor
-reasonix doctor repair
-reasonix crash report   # when available in your build
+baize doctor
+baize doctor repair
+baize crash report   # when available in your build
 ```
 
 - **doctor** inspects configuration, derived desktop state, and common install

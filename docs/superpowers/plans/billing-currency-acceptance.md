@@ -7,7 +7,7 @@
 - [x] Key packages `-race` (billing, event, boot, cli, config, acp, serve, stats)
 - [x] `cd desktop/frontend && pnpm typecheck && pnpm test:usage-stats && pnpm build`
 - [x] `scripts/check-cache-impact.sh` → no provider-visible changes
-- [x] `reasonix doctor billing` surfaces display/billing/FX-disabled/catalog
+- [x] `baize doctor billing` surfaces display/billing/FX-disabled/catalog
 
 ## Manual UI (Desktop + Serve)
 

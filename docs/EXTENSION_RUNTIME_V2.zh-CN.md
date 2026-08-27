@@ -40,9 +40,9 @@ Controller = 已发布 generation 的消费者（admission 绑定 RuntimeOwner�
 ## 诊断
 
 ```bash
-reasonix doctor runtime
-reasonix doctor runtime --json
-reasonix plugin doctor <name>
+baize doctor runtime
+baize doctor runtime --json
+baize plugin doctor <name>
 ```
 
 输出组件状态、计划、effect receipt、可恢复性、lifecycle metrics，以及进程内的

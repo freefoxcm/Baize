@@ -92,6 +92,35 @@ func TestDeepSeekV4VisionEffortCapabilityBehindCustomProxy(t *testing.T) {
 		t.Fatalf("proxied Ox Alpha auto effort = %q, want provider default", got)
 	}
 
+	glmFlash := &ProviderEntry{
+		Name:    "opencode-proxy",
+		Kind:    "openai",
+		BaseURL: vision.BaseURL,
+		Model:   "glm-5.3-flash",
+	}
+	glmFlashCap := EffortCapabilityForEntry(glmFlash)
+	glmFlashWant := []string{"auto", "low", "high", "max"}
+	if !glmFlashCap.Supported || !stringSlicesEqual(glmFlashCap.Levels, glmFlashWant) || glmFlashCap.Default != "auto" {
+		t.Fatalf("proxied GLM-5.3-Flash capability = %+v, want levels %v default auto", glmFlashCap, glmFlashWant)
+	}
+	if protocol := ReasoningProtocolForEntry(glmFlash); protocol != ReasoningProtocolOpenAI {
+		t.Fatalf("proxied GLM-5.3-Flash protocol = %q, want openai", protocol)
+	}
+	if got, err := NormalizeEffort(glmFlash, "max"); err != nil || got != "max" {
+		t.Fatalf("proxied GLM-5.3-Flash max = %q/%v, want max/nil", got, err)
+	}
+	if got := EffectiveSupportedEfforts(glmFlash); !stringSlicesEqual(got, []string{"low", "high", "max"}) {
+		t.Fatalf("proxied GLM-5.3-Flash wire vocabulary = %v", got)
+	}
+	if got := EffectiveEffort(glmFlash); got != "" {
+		t.Fatalf("proxied GLM-5.3-Flash auto effort = %q, want provider default", got)
+	}
+	glmFlash.ReasoningProtocol = ReasoningProtocolNone
+	glmFlash.Effort = "max"
+	if disabled := EffortCapabilityForEntry(glmFlash); disabled.Supported || len(EffectiveSupportedEfforts(glmFlash)) != 0 || EffectiveEffort(glmFlash) != "" {
+		t.Fatalf("explicitly disabled GLM-5.3-Flash capability = %+v", disabled)
+	}
+
 	unknown := &ProviderEntry{Name: "opencode-proxy", Kind: "openai", BaseURL: vision.BaseURL, Model: "unknown-future-model"}
 	if unknownCap := EffortCapabilityForEntry(unknown); unknownCap.Supported {
 		t.Fatalf("unknown proxied model capability = %+v, want unsupported", unknownCap)

@@ -18,8 +18,8 @@ snapshot. Current process jobs and controller state always overlay catalog data,
 and expired leases are reconciled at read time without rewriting snapshots.
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex tasks [--project PATH ...] [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex tasks [--project PATH ...] [--json]
 ```
 
 Catalog corruption or partial indexing does not disable task control. Reindexing

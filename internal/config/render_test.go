@@ -302,7 +302,7 @@ func TestRenderTOMLRoundTrips(t *testing.T) {
 		},
 	}
 	orig.Plugins = []PluginEntry{
-		{Name: "example", Command: "reasonix-plugin-example"},
+		{Name: "example", Command: "baize-plugin-example"},
 		{Name: "stripe", Type: "http", URL: "https://mcp.stripe.com", Headers: map[string]string{"Authorization": "Bearer x"}, AutoStart: boolPtr(false), Tier: "background"},
 	}
 	mm, _ := orig.Provider("mimo-pro")

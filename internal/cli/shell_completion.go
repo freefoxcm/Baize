@@ -442,9 +442,9 @@ func completionCommand(args []string) int {
 
 func completionUsage(w *os.File) {
 	fmt.Fprintln(w, `Usage:
-  reasonix completion bash
-  reasonix completion zsh
-  reasonix completion fish
+  baize completion bash
+  baize completion zsh
+  baize completion fish
 
 The command prints a completion script to stdout. Source it directly or save it
 in your shell's completion directory.`)
@@ -657,7 +657,7 @@ _reasonix_completion() {
   COMPREPLY=()
   while IFS= read -r line; do
     COMPREPLY+=("$line")
-  done < <(command reasonix completion __complete "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
+  done < <(command baize completion __complete "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
 }
 complete -o default -F _reasonix_completion reasonix
 `
@@ -665,7 +665,7 @@ complete -o default -F _reasonix_completion reasonix
 const zshCompletionScript = `#compdef reasonix
 _reasonix_completion() {
   local -a candidates
-  candidates=("${(@f)$(command reasonix completion __complete "$((CURRENT - 1))" "${words[@]}" 2>/dev/null)}")
+  candidates=("${(@f)$(command baize completion __complete "$((CURRENT - 1))" "${words[@]}" 2>/dev/null)}")
   if (( ${#candidates[@]} )); then
     compadd -- "${candidates[@]}"
   else
@@ -679,7 +679,7 @@ const fishCompletionScript = `function __reasonix_completion
     set -l tokens (commandline -opc)
     set -a tokens (commandline -ct)
     set -l current_index (math (count $tokens) - 1)
-    command reasonix completion __complete $current_index $tokens 2>/dev/null
+    command baize completion __complete $current_index $tokens 2>/dev/null
 end
-complete -c reasonix -a '(__reasonix_completion)'
+complete -c baize -a '(__reasonix_completion)'
 `

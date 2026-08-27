@@ -54,7 +54,7 @@ jobs:
       - name: Build CLI
         env:
           CGO_ENABLED: "0"
-        run: go build -o "$RUNNER_TEMP/reasonix" ./cmd/reasonix
+        run: go build -o "$RUNNER_TEMP/baize" ./cmd/reasonix
       - name: Validate Baize workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/baize-*.yml
       - name: Test fork maintenance scripts
@@ -80,7 +80,7 @@ jobs:
         shell: pwsh
         run: |
           $env:CGO_ENABLED = "0"
-          go build -o "$env:RUNNER_TEMP\reasonix.exe" ./cmd/reasonix
+          go build -o "$env:RUNNER_TEMP\baize.exe" ./cmd/reasonix
       - name: Test PowerShell fork maintenance scripts
         shell: pwsh
         run: pwsh -NoProfile -File scripts/fork-maintenance.test.ps1

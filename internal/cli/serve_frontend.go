@@ -186,7 +186,7 @@ func runServeFrontend(ctrl *control.Controller, srv *serve.Server, cfg config.Se
 }
 
 func reportServeFrontend(ctrl *control.Controller, srv *serve.Server, cfg config.ServeConfig, address string, opts serveFrontendOptions) {
-	fmt.Printf("reasonix %s — %s on http://%s\n", opts.command, ctrl.Label(), address)
+	fmt.Printf("baize %s — %s on http://%s\n", opts.command, ctrl.Label(), address)
 	if srv.AuthMode() == "token" {
 		fmt.Println("  auth: token")
 		// Supervised Serve already owns the token file, so avoid logging its value.

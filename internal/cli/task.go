@@ -64,7 +64,7 @@ func contentFreeTaskEvents(events []taskmonitor.TaskEvent) []taskmonitor.TaskEve
 
 func taskCommand(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task <list|show|monitor|status|events|stop|cancel|requeue|open-session|tmux> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: baize task <list|show|monitor|status|events|stop|cancel|requeue|open-session|tmux> [flags]")
 		return 2
 	}
 	store := taskStore
@@ -107,7 +107,7 @@ func taskCommand(args []string) int {
 
 func taskMonitorCommand(store taskmonitor.Store, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task monitor <list|status|events|stop|cancel|requeue|open-session> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: baize task monitor <list|status|events|stop|cancel|requeue|open-session> [flags]")
 		return 2
 	}
 	switch args[0] {
@@ -133,7 +133,7 @@ func taskMonitorCommand(store taskmonitor.Store, args []string) int {
 
 func taskTmuxCmd(store taskmonitor.Store, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task tmux <attach|status|open|detach>")
+		fmt.Fprintln(os.Stderr, "usage: baize task tmux <attach|status|open|detach>")
 		return 2
 	}
 	a := taskmonitor.NewTmuxAdapter(store, ".reasonix/tasks")
@@ -230,7 +230,7 @@ func printTmuxResult(r taskmonitor.TmuxResult, jsonOut bool) int {
 func taskTmuxAttachCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 	dir, session, jsonOut, fs, code := taskTmuxFlags("task tmux attach", args)
 	if code != 0 || fs.Arg(0) == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task tmux attach <id> --json [--dir DIR] [--session NAME]")
+		fmt.Fprintln(os.Stderr, "usage: baize task tmux attach <id> --json [--dir DIR] [--session NAME]")
 		return 2
 	}
 	return printTmuxResult(a.Attach(context.Background(), dir, fs.Arg(0), session), jsonOut)
@@ -239,7 +239,7 @@ func taskTmuxAttachCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 func taskTmuxStatusCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 	dir, _, jsonOut, fs, code := taskTmuxFlags("task tmux status", args)
 	if code != 0 || fs.Arg(0) == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task tmux status <id> --json [--dir DIR]")
+		fmt.Fprintln(os.Stderr, "usage: baize task tmux status <id> --json [--dir DIR]")
 		return 2
 	}
 	return printTmuxResult(a.Status(context.Background(), dir, fs.Arg(0)), jsonOut)
@@ -248,7 +248,7 @@ func taskTmuxStatusCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 func taskTmuxOpenCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 	dir, _, jsonOut, fs, code := taskTmuxFlags("task tmux open", args)
 	if code != 0 || fs.Arg(0) == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task tmux open <id> --json [--dir DIR]")
+		fmt.Fprintln(os.Stderr, "usage: baize task tmux open <id> --json [--dir DIR]")
 		return 2
 	}
 	return printTmuxResult(a.Open(context.Background(), dir, fs.Arg(0)), jsonOut)
@@ -257,7 +257,7 @@ func taskTmuxOpenCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 func taskTmuxDetachCmd(a *taskmonitor.TmuxAdapter, args []string) int {
 	dir, _, jsonOut, fs, code := taskTmuxFlags("task tmux detach", args)
 	if code != 0 || fs.Arg(0) == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task tmux detach <id> --json [--dir DIR]")
+		fmt.Fprintln(os.Stderr, "usage: baize task tmux detach <id> --json [--dir DIR]")
 		return 2
 	}
 	return printTmuxResult(a.Detach(context.Background(), dir, fs.Arg(0)), jsonOut)
@@ -315,7 +315,7 @@ func taskStatusCmd(store taskmonitor.Store, args []string) int {
 	}
 	id := fs.Arg(0)
 	if id == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task status <id> --json [--dir DIR]")
+		fmt.Fprintln(os.Stderr, "usage: baize task status <id> --json [--dir DIR]")
 		return 2
 	}
 
@@ -360,7 +360,7 @@ func taskEventsCmd(store taskmonitor.Store, args []string) int {
 	}
 	id := fs.Arg(0)
 	if id == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task events <id> --json|--jsonl [--dir DIR] [--after N] [--follow]")
+		fmt.Fprintln(os.Stderr, "usage: baize task events <id> --json|--jsonl [--dir DIR] [--after N] [--follow]")
 		return 2
 	}
 
@@ -448,7 +448,7 @@ func taskStopCmd(store taskmonitor.Store, args []string) int {
 	}
 	id := fs.Arg(0)
 	if id == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task stop <id> --expected-version N --json")
+		fmt.Fprintln(os.Stderr, "usage: baize task stop <id> --expected-version N --json")
 		return 2
 	}
 
@@ -478,7 +478,7 @@ func taskCancelCmd(store taskmonitor.Store, args []string) int {
 	}
 	id := fs.Arg(0)
 	if id == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task cancel <id> --expected-version N --json")
+		fmt.Fprintln(os.Stderr, "usage: baize task cancel <id> --expected-version N --json")
 		return 2
 	}
 
@@ -507,7 +507,7 @@ func taskRequeueCmd(store taskmonitor.Store, args []string) int {
 	}
 	id := fs.Arg(0)
 	if id == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task requeue <id> --expected-version N --json")
+		fmt.Fprintln(os.Stderr, "usage: baize task requeue <id> --expected-version N --json")
 		return 2
 	}
 
@@ -534,7 +534,7 @@ func taskOpenSessionCmd(store taskmonitor.Store, args []string) int {
 	}
 	id := fs.Arg(0)
 	if id == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix task open-session <id> --json")
+		fmt.Fprintln(os.Stderr, "usage: baize task open-session <id> --json")
 		return 2
 	}
 

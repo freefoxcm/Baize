@@ -1,0 +1,37 @@
+version: 2
+project_name: baize
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: baize
+    main: ./cmd/reasonix
+    binary: baize
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Tag }} -X main.gitCommit={{ .ShortCommit }} -X main.buildTimeUTC={{ .Date }} -X reasonix/internal/productdocs.linkedVersion={{ .Tag }} -X reasonix/internal/productdocs.linkedRevision={{ .Commit }}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: baize
+    ids: [baize]
+    name_template: "baize-{{ .Os }}-{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+release:
+  prerelease: auto
+  make_latest: false
+  name_template: "Baize CLI {{ .Tag }}"

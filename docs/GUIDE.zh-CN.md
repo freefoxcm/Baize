@@ -114,12 +114,12 @@ workspace_quota_mib = 1024     # .reasonix/attachments 总量，必须不小于�
 [serve]
 auth_mode = "none"             # none|token|password；绑定到非 localhost 前请先开启认证
 # token = ""                   # 可选固定 token；token 模式为空时启动时自动生成
-# password_hash = ""           # 用 reasonix serve --hash-password --password '...' 生成
+# password_hash = ""           # 用 baize serve --hash-password --password '...' 生成
 # behind_proxy = false         # 只在可信反向代理后方设为 true
 
 [[plugins]]
 name    = "example"
-command = "reasonix-plugin-example"
+command = "baize-plugin-example"
 startup_timeout_seconds = 60   # 可选：initialize + tools/list 上限
 call_timeout_seconds = 600   # 可选：单个 MCP server 的调用超时
 tool_timeout_seconds = { "generate_video" = 1800 }   # 可选：raw MCP tool 名称
@@ -151,10 +151,10 @@ CLI 可以向 `https://crash.reasonix.io` 发送每日最多一次的匿名活�
 以及有界、完全不含内容的事件计数。使用以下用户全局命令配置：
 
 ```bash
-reasonix config telemetry          # 查看当前生效模式
-reasonix config telemetry auto     # 默认：仅本机交互式 TTY
-reasonix config telemetry on       # 也允许本机 headless `reasonix run`
-reasonix config telemetry off      # 关闭并删除待发送计数文件
+baize config telemetry          # 查看当前生效模式
+baize config telemetry auto     # 默认：仅本机交互式 TTY
+baize config telemetry on       # 也允许本机 headless `baize run`
+baize config telemetry off      # 关闭并删除待发送计数文件
 ```
 
 正式版 CLI 第一次在符合条件的交互式终端启动时，会先明确说明数据边界，并在任何
@@ -187,58 +187,58 @@ panic 原文绝不会被序列化；绝对源码路径会变成 `<path>/<file>.g
 崩溃报告绝不会自动上传。使用以下命令审阅和管理：
 
 ```bash
-reasonix report                 # 预览最新报告；TTY 中询问后才发送
-reasonix report list            # 列出本地报告
-reasonix report show [ID]       # 仅预览，不发送
-reasonix report send [ID]       # 明确发送；成功后才删除本地副本
-reasonix report delete [ID]     # 不发送，直接删除
+baize report                 # 预览最新报告；TTY 中询问后才发送
+baize report list            # 列出本地报告
+baize report show [ID]       # 仅预览，不发送
+baize report send [ID]       # 明确发送；成功后才删除本地副本
+baize report delete [ID]     # 不发送，直接删除
 ```
 
-通过 pipe 或重定向运行 `reasonix report` 时只会预览，不会询问或发送。CLI telemetry
+通过 pipe 或重定向运行 `baize report` 时只会预览，不会询问或发送。CLI telemetry
 设置不会自动发送或自动删除这些
 需要单独审阅的报告。Go 无法恢复 runtime fatal throw、操作系统强制终止，以及未包装
 后台 goroutine 中的 panic，因此这些情况不会生成本地报告。
 
 ## Web 前端
 
-本机使用时，`reasonix web` 会启动浏览器 UI，并自动用默认浏览器打开。也可以在 CLI 交互会话中
+本机使用时，`baize web` 会启动浏览器 UI，并自动用默认浏览器打开。也可以在 CLI 交互会话中
 执行 `/web`：Reasonix 会保存当前会话、恢复终端，然后打开明确的
 `/sessions/<id>#token=...` 深链。即使会话尚未产生第一轮消息，也会延续已预留的 Session ID，
 同时继续保持“空会话不提前写 transcript”的惰性落盘行为。
 
 ```bash
 cd your-project
-reasonix web
+baize web
 
 # 从其他目录启动时等价的写法：
-reasonix web --dir /path/to/your-project
+baize web --dir /path/to/your-project
 ```
 
 `--dir` 会在 Web 进程的整个生命周期内固定工作区。该路径在运行 Reasonix
 的主机上解析，而不是在浏览器所在主机上解析；连接到同一进程的所有浏览器标签页共享该工作区。
 
 如果想启动前台 Web 服务并打印地址、但不自动新开浏览器标签页，可使用
-`reasonix web --no-open`。底层的 `reasonix serve`
+`baize web --no-open`。底层的 `baize serve`
 默认不会打开浏览器，继续用于远程开发机、进程托管、tunnel、反向代理和需要认证分享的场景。
 
-`reasonix web` 从 `127.0.0.1:8787` 开始监听；端口占用时会依次尝试 8788、8789……，
+`baize web` 从 `127.0.0.1:8787` 开始监听；端口占用时会依次尝试 8788、8789……，
 最多递增重试 100 次。它默认启用自动生成的 Token，即使配置中的 `[serve].auth_mode`
 是 `none` 也一样。每个运行实例都会在 `<Reasonix home>/server/instances/` 下写入自己的
 单写者 heartbeat 文件；正常退出时只删除自己的文件，新实例则会惰性清理已确认进程死亡的记录。
 因此多个 Web 实例可以共用同一个 Reasonix home，而不会相互覆盖登记状态。服务保持在前台运行，
 按 Ctrl-C 停止。
 
-显式传入 `reasonix web --auth none` 可以关闭默认 Token，只应在监听地址确定可信时使用。
-`reasonix serve` 则保持向后兼容：默认监听 `127.0.0.1:8787`，认证模式仍由配置决定，空配置为
+显式传入 `baize web --auth none` 可以关闭默认 Token，只应在监听地址确定可信时使用。
+`baize serve` 则保持向后兼容：默认监听 `127.0.0.1:8787`，认证模式仍由配置决定，空配置为
 `auth_mode = "none"`。如果要绑定到非 loopback 地址、通过 tunnel 暴露，或放到反向代理后面，
 请先开启认证再分享 URL：
 
 ```bash
-reasonix serve --auth token
-reasonix serve --dir /srv/project --auth token
-reasonix serve --addr 0.0.0.0:8787 --auth token
-reasonix serve --auth password --password 'temporary-password'
-reasonix serve --auth password --password-hash-file /run/secrets/reasonix-password.hash
+baize serve --auth token
+baize serve --dir /srv/project --auth token
+baize serve --addr 0.0.0.0:8787 --auth token
+baize serve --auth password --password 'temporary-password'
+baize serve --auth password --password-hash-file /run/secrets/reasonix-password.hash
 ```
 
 Token 模式会在终端打印带 `#token=...` 的分享链接；Web 页面会先将 fragment 换成
@@ -247,8 +247,8 @@ Referrer 和访问日志。可通过 `--token` 或 `[serve].token`
 复用固定 token。Password 模式必须在启动时传 `--password`，或在配置里保存 bcrypt hash：
 
 ```bash
-reasonix serve --hash-password # 从 TTY 安全读取密码
-reasonix serve --hash-password --password 'strong-password'
+baize serve --hash-password # 从 TTY 安全读取密码
+baize serve --hash-password --password 'strong-password'
 
 # <Reasonix home>/config.toml
 [serve]
@@ -281,7 +281,7 @@ Goal、由 `todo_write` 工具驱动的实时 Todo 面板、扩展发布的 stat
 
 ## 通过 ACP 接入编辑器
 
-`reasonix acp` 把 Reasonix 作为 ACP v1 stdio agent 提供给编辑器和其他 host 客户端。
+`baize acp` 把 Reasonix 作为 ACP v1 stdio agent 提供给编辑器和其他 host 客户端。
 独立的 **[ACP 编辑器接入](./ACP.zh-CN.md)** 文档集中说明启动方式、能力协商、会话生命周期、
 彼此独立的模型/工作/协作/审批控制轴、客户端文件与 terminal 能力、MCP server、权限请求，
 以及 Reasonix 的回合中引导扩展。
@@ -289,7 +289,7 @@ Goal、由 `todo_write` 工具驱动的实时 Todo 面板、扩展发布的 stat
 ## 远程 SSH
 
 远程模块让 Reasonix 在远端主机上运行,并通过你自己的 SSH 连接访问它 —— 即 VS Code
-Remote-SSH 式的体验。它在远端主机上引导一个常驻的 headless `reasonix serve`,把本地一个
+Remote-SSH 式的体验。它在远端主机上引导一个常驻的 headless `baize serve`,把本地一个
 回环端口转发过去,再经隧道打开现有的 serve Web 客户端。agent、工具与文件全部原生运行在远端
 主机上,保真度 100%,不经过有损的文件代理。V1 支持 Linux 与 macOS 远端主机。
 
@@ -317,12 +317,12 @@ target = "127.0.0.1:5432"
 命令行:
 
 ```bash
-reasonix remote add gpu-box dev@203.0.113.7 --workspace '~/projects/app'
-reasonix remote import --all              # 导入别名；连接时通过 ssh -G 解析 Include/Match 等规则
-reasonix remote test gpu-box              # 拨号 + 认证 + 主机密钥确认
-reasonix remote connect gpu-box --open    # 引导 serve、建隧道、打开 URL
-reasonix remote serve status gpu-box
-reasonix remote fs ls gpu-box:'~/projects/app'
+baize remote add gpu-box dev@203.0.113.7 --workspace '~/projects/app'
+baize remote import --all              # 导入别名；连接时通过 ssh -G 解析 Include/Match 等规则
+baize remote test gpu-box              # 拨号 + 认证 + 主机密钥确认
+baize remote connect gpu-box --open    # 引导 serve、建隧道、打开 URL
+baize remote serve status gpu-box
+baize remote fs ls gpu-box:'~/projects/app'
 ```
 
 启用 `use_ssh_config` 的主机会通过本机 OpenSSH `ssh -G` 获取最终有效配置，因此支持
@@ -600,9 +600,9 @@ CLI/TUI 文本输入可通过 `[ui].cursor_shape` 设置光标形状，支持 `u
 权限逐次调用把关：`deny` > `ask` > `allow` > 兜底。Bash 和文件修改都要审核；
 只读工具一般不需要。审核规则不是按“按钮文案”存，而是按权限规则匹配，比如
 `Bash(npm run build)`、`Bash(npm run test:*)`、`Edit(docs/**)` 这种形式。
-`reasonix` 会在 writer 调用前征求同意（普通工具为 `1` 本次 · `2` 本会话允许此范围 · `3` 总是允许此范围（保存） · `4` 拒绝；Bash 可额外选择命令前缀授权）；
+`baize` 会在 writer 调用前征求同意（普通工具为 `1` 本次 · `2` 本会话允许此范围 · `3` 总是允许此范围（保存） · `4` 拒绝；Bash 可额外选择命令前缀授权）；
 其中 Bash 默认按具体命令记，也可按安全推导出的命令前缀记（如 `Bash(go test:*)`）；文件编辑类工具的本会话授权按编辑能力记，持久授权则写入 `Edit(<path>)` 文件路径规则；
-参数/算术展开、赋值、不含嵌套执行的 heredoc、文件重定向和 glob 不能复用裸 `Bash`、前缀或 glob Allow；用户保存时写入整条 `Bash=<literal>`，但它们仍按普通 fallback 执行，因此 Auto 不会额外询问。命令/进程替换、动态命令名、`eval`、`source`、Shell `-c`、运行时内联代码和无法解析的结构默认强制人工；无头 Ask/Auto/DontAsk 会拒绝这类未精确授权的命令，YOLO 可以绕过。高级用户可设置 `[permissions] allow_dynamic_bash = true`，让 Allow fallback（包括 Auto）覆盖这类动态命令；显式 `ask` 与 `deny` 规则仍然优先。由于无头运行没有审批界面，默认 Ask 对普通 writer fallback 和显式 ask 规则也会 fail closed；无人值守自动化需要放行普通 writer 时，使用 `reasonix run --auto ...`、`-y` 或 `--permission-mode auto`。配置的 `ask` 与 `deny` 始终优先。
+参数/算术展开、赋值、不含嵌套执行的 heredoc、文件重定向和 glob 不能复用裸 `Bash`、前缀或 glob Allow；用户保存时写入整条 `Bash=<literal>`，但它们仍按普通 fallback 执行，因此 Auto 不会额外询问。命令/进程替换、动态命令名、`eval`、`source`、Shell `-c`、运行时内联代码和无法解析的结构默认强制人工；无头 Ask/Auto/DontAsk 会拒绝这类未精确授权的命令，YOLO 可以绕过。高级用户可设置 `[permissions] allow_dynamic_bash = true`，让 Allow fallback（包括 Auto）覆盖这类动态命令；显式 `ask` 与 `deny` 规则仍然优先。由于无头运行没有审批界面，默认 Ask 对普通 writer fallback 和显式 ask 规则也会 fail closed；无人值守自动化需要放行普通 writer 时，使用 `baize run --auto ...`、`-y` 或 `--permission-mode auto`。配置的 `ask` 与 `deny` 始终优先。
 
 Ask 不是只读模式：writer 获得批准后仍会执行。Permissions 决定放行或询问，Sandbox 才是强制能力边界。
 Sandbox 是授权之后的第二层边界，不能替代命令解析，也不能把无法证明静态安全的命令变成可自动授权命令。
@@ -613,7 +613,7 @@ Sandbox 是授权之后的第二层边界，不能替代命令解析，也不能
 之外的任何路径（默认当前目录，编辑不出项目），并解析符号链接与 `..`，使链接无法
 打洞越界。写出工作区时走交互式「扩展写入范围」审批（仅本次 / 本会话 / 写入项目
 `reasonix.toml` / 拒绝），不会退化成无沙箱执行。Bash 必须用 `additional_write_dirs`
-加上 `justification` 声明所需目录；宿主不会从命令文本猜测路径。无头 `reasonix run`
+加上 `justification` 声明所需目录；宿主不会从命令文本猜测路径。无头 `baize run`
 不会弹审批：请传 `--add-dir` 或配置 `[sandbox].allow_write`。整个用户主目录可以在
 强警告后批准；文件系统根和 Reasonix 会话/状态目录不能通过动态流程批准。`forbid_read` 可选地隐藏敏感文件或目录，使 agent 的读文件、列目录和搜索工具不能读取或列出它们；
 建议使用绝对路径或 `${HOME}` / `${VAR}`，不要写 `~`，因为配置只做环境变量展开。
@@ -662,14 +662,14 @@ JSON 计算。确实需要标准 Python 数学或格式化语义时，Bash 可�
 普通 Bash 在 normal 作用域
 写入 `/tmp` 仍按持久或未知修改处理，继续要求正常的修改后验证和复审。
 
-`reasonix doctor` 会将该能力显示为 `scratch available`；无法隔离临时分析时则同时
+`baize doctor` 会将该能力显示为 `scratch available`；无法隔离临时分析时则同时
 给出沙箱后端失败原因。
 
 MCP 等独立沙盒继续使用自己的隔离规范，不继承父会话临时目录。获得批准后绕过沙盒的
 命令仍继承私有临时变量，但在 Linux 上其字面 `/tmp` 不再由 bwrap 映射。
 
 **Windows 说明：**Reasonix 不在 Windows 上提供 OS 级 Bash 沙箱，生效模式固定为
-`off`。旧配置即使写了 `bash = "enforce"` 也会解析为 `off`，`reasonix doctor`
+`off`。旧配置即使写了 `bash = "enforce"` 也会解析为 `off`，`baize doctor`
 会提示该设置被忽略，桌面设置中的选择器也为只读。Bash 命令会在不受 OS 沙箱限制的
 环境中运行；专用文件工具仍会在进程内执行 `workspace_root`、`allow_write` 和
 `forbid_read` 边界。已保存的凭据变量仍不会进入子进程环境，但获得批准的无沙箱 shell
@@ -678,12 +678,12 @@ MCP 等独立沙盒继续使用自己的隔离规范，不继承父会话临时�
 没有可用 OS 沙盒时，`bash = "enforce"` 会拒绝 bash 执行，不会无沙盒运行。
 Windows 上兼容的值始终为 `off`。
 
-反馈编码质量问题时，可运行 `reasonix doctor quality <branch-id-or-path>`（加
+反馈编码质量问题时，可运行 `baize doctor quality <branch-id-or-path>`（加
 `--json` 输出结构化结果）。命令会读取指定 session，但只输出不含内容的计数与
 Profile 分类：模型家族、运行模式、协作/审批模式、消息和工具调用数、验证与已持久化的
 compaction 摘要数，以及可用时的桌面端 token/cache telemetry。结果不会包含对话正文、
 路径、session 标识、工具参数与输出、服务端点或自定义模型名，适合粘贴到公开 Issue
-或 Discussion。它不同于 `reasonix doctor session`：后者生成的支持 zip 含完整未脱敏
+或 Discussion。它不同于 `baize doctor session`：后者生成的支持 zip 含完整未脱敏
 会话，只能在可信支持渠道分享。
 
 ## 能力诊断
@@ -693,25 +693,25 @@ compaction 摘要数，以及可用时的桌面端 token/cache telemetry。结�
 
 ```bash
 # 静态（默认）：无网络、不启动 MCP 子进程
-reasonix doctor capabilities
+baize doctor capabilities
 
 # 机器可读（stdout 仅为合法 JSON）
-reasonix doctor capabilities --json
+baize doctor capabilities --json
 
 # 指定工作区
-reasonix doctor capabilities --root /path/to/project
+baize doctor capabilities --root /path/to/project
 
 # Live MCP 探测——仅在你明确允许启动第三方服务器时使用
-reasonix doctor capabilities --live --timeout 5s
+baize doctor capabilities --live --timeout 5s
 ```
 
 | 入口 | 用法 |
 | --- | --- |
-| CLI | 见上方 `reasonix doctor capabilities` |
+| CLI | 见上方 `baize doctor capabilities` |
 | 桌面端 | **设置 → 诊断** — 刷新、复制脱敏 JSON、可选「包含当前会话运行状态」（只读活动标签 Host，**不**启动 MCP） |
 | Agent | `/reasonix-guide`（内置 inline Skill）或自然语言描述症状；优先静态 doctor JSON，再问是否 `--live` |
 
-退出码：`0` 允许 warning/info；`1` 表示存在 `error`（或 live 启动失败）；`2` 为参数错误。与 `reasonix doctor`（provider/沙箱）以及 `reasonix plugin doctor <name>`（单个插件包）相互独立。
+退出码：`0` 允许 warning/info；`1` 表示存在 `error`（或 live 启动失败）；`2` 为参数错误。与 `baize doctor`（provider/沙箱）以及 `baize plugin doctor <name>`（单个插件包）相互独立。
 
 ## 插件（MCP）
 
@@ -721,7 +721,7 @@ Reasonix 是一个 MCP 客户端。`[[plugins]]` 的 `type` 选择传输：`stdi
 `sse` 则兼容仍使用持久 GET 与 server 公布 POST endpoint 的旧版远程 server。
 
 远程 HTTP server 未配置静态 `Authorization` header 时，认证要求会显示为 **登录**。
-CLI 可运行 `reasonix mcp auth <name>`，桌面端则在 MCP 面板点击该 server 的 **登录**。
+CLI 可运行 `baize mcp auth <name>`，桌面端则在 MCP 面板点击该 server 的 **登录**。
 Reasonix 会执行 OAuth 元数据发现、动态客户端注册、PKCE S256 授权与
 refresh token 轮换；发现和 token 请求与 MCP 连接使用相同的 Reasonix 网络代理设置。
 
@@ -732,7 +732,7 @@ OAuth client 与 token 状态保存在工作区之外、该 server 私有的 Rea
 也会删除其本地 OAuth 状态；若删除后有同一 resource 的低优先级声明生效，则保留该状态。
 
 可在 **设置 → MCP 服务器 → 浏览市场** 打开官方 MCP Registry，也可使用
-`reasonix mcp browse [query]` 与 `reasonix mcp install <registry-name>`。Registry
+`baize mcp browse [query]` 与 `baize mcp install <registry-name>`。Registry
 只在用户显式浏览或安装时联网，不进入启动路径。需要 secret 或必填参数的条目只显示为手动配置，
 不会写入不完整配置；Registry 故障时可回退到同一查询的缓存结果。
 
@@ -775,14 +775,14 @@ Reasonix 明确信任已安装 server 会如实描述这些 hint。因此，plan
 
 服务器的 **prompts** 会暴露成 `/mcp__<server>__<prompt>` 斜杠命令（命令后空格分隔参
 数）；**resources** 通过在消息里写 `@<server>:<uri>` 拉入；`/mcp` 列出已连接服务器及
-各自暴露的内容。`make build` 还会产出 `bin/reasonix-plugin-example`——一个可直接运行的
+各自暴露的内容。`make build` 还会产出 `bin/baize-plugin-example`——一个可直接运行的
 stdio 参考实现（`echo`、`wordcount`、一个 `review` prompt、一个 style-guide 资源），
 可照抄。
 
 ```toml
 [[plugins]]                       # 本地 stdio 服务器
 name    = "example"
-command = "reasonix-plugin-example"
+command = "baize-plugin-example"
 # startup_timeout_seconds = 60    # 可选：initialize + tools/list 上限
 # call_timeout_seconds = 600       # 可选：单个 MCP server 的调用超时
 # tool_timeout_seconds = { "generate_video" = 1800 }   # 可选：raw MCP tool 名称
@@ -798,7 +798,7 @@ headers = { Authorization = "Bearer ${STRIPE_KEY}" }
 用 `/mcp` 或桌面端 MCP 面板可刷新状态、重连服务器、查看失败原因，或在当前会话内禁用某个服务器。
 若要跨 skills / hooks / 插件包 / MCP 做只读健康检查（不改配置），见
 [能力诊断](./CAPABILITY_DIAGNOSTICS.zh-CN.md)
-（`reasonix doctor capabilities` 或 **设置 → 诊断**）。
+（`baize doctor capabilities` 或 **设置 → 诊断**）。
 
 交互调用方只会为冷启动短暂等待；即使等待结束，共享启动仍会在后台继续，不会被杀掉后反复重启，
 服务器上线后重试工具即可。`mcp_startup_timeout_seconds`（默认 `30`）限制从进程启动、授权、
@@ -824,10 +824,10 @@ RPC 调用。两者都可按服务器覆盖。
 
 ## 斜杠命令
 
-交互式 `reasonix` 会话里，内置命令（`/compact`、`/context`、`/new`、`/clear`、`/rewind`、`/tree`、`/branch`、`/switch`、`/todo`、`/model`、`/mcp`、`/skills`、`/hooks`、`/memory`、`/goal`、`/output-style`、`/sandbox`、`/language`、`/reasoning-language`、`/help`）在本地执行——`/help` 可列出全部。
+交互式 `baize` 会话里，内置命令（`/compact`、`/context`、`/new`、`/clear`、`/rewind`、`/tree`、`/branch`、`/switch`、`/todo`、`/model`、`/mcp`、`/skills`、`/hooks`、`/memory`、`/goal`、`/output-style`、`/sandbox`、`/language`、`/reasoning-language`、`/help`）在本地执行——`/help` 可列出全部。
 内置 **Skill**（如 `/init`、`/explore`、`/test`、`/reasonix-guide`）也会出现在斜杠菜单，
 并可通过 `run_skill` 调用（正文按需加载；只有索引行进入缓存稳定前缀）。配置或能力排障时
-用 `/reasonix-guide`，它会引导运行 `reasonix doctor capabilities`（见
+用 `/reasonix-guide`，它会引导运行 `baize doctor capabilities`（见
 [能力诊断](./CAPABILITY_DIAGNOSTICS.zh-CN.md)）。
 `/new` 会开启新会话，同时保存之前的 transcript 供历史记录和恢复使用；`/clear` 会二次确认，确认后丢弃当前上下文且不保存。
 `/tree` 查看已保存的对话分支，`/branch [name]` 从当前对话末端分支，`/branch <turn> [name]`
@@ -849,15 +849,15 @@ Skill 工具白名单。headless 调用未指定模式时使用声明的 `runAs`
 另一端发现。交互式聊天里使用 `/<name> <任务>` 调用；Reasonix 会启动隔离子智能体，
 父会话只保留任务和最终答案。
 
-Headless CLI 提供显式管理和运行命令，同时不改变普通 `reasonix run` 的任务语义：
+Headless CLI 提供显式管理和运行命令，同时不改变普通 `baize run` 的任务语义：
 
 ```bash
-reasonix subagent list
-reasonix subagent create reviewer --description "审查改动" --prompt-file reviewer.md --tools read_file,grep,bash
-reasonix subagent edit reviewer --effort high --model deepseek-pro
-reasonix subagent try reviewer "审查当前 diff"   # 始终只读
-reasonix subagent run reviewer "审查并修复当前 diff"
-reasonix subagent delete reviewer --yes
+baize subagent list
+baize subagent create reviewer --description "审查改动" --prompt-file reviewer.md --tools read_file,grep,bash
+baize subagent edit reviewer --effort high --model deepseek-pro
+baize subagent try reviewer "审查当前 diff"   # 始终只读
+baize subagent run reviewer "审查并修复当前 diff"
+baize subagent delete reviewer --yes
 ```
 
 workspace 可用时，`create` 默认写入项目级目录，否则默认写入全局目录；可用
@@ -1002,7 +1002,7 @@ canonical Todo 顺序，并且每一步的工作和证据都必须在对应签�
 
 ## 双模型协同
 
-`reasonix setup` 现在统一管理 provider、模型列表、逐模型图片输入、凭据、连接测试和默认模型；所有修改
+`baize setup` 现在统一管理 provider、模型列表、逐模型图片输入、凭据、连接测试和默认模型；所有修改
 会暂存到“保存并退出”，并同步维护桌面端 provider access。完整用法见
 [CLI 命令参考](./CLI.zh-CN.md#配置供应商)。若要让两个模型协同（执行器 + 规划器，
 各自独立、缓存稳定的 session），向导后手动在 `reasonix.toml` 加一行即可：
@@ -1097,7 +1097,7 @@ destructive MCP 目标、来自未授权 server 的 reader，以及一切会改�
 | `parallel_tasks`（只读） | 并发只读调研子会话 |
 | `fleet` 且 `read_only: true` | 可带 Profile 的并行批量（单项强制只读） |
 | `read_only_skill` | 以既有 skill 驱动的同等隔离 |
-| `reasonix review`（CLI） | 只读评审 diff 或分支 |
+| `baize review`（CLI） | 只读评审 diff 或分支 |
 | 桌面端 preview/review 子代理 | 桌面端只读分析面 |
 
 在持久化会话中，`parallel_tasks` 与 `fleet` 不再把所有完整答案拼成一个容易被截断的
@@ -1164,7 +1164,7 @@ minimal preset 不是任务复杂度模式。
 工具调用仍遵守当前 Permissions 与 Sandbox。旧的 `agent.auto_plan` 与
 `agent.auto_plan_classifier` 会被忽略，并在升级时从用户配置中移除。可见思考语言可通过以下方式修改：
 会话里用 `/reasoning-language auto|zh|en`，shell/脚本里用
-`reasonix config reasoning-language auto|zh|en`。只有明确想为
+`baize config reasoning-language auto|zh|en`。只有明确想为
 reasoning-language 写项目级覆盖时，才给 shell 命令加 `--local`。
 
 桌面端“协作方式”菜单里的计划模式与目标模式的使用方法与注意事项，

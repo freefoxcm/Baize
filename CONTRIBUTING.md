@@ -77,7 +77,7 @@ desktop tab state — so the two builds never interfere:
 ```bash
 REASONIX_HOME=/tmp/reasonix-dev go run ./cmd/reasonix
 # or after building:
-#   REASONIX_HOME=/tmp/reasonix-dev ./bin/reasonix
+#   REASONIX_HOME=/tmp/reasonix-dev ./bin/baize
 ```
 
 **Desktop**

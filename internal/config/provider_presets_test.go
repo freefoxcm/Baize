@@ -828,7 +828,6 @@ func TestCuratedProviderPresetCapabilities(t *testing.T) {
 	if kimiK3.ContextWindow != 1_048_576 || !EffectiveVision(kimiK3) {
 		t.Fatalf("opencode Kimi K3 context/vision capability mismatch: %+v", kimiK3)
 	}
-
 	plain, ok := cfg.ResolveModel("opencode-go/glm-5.2")
 	if !ok {
 		t.Fatal("opencode-go/glm-5.2 did not resolve")

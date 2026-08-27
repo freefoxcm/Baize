@@ -97,7 +97,7 @@ func TestCollectReportDoesNotRequireAPIKey(t *testing.T) {
 	if report.Providers[0].KeyPresent {
 		t.Fatal("provider key should be reported missing when env is empty")
 	}
-	if !strings.Contains(text, "reasonix 1.2.3 doctor") {
+	if !strings.Contains(text, "baize 1.2.3 doctor") {
 		t.Fatalf("text report missing header:\n%s", text)
 	}
 	if !strings.Contains(text, "missing") {

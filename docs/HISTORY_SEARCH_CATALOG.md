@@ -36,8 +36,8 @@ are preserved in degraded read mode.
 Diagnostics and safe rebuild commands:
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex history [--dir PATH ...] [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex history [--dir PATH ...] [--json]
 ```
 
 Diagnostics never print queries, tokens, snippets, messages, tool arguments, or

@@ -48,22 +48,22 @@ func TestVerifyChecksum(t *testing.T) {
 	hash := hex.EncodeToString(sum[:])
 
 	t.Run("match", func(t *testing.T) {
-		checksumFile := fmt.Appendf(nil, "%s  reasonix-linux-amd64.tar.gz\n", hash)
-		if err := verifyChecksum(content, "reasonix-linux-amd64.tar.gz", checksumFile); err != nil {
+		checksumFile := fmt.Appendf(nil, "%s  baize-linux-amd64.tar.gz\n", hash)
+		if err := verifyChecksum(content, "baize-linux-amd64.tar.gz", checksumFile); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("mismatch", func(t *testing.T) {
-		checksumFile := fmt.Appendf(nil, "%s  reasonix-linux-amd64.tar.gz\n", "0000000000000000000000000000000000000000000000000000000000000000")
-		if err := verifyChecksum(content, "reasonix-linux-amd64.tar.gz", checksumFile); err == nil {
+		checksumFile := fmt.Appendf(nil, "%s  baize-linux-amd64.tar.gz\n", "0000000000000000000000000000000000000000000000000000000000000000")
+		if err := verifyChecksum(content, "baize-linux-amd64.tar.gz", checksumFile); err == nil {
 			t.Error("expected checksum mismatch error")
 		}
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		checksumFile := fmt.Appendf(nil, "%s  reasonix-darwin-arm64.tar.gz\n", hash)
-		if err := verifyChecksum(content, "reasonix-linux-amd64.tar.gz", checksumFile); err == nil {
+		checksumFile := fmt.Appendf(nil, "%s  baize-darwin-arm64.tar.gz\n", hash)
+		if err := verifyChecksum(content, "baize-linux-amd64.tar.gz", checksumFile); err == nil {
 			t.Error("expected not-found error")
 		}
 	})
@@ -89,14 +89,14 @@ func TestUpgradeSuccessMessageIncludesCurrentAndLatestVersions(t *testing.T) {
 }
 
 func TestExtractFromTarGz(t *testing.T) {
-	// Build a .tar.gz in memory containing a "reasonix" entry.
+	// Build a .tar.gz in memory containing a "baize" entry.
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
 
 	body := []byte("fake binary content")
 	if err := tw.WriteHeader(&tar.Header{
-		Name: "reasonix",
+		Name: "baize",
 		Mode: 0o755,
 		Size: int64(len(body)),
 	}); err != nil {
@@ -112,7 +112,7 @@ func TestExtractFromTarGz(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := extractFromTarGz(buf.Bytes(), "reasonix")
+	got, err := extractFromTarGz(buf.Bytes(), "baize")
 	if err != nil {
 		t.Fatalf("extractFromTarGz: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestExtractFromTarGz_Nested(t *testing.T) {
 
 	body := []byte("nested binary")
 	if err := tw.WriteHeader(&tar.Header{
-		Name: "reasonix-linux-amd64/reasonix",
+		Name: "baize-linux-amd64/baize",
 		Mode: 0o755,
 		Size: int64(len(body)),
 	}); err != nil {
@@ -145,7 +145,7 @@ func TestExtractFromTarGz_Nested(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := extractFromTarGz(buf.Bytes(), "reasonix")
+	got, err := extractFromTarGz(buf.Bytes(), "baize")
 	if err != nil {
 		t.Fatalf("extractFromTarGz: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestExtractFromTarGz_NotFound(t *testing.T) {
 	tw.Close()
 	gw.Close()
 
-	_, err := extractFromTarGz(buf.Bytes(), "reasonix")
+	_, err := extractFromTarGz(buf.Bytes(), "baize")
 	if err == nil {
 		t.Error("expected error for missing binary")
 	}
@@ -216,7 +216,7 @@ func completeCLIRelease(tag string, prerelease bool) ghRelease {
 	for _, name := range requiredCLIAssets {
 		assets = append(assets, ghAsset{
 			Name:               name,
-			BrowserDownloadURL: fmt.Sprintf("https://github.com/esengine/DeepSeek-Reasonix/releases/download/%s/%s", tag, name),
+			BrowserDownloadURL: fmt.Sprintf("https://github.com/freefoxcm/Baize/releases/download/%s/%s", tag, name),
 			Size:               42,
 		})
 	}
@@ -265,13 +265,13 @@ func TestPickCLIRelease(t *testing.T) {
 	}
 
 	spoofed := completeCLIRelease("v1.7.0", false)
-	spoofed.Assets[0].BrowserDownloadURL = "https://github.com@evil.invalid/esengine/DeepSeek-Reasonix/releases/download/v1.7.0/reasonix-darwin-amd64.tar.gz"
+	spoofed.Assets[0].BrowserDownloadURL = "https://github.com@evil.invalid/freefoxcm/Baize/releases/download/v1.7.0/baize-darwin-amd64.tar.gz"
 	if got := pick([]ghRelease{spoofed, completeCLIRelease("v1.6.0", false)}, cliReleaseStable); got != "v1.6.0" {
 		t.Errorf("release with spoofed asset host: got %q, want v1.6.0", got)
 	}
 
 	wrongTag := completeCLIRelease("v1.7.0", false)
-	wrongTag.Assets[0].BrowserDownloadURL = "https://github.com/esengine/DeepSeek-Reasonix/releases/download/v1.6.0/reasonix-darwin-amd64.tar.gz"
+	wrongTag.Assets[0].BrowserDownloadURL = "https://github.com/freefoxcm/Baize/releases/download/v1.6.0/baize-darwin-amd64.tar.gz"
 	if got := pick([]ghRelease{wrongTag, completeCLIRelease("v1.6.0", false)}, cliReleaseStable); got != "v1.6.0" {
 		t.Errorf("release with cross-tag asset URL: got %q, want v1.6.0", got)
 	}
@@ -296,22 +296,22 @@ func TestPickCLIRelease(t *testing.T) {
 func TestFindCLIPlatformAssetRequiresExactArchiveName(t *testing.T) {
 	release := completeCLIRelease("v1.18.0", false)
 	release.Assets = append([]ghAsset{{
-		Name:               "reasonix-linux-amd64.signature",
+		Name:               "baize-linux-amd64.signature",
 		BrowserDownloadURL: "https://example.invalid/signature",
 	}}, release.Assets...)
 
 	asset := findCLIPlatformAsset(&release, "linux", "amd64")
-	if asset == nil || asset.Name != "reasonix-linux-amd64.tar.gz" {
+	if asset == nil || asset.Name != "baize-linux-amd64.tar.gz" {
 		t.Fatalf("Linux asset = %+v, want exact tar.gz archive", asset)
 	}
-	if got := cliPlatformAssetName("windows", "arm64"); got != "reasonix-windows-arm64.zip" {
-		t.Fatalf("Windows asset name = %q, want reasonix-windows-arm64.zip", got)
+	if got := cliPlatformAssetName("windows", "arm64"); got != "baize-windows-arm64.zip" {
+		t.Fatalf("Windows asset name = %q, want baize-windows-arm64.zip", got)
 	}
 
 	expectedURL := asset.BrowserDownloadURL
 	release.Assets = append([]ghAsset{{
-		Name:               "reasonix-linux-amd64.tar.gz",
-		BrowserDownloadURL: "https://evil.invalid/reasonix-linux-amd64.tar.gz",
+		Name:               "baize-linux-amd64.tar.gz",
+		BrowserDownloadURL: "https://evil.invalid/baize-linux-amd64.tar.gz",
 	}}, release.Assets...)
 	asset = findCLIPlatformAsset(&release, "linux", "amd64")
 	if asset == nil || asset.BrowserDownloadURL != expectedURL {
@@ -319,7 +319,7 @@ func TestFindCLIPlatformAssetRequiresExactArchiveName(t *testing.T) {
 	}
 
 	for i := range release.Assets {
-		if release.Assets[i].Name == "reasonix-linux-amd64.tar.gz" &&
+		if release.Assets[i].Name == "baize-linux-amd64.tar.gz" &&
 			release.Assets[i].BrowserDownloadURL == expectedURL {
 			release.Assets[i].Size = 0
 		}
@@ -503,7 +503,7 @@ func TestFetchCLIReleasePointer(t *testing.T) {
 	insecure.Assets[0].BrowserDownloadURL = "http://example.invalid/reasonix.tar.gz"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Accept") != "application/json" || r.Header.Get("User-Agent") != "reasonix-cli" {
+		if r.Header.Get("Accept") != "application/json" || r.Header.Get("User-Agent") != "baize-cli" {
 			t.Errorf("unexpected pointer request headers: Accept=%q User-Agent=%q", r.Header.Get("Accept"), r.Header.Get("User-Agent"))
 		}
 		var release ghRelease

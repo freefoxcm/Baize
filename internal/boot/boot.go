@@ -496,7 +496,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if redactToolOutputMigrated || redactToolOutputMigErr != nil {
 		level := event.LevelInfo
 		text := "Deprecated redact_tool_output setting was removed."
-		detail := "[secrets].redact_tool_output no longer has any effect: ordinary model/tool content and local session/job artifacts now preserve their original text. Explicit diagnostics and reasonix doctor redact-sessions still redact credential values."
+		detail := "[secrets].redact_tool_output no longer has any effect: ordinary model/tool content and local session/job artifacts now preserve their original text. Explicit diagnostics and baize doctor redact-sessions still redact credential values."
 		if redactToolOutputMigErr != nil {
 			level = event.LevelWarn
 			text = "Deprecated redact_tool_output setting was ignored."
@@ -964,7 +964,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Permission policy gates every tool call. With no HeadlessApprovalMode
 	// (interactive bootstrap), the temporary gate preserves the legacy behavior
 	// until chat/desktop installs an interactive gate. A real headless caller
-	// such as `reasonix run` always supplies a mode: Ask fails closed, Auto
+	// such as `baize run` always supplies a mode: Ask fails closed, Auto
 	// allows ordinary writer fallbacks, and DontAsk denies them (#6927).
 	// The selected contract is also applied to sub-agents, so they cannot be a
 	// weaker path around the parent gate.
@@ -1334,7 +1334,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		parentSession := agent.ParentSession(sctx)
 		var run *agent.SubagentRun
 		if subagentStore == nil || parentSession == "" {
-			// Headless runs (e.g. `reasonix run`) have no persistent session to
+			// Headless runs (e.g. `baize run`) have no persistent session to
 			// own a transcript. Run the skill sub-agent ephemerally, as before
 			// persisted transcripts existed, instead of failing. Continuation needs
 			// a persisted owner, so it errors here.
@@ -1910,7 +1910,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			}
 		}
 		// HeadlessApprovalMode is an explicit declaration that this frontend has
-		// no decision channel (`reasonix run`). ApprovalTimeout is not a proxy for
+		// no decision channel (`baize run`). ApprovalTimeout is not a proxy for
 		// that capability: bots have a bounded timeout and can still answer cards.
 		ctrlOpts.RecoveryHeadless = recoveryHeadlessMode(opts)
 	}

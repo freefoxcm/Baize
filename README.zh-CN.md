@@ -119,7 +119,7 @@ CLI 构建需要 **Go 1.25+**。模块固定了 `toolchain` 指令；
 保持 `GOTOOLCHAIN=auto` 让 Go 自动下载固定的工具链，或自行安装。
 
 ```sh
-make build      # -> bin/reasonix(.exe)
+make build      # -> bin/baize(.exe)
 make cross      # -> dist/（darwin|linux|windows × amd64|arm64）
 ```
 
@@ -146,9 +146,9 @@ wails build
 以下命令仅适用于通过路径 A 安装的 CLI/TUI：
 
 ```sh
-reasonix setup                      # 配置 provider 和模型
-reasonix                            # 启动交互式会话
-reasonix run "把 main.go 里的 TODO 实现掉"
+baize setup                         # 配置 provider 和模型
+baize                               # 启动交互式会话
+baize run "把 main.go 里的 TODO 实现掉"
 ```
 
 需要项目指令时，可在交互式会话中运行 `/init`。

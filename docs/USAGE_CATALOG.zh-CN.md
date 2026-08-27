@@ -14,8 +14,8 @@ torn tail、空行、坏 JSON、旧 requests 默认值、时区、日期边界�
 启动或退出。
 
 ```sh
-reasonix doctor catalogs [--json]
-reasonix catalogs reindex usage [--json]
+baize doctor catalogs [--json]
+baize catalogs reindex usage [--json]
 ```
 
 诊断只暴露 schema、完整性、lag、数量和错误，不包含模型请求内容；reindex 不修改每日

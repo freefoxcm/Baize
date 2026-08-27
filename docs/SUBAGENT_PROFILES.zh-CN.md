@@ -12,7 +12,7 @@
 从提示词文件创建项目级 Profile：
 
 ```bash
-reasonix subagent create reviewer \
+baize subagent create reviewer \
   --description "检查改动的正确性和回归风险" \
   --prompt-file reviewer.md \
   --tools read_file,grep,bash \
@@ -29,7 +29,7 @@ scope。也可以通过 `--scope project` 或 `--scope global` 明确指定。�
 
 ```bash
 printf '%s\n' '检查任务，只报告可执行的问题。' | \
-  reasonix subagent create reviewer --description "代码评审"
+  baize subagent create reviewer --description "代码评审"
 ```
 
 名称可以包含字母、数字、`_`、`-` 和 `.`。如果名称已经被项目级、全局、自定义或内置 Skill
@@ -73,38 +73,38 @@ fleet(tasks=[
 
 ```bash
 # 使用只读工具预览。
-reasonix subagent try reviewer "评审当前 diff"
+baize subagent try reviewer "评审当前 diff"
 
 # 按正常权限和沙盒策略运行。
-reasonix subagent run reviewer "评审并修复当前 diff"
+baize subagent run reviewer "评审并修复当前 diff"
 
 # 从标准输入读取任务，并限制工具调用轮次。
-git diff | reasonix subagent run reviewer --max-steps 20
+git diff | baize subagent run reviewer --max-steps 20
 ```
 
 `run`/`try` 的参数应放在任务文本之前。两个命令都支持 `--model REF` 和 `--dir PATH`。
 `try` 始终选择只读 runner；`run` 使用正常的隔离 runner，权限中的 `deny` 规则和沙盒限制
-仍然有效。普通 `reasonix run` 仍是单次任务入口，不会隐式解释 `/<profile>` 语法。
+仍然有效。普通 `baize run` 仍是单次任务入口，不会隐式解释 `/<profile>` 语法。
 
 ## 管理 Profile
 
 ```text
-reasonix subagent list [--dir PATH]
-reasonix subagent create <name> --description TEXT (--prompt TEXT | --prompt-file PATH)
+baize subagent list [--dir PATH]
+baize subagent create <name> --description TEXT (--prompt TEXT | --prompt-file PATH)
   [--scope project|global] [--model REF] [--effort LEVEL]
   [--tools a,b] [--color NAME] [--dir PATH]
-reasonix subagent edit <name> [--description TEXT]
+baize subagent edit <name> [--description TEXT]
   [--prompt TEXT | --prompt-file PATH] [--model REF] [--effort LEVEL]
   [--tools a,b] [--color NAME] [--dir PATH]
-reasonix subagent delete <name> --yes [--dir PATH]
-reasonix subagent try <name> [--model REF] [--max-steps N] [--dir PATH] <task>
-reasonix subagent run <name> [--model REF] [--max-steps N] [--dir PATH] <task>
+baize subagent delete <name> --yes [--dir PATH]
+baize subagent try <name> [--model REF] [--max-steps N] [--dir PATH] <task>
+baize subagent run <name> [--model REF] [--max-steps N] [--dir PATH] <task>
 ```
 
 `edit` 只修改命令行中显式提供的字段。用显式空值清除可选字段：
 
 ```bash
-reasonix subagent edit reviewer --model= --effort= --tools= --color=
+baize subagent edit reviewer --model= --effort= --tools= --color=
 ```
 
 省略工具列表或将其清空，表示 Profile 不额外添加工具白名单；runner 原有的工具可用性、权限、
@@ -171,9 +171,9 @@ subagent_efforts = { reviewer = "max" }
 
 ## 桌面端同步与排障
 
-桌面设置页和 `reasonix subagent create` 创建的 Profile 共用同一批文件。修改 Profile 后，
+桌面设置页和 `baize subagent create` 创建的 Profile 共用同一批文件。修改 Profile 后，
 请刷新或新建会话，让已经运行的会话重新加载 Skill registry。
 
-如果调用时报 Profile 未知或已禁用，请检查 `reasonix subagent list`、当前 `--dir` 和
+如果调用时报 Profile 未知或已禁用，请检查 `baize subagent list`、当前 `--dir` 和
 `skills.disabled_skills`。如果编辑时报 custom 或 rich Profile，应直接编辑其 `SKILL.md`，
 不要强行经过 Profile 编辑器。Reasonix 在解析有效模型时会拒绝未知模型引用和无效 effort。

@@ -11,4 +11,4 @@ mkdir -p \
   /opt/reasonix-runtime/pnpm-store \
   /opt/reasonix-runtime/python-site
 
-exec /usr/local/bin/reasonix "$@"
+exec /usr/local/bin/baize "$@"

@@ -240,7 +240,7 @@ func collectSandboxReport(cfg *config.Config, bashConfigIgnored bool) SandboxRep
 
 func RenderText(r Report) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "reasonix %s doctor\n", r.Version)
+	fmt.Fprintf(&b, "baize %s doctor\n", r.Version)
 	fmt.Fprintf(&b, "  system       %s/%s\n", r.OS, r.Arch)
 	if r.CWD != "" {
 		fmt.Fprintf(&b, "  cwd          %s\n", r.CWD)
