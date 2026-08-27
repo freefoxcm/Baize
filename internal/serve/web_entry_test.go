@@ -280,7 +280,7 @@ func TestServeOperationalFeedbackDoesNotEnterTranscript(t *testing.T) {
 	for _, marker := range []string{
 		`appendTranscriptNotice(`,
 		`case 'notice': { if(attachAuditNotice(e))`,
-		`log.appendChild(el('div','msg--error'`,
+		`else{showTurnFeedback(e);}`,
 		`const it = { id: genItemId(), kind: 'notice', text:`,
 	} {
 		if !strings.Contains(js, marker) {
