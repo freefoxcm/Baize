@@ -239,7 +239,7 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
 		if c.caps.sessionCacheHeader && c.sessionCache {
 			req.Header.Set("x-dashscope-session-cache", "enable")
 		}
-		return req, nil
+		return provider.ApplyOpenCodeSessionRequest(ctx, req, c.name, c.baseURL), nil
 	}
 	return provider.SendWithRetry(ctx, c.http, c.sendOpts(), newRequest)
 }

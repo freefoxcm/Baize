@@ -11,7 +11,6 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/evidence"
-	"reasonix/internal/jobs"
 	"reasonix/internal/provider"
 	"reasonix/internal/skill"
 	"reasonix/internal/tool"
@@ -123,8 +122,7 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 	turnStartedAt := time.Now()
 	c.maybeSessionStart(ctx)
 	parentSession := c.parentSessionID()
-	ctx = agent.WithParentSession(ctx, parentSession)
-	ctx = jobs.WithSession(ctx, parentSession)
+	ctx = withProviderSession(ctx, parentSession)
 	ctx = agent.WithUserImages(ctx, images)
 	ctx = agent.WithSubagentImageCandidates(ctx, imageCandidates)
 	ctx = agent.WithResponseLanguagePreference(ctx, c.responseLanguage)
@@ -200,8 +198,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	c := o.c
 	c.maybeSessionStart(ctx)
 	parentSession := c.parentSessionID()
-	ctx = agent.WithParentSession(ctx, parentSession)
-	ctx = jobs.WithSession(ctx, parentSession)
+	ctx = withProviderSession(ctx, parentSession)
 	userImages, imageCandidates := c.imagesForOrchestratedTurn(ctx, turn)
 	ctx = agent.WithUserImages(ctx, userImages)
 	ctx = agent.WithSubagentImageCandidates(ctx, imageCandidates)

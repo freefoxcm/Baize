@@ -315,7 +315,7 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 			httpReq.Header.Set("anthropic-beta", "files-api-2025-04-14")
 		}
 		applyCustomHeaders(httpReq.Header, c.headers)
-		return httpReq, nil
+		return provider.ApplyOpenCodeSessionRequest(ctx, httpReq, c.name, c.baseURL), nil
 	}
 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
 	if err != nil {
