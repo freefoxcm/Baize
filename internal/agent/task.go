@@ -816,7 +816,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		turn := t.mutationObserver.OwnershipTurn()
 		mutationObserver = t.mutationObserver.CloneForSubagent(recoveryTaskID, turn, backgroundWriter)
 	}
-	runSession := func(runCtx context.Context, sink event.Sink, writerAlreadyRegistered bool) (string, error) {
+	runSession := withProviderSession(run.Ref, func(runCtx context.Context, sink event.Sink, writerAlreadyRegistered bool) (string, error) {
 		if mutationObserver != nil && backgroundWriter && !writerAlreadyRegistered {
 			turn := mutationObserver.OwnershipTurn()
 			if err := mutationObserver.RegisterWriter(recoveryTaskID, "background_subagent", turn); err != nil {
@@ -828,7 +828,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			return t.runReadOnlySubSession(runCtx, spec.Task.Objective, subReg, sink, maxSteps, prov, pricing, ctxWin, run.Session, childDepth, recoveryTaskID, usageModelRef, mutationObserver)
 		}
 		return t.runSubSession(WithSubagentWriteClaim(runCtx, spec.Grant.WritePaths), spec.Task.Objective, subReg, sink, maxSteps, prov, pricing, ctxWin, run.Session, childDepth, recoveryTaskID, usageModelRef, mutationObserver, childWriteRoots)
-	}
+	})
 
 	if spec.Sched.RunInBackground {
 		jm, ok := jobs.FromContext(ctx)

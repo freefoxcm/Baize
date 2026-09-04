@@ -1987,8 +1987,7 @@ func (c *Controller) runReady(ctx context.Context, input string) (err error) {
 	defer event.RecordTurnCompletion(c.sink)
 	c.maybeSessionStart(ctx)
 	parentSession := c.parentSessionID()
-	ctx = agent.WithParentSession(ctx, parentSession)
-	ctx = jobs.WithSession(ctx, parentSession)
+	ctx = withProviderSession(ctx, parentSession)
 	rawInput := input
 	ctx = c.withTurnImages(ctx, rawInput)
 	ctx = agent.WithRawUserInput(ctx, rawInput)
@@ -2064,8 +2063,7 @@ func (c *Controller) RunSubagentProfile(ctx context.Context, name, task string, 
 
 	c.maybeSessionStart(ctx)
 	parentSession := c.parentSessionID()
-	ctx = agent.WithParentSession(ctx, parentSession)
-	ctx = jobs.WithSession(ctx, parentSession)
+	ctx = withProviderSession(ctx, parentSession)
 	ctx = c.withTurnImages(ctx, task)
 	ctx = agent.WithResponseLanguagePreference(ctx, c.responseLanguage)
 	ctx = agent.WithReasoningLanguagePreference(ctx, c.reasoningLanguage)
