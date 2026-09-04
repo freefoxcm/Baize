@@ -21,5 +21,6 @@
 .github/workflows/release.yml
 .github/workflows/spam-comment-guard.yml
 .github/workflows/stale-report-sweep.yml
+.github/workflows/transcript-native-smoke.yml
 .github/workflows/update-acknowledgments.yml
 .github/workflows/update-star-history.yml
