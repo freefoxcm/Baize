@@ -1,7 +1,47 @@
 import type { TranscriptLayoutAnchor } from "./transcriptVirtuosoRecovery";
 import type { TranscriptScrollEvent } from "./transcriptScrollArbiter";
 
-const MIN_REVERSE_JUMP_PX = 96;
+// A downward gesture this close to the physical bottom has no meaningful
+// reader extent to recover from. Export the policy threshold so the scroll
+// arbiter can keep the extent guard out of that wheel path.
+export const MIN_REVERSE_JUMP_PX = 96;
+export const TRANSCRIPT_READER_IDLE_MS = 180;
+export const TRANSCRIPT_READER_SETTLE_MS = 1_000;
+
+export function transcriptReaderIdleDeadlineReached(startedAt: number, now: number): boolean {
+  return now - startedAt >= TRANSCRIPT_READER_IDLE_MS;
+}
+
+export function transcriptReaderDirection(deltaY: number): -1 | 1 | undefined {
+  if (!Number.isFinite(deltaY) || deltaY === 0) return undefined;
+  return deltaY < 0 ? -1 : 1;
+}
+
+export function transcriptReaderTransactionCanReuse(direction: -1 | 1, deltaY: number): boolean {
+  return transcriptReaderDirection(deltaY) === direction;
+}
+
+export function transcriptTransformTranslateY(transform: string): number | undefined {
+  if (transform === "" || transform === "none") return 0;
+  const match = /^matrix(3d)?\((.*)\)$/.exec(transform);
+  if (!match) return undefined;
+  const value = Number(match[2].split(",")[match[1] ? 13 : 5]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The visual-guard offset the browser has actually applied to the item list.
+ * A guard written by a previous observation may not be reflected in row
+ * geometry yet (or any more): a same-frame read under a reduced-motion
+ * transition, or another owner clearing the shared attribute. Deriving the
+ * physical drift from the remembered offset would compound the guard on every
+ * observation, so measure the applied transform; `remembered` is the fallback.
+ */
+export function transcriptAppliedVisualOffset(element: HTMLElement, remembered: number): number {
+  const list = element.querySelector<HTMLElement>('[data-testid="virtuoso-item-list"]');
+  const view = element.ownerDocument.defaultView;
+  return (list && view && transcriptTransformTranslateY(view.getComputedStyle(list).transform)) ?? remembered;
+}
 const REVERSE_JUMP_VIEWPORT_RATIO = 0.5;
 const EXTENT_REBOUND_VIEWPORT_RATIO = 0.5;
 
@@ -115,8 +155,8 @@ export function transcriptKeyboardScrollDelta(
 
 export function transcriptScrollEventCancelsReaderExtentGuard(type: TranscriptScrollEvent["type"]): boolean {
   return type === "RESET"
-    || type === "USER_SCROLL_INTENT"
     || type === "MANUAL_READING"
+    || type === "NATIVE_SCROLLBAR_BEGIN"
     || type === "VIEWPORT_RESIZED"
     || type === "USER_RESIZE_BEGIN"
     || type === "SELECTION_BEGIN"

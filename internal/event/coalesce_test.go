@@ -1,6 +1,7 @@
 package event
 
 import (
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -9,14 +10,53 @@ import (
 	"reasonix/internal/evidence"
 )
 
+type checkedRecordSink struct {
+	coalesceRecordSink
+	err error
+}
+
+func (s *checkedRecordSink) EmitChecked(e Event) error {
+	if s.err != nil && e.Kind == ToolDispatch {
+		return s.err
+	}
+	s.Emit(e)
+	return nil
+}
+
 type coalesceRecordSink struct {
-	mu        sync.Mutex
-	events    []Event
-	readiness int
-	turns     int
-	recovery  int
-	workspace int
-	runBudget int
+	mu         sync.Mutex
+	events     []Event
+	readiness  int
+	turns      int
+	recovery   int
+	workspace  int
+	runBudget  int
+	completion int
+}
+
+type blockingCapabilitySink struct {
+	entered chan struct{}
+	release chan struct{}
+	done    chan struct{}
+	mu      sync.Mutex
+	order   []string
+}
+
+func (s *blockingCapabilitySink) Emit(e Event) {
+	if e.Text == "lead" {
+		close(s.entered)
+		<-s.release
+	}
+	s.mu.Lock()
+	s.order = append(s.order, e.Text)
+	s.mu.Unlock()
+}
+
+func (s *blockingCapabilitySink) RecordReadinessAudit(evidence.ReadinessAudit) {
+	s.mu.Lock()
+	s.order = append(s.order, "audit")
+	s.mu.Unlock()
+	close(s.done)
 }
 
 func (s *coalesceRecordSink) Emit(e Event) {
@@ -55,6 +95,12 @@ func (s *coalesceRecordSink) RecordRunBudget(RunBudgetSample) {
 	s.runBudget++
 }
 
+func (s *coalesceRecordSink) RecordCompletionValidation(CompletionValidationInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.completion++
+}
+
 func (s *coalesceRecordSink) snapshot() []Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,6 +137,22 @@ func TestCoalesceMergesBurstAndFlushesOnBarrier(t *testing.T) {
 	}
 }
 
+func TestCoalesceCheckedBarrierFlushesAndReturnsDurabilityError(t *testing.T) {
+	wantErr := errors.New("ledger unavailable")
+	inner := &checkedRecordSink{err: wantErr}
+	c := Coalesce(inner, time.Hour)
+	c.Emit(Event{Kind: Text, Text: "lead"})
+	c.Emit(Event{Kind: Text, Text: "tail"})
+	err := EmitChecked(c, Event{Kind: ToolDispatch, Tool: Tool{ID: "t1", Name: "bash"}})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("EmitChecked error = %v, want %v", err, wantErr)
+	}
+	got := inner.snapshot()
+	if len(got) != 2 || got[0].Text != "lead" || got[1].Text != "tail" {
+		t.Fatalf("checked barrier did not durably flush stream prefix: %+v", got)
+	}
+}
+
 func TestCoalesceKindSwitchFlushes(t *testing.T) {
 	inner := &coalesceRecordSink{}
 	c := Coalesce(inner, time.Hour)
@@ -108,6 +170,20 @@ func TestCoalesceKindSwitchFlushes(t *testing.T) {
 	}
 	if got[2].Kind != Text || got[2].Text != "answer" {
 		t.Fatalf("text after kind switch = %+v", got[2])
+	}
+}
+
+func TestCoalescePreservesPlannerSourceAndSeparatesSourceChanges(t *testing.T) {
+	inner := &coalesceRecordSink{}
+	c := Coalesce(inner, time.Hour)
+	c.Emit(Event{Kind: Text, Text: "lead", Source: UsageSourcePlanner})
+	c.Emit(Event{Kind: Text, Text: "planner tail", Source: UsageSourcePlanner})
+	c.Emit(Event{Kind: Text, Text: "executor", Source: UsageSourceExecutor})
+	c.Emit(Event{Kind: TurnDone})
+
+	got := inner.snapshot()
+	if len(got) != 4 || got[1].Text != "planner tail" || got[1].Source != UsageSourcePlanner || got[2].Text != "executor" || got[2].Source != UsageSourceExecutor {
+		t.Fatalf("source-aware stream boundaries changed: %+v", got)
 	}
 }
 
@@ -154,13 +230,40 @@ func TestCoalesceCapabilitiesFlushFirstAndForward(t *testing.T) {
 	c.(ProtocolRecoveryAuditSink).RecordProtocolRecovery(ProtocolRecoveryAudit{})
 	c.(WorkspaceMutationSink).RecordWorkspaceMutation(WorkspaceMutation{Content: true})
 	c.(RunBudgetSink).RecordRunBudget(RunBudgetSample{})
+	c.(CompletionValidationAuditSink).RecordCompletionValidation(CompletionValidationInfo{Mode: "enforce"})
 
 	got := inner.snapshot()
 	if len(got) != 2 || got[1].Text != "tail" {
 		t.Fatalf("capability call must flush the buffered delta first: %+v", got)
 	}
-	if inner.readiness != 1 || inner.turns != 1 || inner.recovery != 1 || inner.workspace != 1 || inner.runBudget != 1 {
-		t.Fatalf("capabilities not forwarded: %d/%d/%d/%d/%d", inner.readiness, inner.turns, inner.recovery, inner.workspace, inner.runBudget)
+	if inner.readiness != 1 || inner.turns != 1 || inner.recovery != 1 || inner.workspace != 1 || inner.runBudget != 1 || inner.completion != 1 {
+		t.Fatalf("capabilities not forwarded: %d/%d/%d/%d/%d/%d", inner.readiness, inner.turns, inner.recovery, inner.workspace, inner.runBudget, inner.completion)
+	}
+}
+
+func TestCoalesceCapabilityCannotOvertakeActiveDrainer(t *testing.T) {
+	inner := &blockingCapabilitySink{entered: make(chan struct{}), release: make(chan struct{}), done: make(chan struct{})}
+	c := Coalesce(inner, time.Hour)
+	go c.Emit(Event{Kind: Text, Text: "lead"})
+	<-inner.entered
+	c.Emit(Event{Kind: Text, Text: "tail"})
+	c.(ReadinessAuditSink).RecordReadinessAudit(evidence.ReadinessAudit{})
+	close(inner.release)
+	select {
+	case <-inner.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued capability did not drain")
+	}
+	inner.mu.Lock()
+	defer inner.mu.Unlock()
+	want := []string{"lead", "tail", "audit"}
+	if len(inner.order) != len(want) {
+		t.Fatalf("order = %v, want %v", inner.order, want)
+	}
+	for i := range want {
+		if inner.order[i] != want[i] {
+			t.Fatalf("order = %v, want %v", inner.order, want)
+		}
 	}
 }
 

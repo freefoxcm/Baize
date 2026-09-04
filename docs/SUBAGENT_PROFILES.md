@@ -49,7 +49,9 @@ In an interactive CLI or desktop chat, use a slash command:
 
 This is a real isolated subagent run, not prompt text inserted into the parent
 agent. The parent conversation retains the task and the child's final answer,
-not the child's full working context.
+not the child's full working context. Review and security-review children also
+receive a compact parent facts pack (confirmed decisions, evidence summary, file
+anchors) and default to 8 steps plus a 2048 output-token cap.
 
 The parent model can also select a profile at call time without listing profile
 names in the tool schema (prompt-cache stability):
@@ -147,8 +149,8 @@ You are a focused code reviewer. Inspect the requested changes and return only
 actionable findings, ordered by severity.
 ```
 
-`invocation: manual` prevents automatic discovery in the model's pinned Skill
-index; users can still invoke the profile explicitly. `allowed-tools` is a
+`invocation: manual` prevents automatic discovery in the model's
+`session-context` Skills catalog; users can still invoke the profile explicitly. `allowed-tools` is a
 profile-level allowlist, not a way to bypass permissions. `read-only: true`
 forces the read-only tool registry (writer tools stripped); omitted/`false`
 keeps the legacy writable default.

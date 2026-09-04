@@ -45,6 +45,14 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.bindMu.Lock()
+	if !s.validateExpectedSessionLocked(w, r) {
+		s.bindMu.Unlock()
+		return
+	}
+	if s.rejectMirroredForegroundLocked(w) {
+		s.bindMu.Unlock()
+		return
+	}
 	ctrl := s.ctl()
 	if len(body.Attachments) > 0 && strings.TrimSpace(ctrl.Goal()) != "" {
 		s.bindMu.Unlock()
@@ -71,6 +79,11 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	} else {
 		submitWithAction(ctrl, body.Input, body.Format, body.Action)
 	}
+	if isServeManagementCommand(trimmed) && !ctrl.Running() && !ctrl.RuntimeStatus().PendingPrompt {
+		s.bindMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if !ctrl.Running() && !ctrl.RuntimeStatus().PendingPrompt {
 		s.bindMu.Unlock()
 		http.Error(w, "input was not admitted; session is rotating, closed, or finishing — use POST /inbox/items", http.StatusConflict)
@@ -81,16 +94,15 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) interceptSubmitCommand(w http.ResponseWriter, r *http.Request, input string) bool {
-	if strings.HasPrefix(input, "/model ") {
-		ref := strings.TrimSpace(strings.TrimPrefix(input, "/model"))
-		if ref == "" {
-			return false
-		}
-		if err := s.switchModel(r.Context(), ref); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return true
-		}
-		w.WriteHeader(http.StatusNoContent)
+	switch input {
+	case "/new":
+		s.newSessionFromSubmit(w, r)
+		return true
+	case "/clear":
+		s.clearSessionFromSubmit(w, r)
+		return true
+	}
+	if s.submitModelCommand(w, r, input) {
 		return true
 	}
 	if strings.HasPrefix(input, "/switch ") {
@@ -112,8 +124,8 @@ func (s *Server) interceptSubmitCommand(w http.ResponseWriter, r *http.Request, 
 		s.effort(w, r)
 		return true
 	}
-	if err := s.switchEffort(r.Context(), level); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := s.switchEffortExpected(r.Context(), level, r.Header.Get(expectedSessionPathHeader)); err != nil {
+		http.Error(w, err.Error(), runtimeSwitchErrorStatus(err))
 		return true
 	}
 	w.WriteHeader(http.StatusNoContent)

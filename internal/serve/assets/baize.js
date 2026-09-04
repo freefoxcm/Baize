@@ -66,6 +66,7 @@ const __T = {
     'effort_title': 'Reasoning effort',
     'mobile_controls_title': 'Chat controls',
     'recovery_paused': 'Automatic retries paused. Baize stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
+    'completion_uncertain': 'Completion could not be confirmed. The current result and completed work are kept. Send "continue" to resume, or restate what should change.',
     'delivery_incomplete_title': 'Delivery checks are not complete',
     'delivery_incomplete_body': 'The response was generated, but required delivery evidence is still incomplete.',
     'delivery_checks': 'Delivery checks: {count} total (initial check + {automatic} automatic follow-up checks).',
@@ -477,6 +478,7 @@ const __T = {
     'effort_title': '思考长度',
     'mobile_controls_title': '聊天控制',
     'recovery_paused': '已暂停自动重试。Baize 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
+    'completion_uncertain': '完成状态未确认。当前结果和已完成工作均已保留。发送“继续”可接着完成，也可以补充说明需要调整的内容。',
     'delivery_incomplete_title': '交付检查尚未完成',
     'delivery_incomplete_body': '内容已经生成，但所需的交付证据尚未完成。',
     'delivery_checks': '已完成 {count} 次交付检查（初始检查 + {automatic} 次自动补查）。',
@@ -3656,7 +3658,7 @@ es.onmessage=ev=>{setConnState('connected');
         if (tt && !tt.userOverride && tt.summary.style.display !== 'none') { tt.folded = true; applyTurnFold(tt); } }
       if(deliveryRecoveryActive&&e.outcome!=='final_readiness'&&!e.err)clearDeliveryCards();
       deliveryRecoveryActive=false;
-      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){appendTranscriptNotice('⏸ '+__('recovery_paused'));}else{showTurnFeedback(e);} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
+      if(e.outcome==='final_readiness'){showDeliveryReadiness(e);}else if(e.outcome==='recovery_paused'){appendTranscriptNotice('⏸ '+__('recovery_paused'));}else if(e.outcome==='completion_uncertain'){appendTranscriptNotice('⏸ '+__('completion_uncertain'));}else{showTurnFeedback(e);} fetchStatus(); fetchTodos(); refreshCheckpointAvailability(); break;
   }
 };
 es.onerror=()=>{

@@ -73,8 +73,10 @@ func (o *turnOrchestrator) runGoalContinuationTurnWithRawDisplay(
 func (o *turnOrchestrator) runComposedSyntheticTurn(ctx context.Context, text string) error {
 	c := o.c
 	ctx = agent.WithRawUserInput(ctx, text)
+	ctx = withTurnInputOrigin(ctx, true)
+	ctx = c.withTurnContext(ctx, false)
 	ctx = c.withPlannerTurnMetadata(ctx, text, true, c.messageCount())
-	return c.runner.Run(ctx, c.ComposeSynthetic(text))
+	return c.runModelTurn(ctx, c.ComposeSynthetic(text))
 }
 
 // runSubagentSkillGoalLoop executes a slash-invoked runAs=subagent skill as a
@@ -127,6 +129,7 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 	ctx = agent.WithSubagentImageCandidates(ctx, imageCandidates)
 	ctx = agent.WithResponseLanguagePreference(ctx, c.responseLanguage)
 	ctx = agent.WithReasoningLanguagePreference(ctx, c.reasoningLanguage)
+	ctx = c.withTurnContext(ctx, true)
 
 	input := c.compose(task, raw, true)
 	startMessages := c.messageCount()
@@ -157,7 +160,7 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 	if c.executor == nil {
 		return fmt.Errorf("subagent slash invocation requires an active session")
 	}
-	c.executor.Session().Add(provider.Message{Role: provider.RoleUser, Content: input, Images: images, CreatedAt: time.Now().UnixMilli()})
+	c.executor.AppendTurnContextAndUser(ctx, persistedUserTurn(input, firstNonEmpty(raw, task), images, time.Now().UnixMilli()))
 
 	for _, sk := range skills {
 		sk = c.skills.prepare(sk)
@@ -172,7 +175,9 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 		if c.skillProfile != nil {
 			toolEvent.Profile = c.skillProfile(sk)
 		}
-		c.sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: toolEvent})
+		if err := event.EmitChecked(c.sink, event.Event{Kind: event.ToolDispatch, Tool: toolEvent}); err != nil {
+			return fmt.Errorf("persist skill dispatch: %w", err)
+		}
 		runCtx := agent.WithToolCallContext(ctx, callID, c.sink, c, planMode)
 		runCtx = agent.WithSubagentDepth(runCtx, 0)
 		answer, err := runner(runCtx, sk, input, skill.SubagentRunOptions{HostInitiated: true})
@@ -203,6 +208,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	ctx = agent.WithUserImages(ctx, userImages)
 	ctx = agent.WithSubagentImageCandidates(ctx, imageCandidates)
 	ctx = agent.WithRawUserInput(ctx, turn.raw)
+	ctx = withTurnInputOrigin(ctx, turn.synthetic)
 	continuation := turn.goalContinuation
 	var input string
 	if continuation != nil {
@@ -262,7 +268,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 		}
 		defer func() { c.hooks.StopResult(context.Background(), lastAssistantText(c.History()), turn, err) }()
 	}
-	marker = c.markInFlightTurn(startMessages, !turn.synthetic && !IsSyntheticUserMessage(turn.raw))
+	marker = c.markInFlightTurn(startMessages, !turn.synthetic)
 	if continuation != nil {
 		ctx = agent.WithDeliveryExecutionScope(ctx, agent.DeliveryExecutionScope{
 			ID:       continuation.scopeID,
@@ -273,7 +279,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	}
 	// Goal turns bind a scope+epoch recorder for update_goal and observational
 	// usage. It stays active through FSM/evaluator work; error paths clear it.
-	ctx = c.bindTurnScope(ctx, continuation)
+	ctx = c.withTurnContext(c.bindTurnScope(ctx, continuation), !turn.synthetic)
 	ctx = c.withPlannerTurnMetadata(ctx, turn.raw, turn.synthetic, startMessages)
 	modelInput := input
 	if !turn.synthetic {
@@ -289,7 +295,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	if !turn.synthetic {
 		c.beginRecoveryEpisode()
 	}
-	err = c.runner.Run(ctx, modelInput)
+	err = c.runModelTurn(ctx, modelInput)
 	c.captureGoalRunWorkDuration(startMessages)
 	c.persistGoalDeliveryCheckpoint()
 	if err != nil {
@@ -298,28 +304,19 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 		// but is marked local-only, and a bounded recovery summary is folded into
 		// the next real user turn (#5499, #6680).
 		if errors.Is(err, context.Canceled) && c.CancelRequested() {
-			if turn.synthetic || IsSyntheticUserMessage(turn.raw) {
+			if turn.synthetic {
 				c.stripInterruptedSyntheticTurnMessagesAfter(startMessages)
 			} else {
-				c.stripCancelledVisibleTurnMessagesAfterWithFallback(startMessages, provider.Message{
-					Role:      provider.RoleUser,
-					Content:   input,
-					Images:    append([]string(nil), userImages...),
-					CreatedAt: time.Now().UnixMilli(),
-				})
+				c.stripCancelledVisibleTurnMessagesAfterWithFallback(startMessages,
+					persistedUserTurn(input, turn.raw, userImages, time.Now().UnixMilli()))
 			}
-		} else if !turn.synthetic && !IsSyntheticUserMessage(turn.raw) && c.hasInterruptedDisplayAfter(startMessages, provider.Message{
-			Role: provider.RoleUser, Content: input,
-		}) {
+		} else if !turn.synthetic && c.hasInterruptedDisplayAfter(startMessages,
+			persistedUserTurn(input, turn.raw, nil, 0)) {
 			// Provider/API failures use the same safe recovery path as an explicit
 			// stop once the agent has recorded a partial stream. Completed tool
 			// pairs survive; unsafe stream fragments stay local-only.
-			c.stripCancelledVisibleTurnMessagesAfterWithFallback(startMessages, provider.Message{
-				Role:      provider.RoleUser,
-				Content:   input,
-				Images:    append([]string(nil), userImages...),
-				CreatedAt: time.Now().UnixMilli(),
-			})
+			c.stripCancelledVisibleTurnMessagesAfterWithFallback(startMessages,
+				persistedUserTurn(input, turn.raw, userImages, time.Now().UnixMilli()))
 		}
 		return err
 	}
@@ -424,8 +421,6 @@ func (o *turnOrchestrator) runGoalLoopWithFrozenImagesRawDisplay(ctx context.Con
 
 func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn orchestratedTurn) error {
 	expectedContinuationEpoch := o.c.goals.continuationToken()
-	ctx = agent.WithAutomaticReadinessContinuation(ctx)
-	ctx = agent.WithMutationExpected(ctx, NeedsMutation(turn.raw))
 	ctx = agent.WithSubagentImageCandidates(ctx, turn.imageCandidates)
 	err := o.runOrchestratedTurn(ctx, turn)
 	if err != nil {
@@ -441,10 +436,11 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 			return err
 		}
 		if !o.c.goals.active() {
-			// The host knows exactly what this ordinary turn still owes. Finish
-			// it automatically instead of making the user relay "continue".
+			// Standard and Delivery stop at the readiness boundary. The frontend
+			// owns the explicit recovery action, matching the pre-auto-continuation
+			// contract; only an active Goal may continue through its FSM below.
 			o.c.goalUsageTee.setActiveRecorder(nil)
-			return o.continueUntilReady(ctx, err)
+			return err
 		}
 		// FinalReadinessError is absorbed below: the Goal FSM continues with
 		// the missing requirements as the next turn's prompt.
@@ -458,8 +454,6 @@ func (o *turnOrchestrator) runEditedGoalLoopWithRawDisplay(ctx context.Context, 
 
 func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.Context, input, raw, imageRefs, display, original string) error {
 	expectedContinuationEpoch := o.c.goals.continuationToken()
-	ctx = agent.WithAutomaticReadinessContinuation(ctx)
-	ctx = agent.WithMutationExpected(ctx, NeedsMutation(raw))
 	turn := o.c.prepareOrchestratedTurnImages(orchestratedTurn{
 		input: input, raw: raw, imageRefs: imageRefs, display: display, editedOriginal: original,
 	})
@@ -477,7 +471,7 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 		}
 		if !o.c.goals.active() {
 			o.c.goalUsageTee.setActiveRecorder(nil)
-			return o.continueUntilReady(ctx, err)
+			return err
 		}
 	}
 	return o.continueGoal(ctx, expectedContinuationEpoch, err)

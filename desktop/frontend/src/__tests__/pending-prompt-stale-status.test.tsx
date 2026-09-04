@@ -423,6 +423,7 @@ window.runtime = {
 window.go = {
   main: {
     App: {
+      RegisterNavigationIntent: async () => {},
       ListTabs: async () => {
         listTabsCalls += 1;
         if (holdNextListTabs) {

@@ -93,7 +93,11 @@ func (a *Agent) pruneToolResultsToProjectionLocked(trigger string) (bool, error)
 	if affected == 0 {
 		return false, nil
 	}
-	projected = provider.ProjectionMessages(projected)
+	projected = projectionMessagesPreservingPinnedContext(projected)
+	projected, _, err := rebasePinnedContextProjection(projected, canonical, len(canonical))
+	if err != nil {
+		return false, err
+	}
 	sourceTokens := a.estimatedVisibleRequestTokens(visible)
 	resultTokens := a.estimatedVisibleRequestTokens(projected)
 	inputHash := a.contextMaintenanceInputHash(modelInputMessages(visible))
@@ -116,7 +120,8 @@ func (a *Agent) pruneToolResultsToProjectionLocked(trigger string) (bool, error)
 	next.Projection = ContextProjection{
 		Messages: projected, TranscriptVersion: transcriptVersion, ProjectionVersion: projectionVersion,
 		CoveredCount: len(canonical), CoveredPrefixHash: coveredHash, SourceTokens: sourceTokens,
-		ProjectionTokens: resultTokens, ViewInputHash: inputHash, ViewOutputHash: outputHash, CreatedAt: now,
+		PinnedContextHash: pinnedContextCoverageHash(canonical, len(canonical)),
+		ProjectionTokens:  resultTokens, ViewInputHash: inputHash, ViewOutputHash: outputHash, CreatedAt: now,
 	}
 	next.LastReceipt = receipt
 	next.UpdatedAt = now

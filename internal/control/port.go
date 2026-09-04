@@ -84,10 +84,16 @@ type Approvals interface {
 	Approve(id string, allow, session, persist bool)
 	ResolveApproval(id string, allow bool, scope sandbox.ApprovalScope) error
 	ResolvePlanDecision(id string, action PlanDecisionAction) error
+	ResolvePlanDecisionWithFeedback(id string, action PlanDecisionAction, feedback string) error
 	// ResolveRecovery answers an Auto Guard card: continue|continue_task|revise. Revise
 	// refuses the mutation and steers feedback.
 	ResolveRecovery(id string, action agent.RecoveryAction, feedback string) error
+	AnswerMCPInteraction(id, action string, content map[string]any)
 	AnswerQuestion(id string, answers []event.AskAnswer)
+	AnswerQuestionChecked(id string, answers []event.AskAnswer) error
+	// AnswerMCPInteractionChecked resolves an mcp_interaction prompt after its
+	// durable transition (serve /mcp-interaction, desktop bridge).
+	AnswerMCPInteractionChecked(id, action string, content map[string]any) error
 	Ask(ctx context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error)
 	ReplayPendingPrompts()
 	ReplayPendingPromptsTo(sink event.Sink)
@@ -191,6 +197,10 @@ type Capabilities interface {
 	HookRunner() *hook.Runner
 	CustomCommand(input string) (sent string, found bool)
 	MCPPrompt(ctx context.Context, input string) (sent string, found bool, err error)
+	// MCPCapabilityViews returns the host's four-layer capability matrix
+	// (Protocol Connection, Core Host, Interactive Host, Apps Host) as
+	// read-only diagnostics for MCP status surfaces.
+	MCPCapabilityViews() []plugin.CapabilityView
 	RunSkill(input string) (sent string, found bool)
 	AddMCPServer(e config.PluginEntry) (int, error)
 	ConnectMCPServer(e config.PluginEntry) (int, error)
@@ -222,6 +232,10 @@ type Status interface {
 	Balance(ctx context.Context) (*billing.Balance, error)
 	Jobs() []jobs.View
 	Todos() []evidence.TodoItem
+	// BoundShell reports the interpreter this controller generation bound at
+	// build time, so hosts can distinguish the live session's shell from what
+	// a reload would resolve now.
+	BoundShell() sandbox.Shell
 }
 
 // SessionPersistence covers snapshotting a session and tearing down its on-disk
@@ -257,6 +271,8 @@ type Settings interface {
 	SetResponseLanguage(lang string)
 	SetReasoningLanguage(lang string)
 	SetDisplayRecorder(fn func(content, display string))
+	ApplyComposerProfile(plan bool, toolApprovalMode, goal string) ([]string, error)
+	SystemPrompt() string
 }
 
 // Attachments is the workspace-local attachment storage surface used by rich

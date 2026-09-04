@@ -70,7 +70,7 @@ func TestTimelineSessionsRejectsInvalidCursorAndLimit(t *testing.T) {
 	server := New(control.New(control.Options{SessionDir: t.TempDir()}), NewBroadcaster(), config.ServeConfig{})
 	for _, target := range []string{"/sessions/timeline?cursor=broken", "/sessions/timeline?limit=nope"} {
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+		server.Handler().ServeHTTP(recorder, localTestRequest(http.MethodGet, target, nil))
 		if recorder.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d, want 400", target, recorder.Code)
 		}
@@ -123,7 +123,7 @@ func TestTimelineSessionsExcludesDraftFromLaterPages(t *testing.T) {
 func timelinePageRequest(t *testing.T, server *Server, target string) timelineSessionPage {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+	server.Handler().ServeHTTP(recorder, localTestRequest(http.MethodGet, target, nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("%s status = %d: %s", target, recorder.Code, recorder.Body.String())
 	}

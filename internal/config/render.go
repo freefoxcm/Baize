@@ -223,11 +223,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("# system_prompt_file = \"prompts/system.md\"   # project paths stay in <workspace>; user paths may fall back to <reasonix home>\n")
 	}
 	fmt.Fprintf(&b, "temperature       = %s\n", formatFloat(c.Agent.Temperature))
-	if strings.TrimSpace(c.Agent.RecoveryModel) != "" {
-		fmt.Fprintf(&b, "recovery_model = %q   # optional independent reviewer for low-risk automatic recovery\n", c.Agent.RecoveryModel)
-	} else {
-		b.WriteString("# recovery_model = \"deepseek-pro\"   # optional; falls back to guardian then main model\n")
-	}
+	renderRecoveryAndCompletionValidation(&b, c)
 	if lang := c.ReasoningLanguage(); lang != "auto" {
 		fmt.Fprintf(&b, "reasoning_language = %q   # visible reasoning language: auto|zh|en\n", lang)
 	} else {
@@ -423,7 +419,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "mcp_call_timeout_seconds = %d   # default MCP call safety cap; per-plugin/tool overrides may raise it\n\n", c.MCPCallTimeoutSeconds())
 
 	b.WriteString("[tools.background_jobs]\n")
-	fmt.Fprintf(&b, "stalled_warning_seconds = %d   # warn once per background job after this many quiet seconds; 0 disables\n\n", c.BackgroundJobStalledWarningSeconds())
+	fmt.Fprintf(&b, "stalled_warning_seconds = %d   # heads-up once per background job after this many quiet seconds; a quiet job is not necessarily stuck; 0 disables\n\n", c.BackgroundJobStalledWarningSeconds())
 
 	b.WriteString("[tools.shell]\n")
 	if c.Tools.Shell.Prefer != "" {
@@ -728,54 +724,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("\n")
 	}
 
-	// [remote] is user/global only like [secrets]: LoadForRoot discards project
-	// values so a cloned repo can never inject SSH hosts. Rendered here so
-	// saved hosts survive full-file config rewrites.
-	if scope != RenderScopeProject && (c.Remote.ImportSSHConfig || len(c.Remote.Hosts) > 0) {
-		b.WriteString("[remote]   # SSH remote hosts; user/global only, ./reasonix.toml cannot override\n")
-		if c.Remote.ImportSSHConfig {
-			b.WriteString("import_ssh_config = true   # surface ~/.ssh/config aliases in `reasonix remote import`\n")
-		}
-		for _, h := range c.Remote.Hosts {
-			b.WriteString("\n[[remote.hosts]]\n")
-			fmt.Fprintf(&b, "name = %q\n", h.Name)
-			fmt.Fprintf(&b, "host = %q\n", h.Host)
-			if h.Port > 0 {
-				fmt.Fprintf(&b, "port = %d\n", h.Port)
-			}
-			if h.User != "" {
-				fmt.Fprintf(&b, "user = %q\n", h.User)
-			}
-			if h.IdentityFile != "" {
-				fmt.Fprintf(&b, "identity_file = %q   # key file path; Reasonix never stores key material\n", h.IdentityFile)
-			}
-			if h.PassphraseEnv != "" {
-				fmt.Fprintf(&b, "passphrase_env = %q   # env var name; value lives in Reasonix's global .env\n", h.PassphraseEnv)
-			}
-			if h.PasswordEnv != "" {
-				fmt.Fprintf(&b, "password_env = %q   # env var name; value lives in Reasonix's global .env\n", h.PasswordEnv)
-			}
-			if h.ProxyJump != "" {
-				fmt.Fprintf(&b, "proxy_jump = %q   # OpenSSH ProxyJump chain\n", h.ProxyJump)
-			}
-			if h.Workspace != "" {
-				fmt.Fprintf(&b, "workspace = %q   # default remote workspace dir\n", h.Workspace)
-			}
-			if h.ServeInstall != "" {
-				fmt.Fprintf(&b, "serve_install = %q   # auto|npm|upload|never\n", h.ServeInstall)
-			}
-			if h.UseSSHConfig {
-				b.WriteString("use_ssh_config = true   # layer ~/.ssh/config values under unset fields\n")
-			}
-			for _, f := range h.Forwards {
-				b.WriteString("\n[[remote.hosts.forwards]]\n")
-				fmt.Fprintf(&b, "type = %q   # local (-L) | remote (-R)\n", f.Type)
-				fmt.Fprintf(&b, "bind = %q\n", f.Bind)
-				fmt.Fprintf(&b, "target = %q\n", f.Target)
-			}
-		}
-		b.WriteString("\n")
-	}
+	renderRemoteConfig(&b, c, scope)
 
 	b.WriteString("# External MCP servers. type: \"stdio\" (default, a subprocess) | \"http\" | \"sse\".\n")
 	b.WriteString("# ${VAR} / ${VAR:-default} are expanded from the environment in command/args/env/url/headers.\n")
@@ -962,10 +911,7 @@ func RenderTOMLProjectDelta(c *Config) string {
 		fmt.Fprintf(&agentBuf, "temperature = %s\n", formatFloat(c.Agent.Temperature))
 		anyAgent = true
 	}
-	if c.Agent.RecoveryModel != "" && c.Agent.RecoveryModel != d.Agent.RecoveryModel {
-		fmt.Fprintf(&agentBuf, "recovery_model = %q\n", c.Agent.RecoveryModel)
-		anyAgent = true
-	}
+	diffRecoveryAndCompletionValidation(&agentBuf, *c, *d, &anyAgent)
 	if c.Agent.ReasoningLanguage != d.Agent.ReasoningLanguage {
 		if l := c.ReasoningLanguage(); l != "auto" {
 			fmt.Fprintf(&agentBuf, "reasoning_language = %q\n", l)

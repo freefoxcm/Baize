@@ -24,6 +24,7 @@ func IsSessionTranscriptName(name string) bool {
 	name = strings.TrimSpace(name)
 	return strings.HasSuffix(name, ".jsonl") &&
 		!strings.HasSuffix(name, ".events.jsonl") &&
+		!strings.HasSuffix(name, ".turns.jsonl") &&
 		!strings.HasSuffix(name, ".conflicts.jsonl") &&
 		!strings.HasSuffix(name, ".guardian.jsonl")
 }
@@ -50,10 +51,20 @@ func SessionContext(sessionPath string) string {
 	return sessionStem(sessionPath) + ".context.json"
 }
 
+// SessionPinnedContext is the optional desktop pinned-workspace-context
+// sidecar (<id>.pinned-context.json). Older versions ignore it while keeping
+// the primary transcript fully readable.
+func SessionPinnedContext(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".pinned-context.json"
+}
+
 // SessionApprovalMode is the per-session tool-approval-mode sidecar
-// (<id>.approval.json). Frontends that bind mode to sessions (serve) persist
-// the current Ask/Auto/YOLO posture here so a restart or a session switch
-// restores what the user last chose.
+// (<id>.approval.json). Frontends that bind mode to sessions persist the
+// current Ask/Auto/YOLO posture here so restarts and session switches restore it.
 func SessionApprovalMode(sessionPath string) string {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
@@ -63,7 +74,7 @@ func SessionApprovalMode(sessionPath string) string {
 }
 
 // SessionSubagentSummary is the local execution-summary projection for
-// sub-agent cards (<id>.subagents.json). It never contains reasoning or tool
+// sub-agent cards (<id>.subagents.json). It contains no reasoning or tool
 // arguments and is safe to rebuild or remove with the owning transcript.
 func SessionSubagentSummary(sessionPath string) string {
 	sessionPath = strings.TrimSpace(sessionPath)
@@ -115,6 +126,25 @@ func SessionEventLogDamaged(sessionPath string) string {
 		return ""
 	}
 	return SessionEventLog(sessionPath) + ".damaged"
+}
+
+// SessionTurnEventLog is the append-only local runtime lifecycle ledger
+// (<id>.turns.jsonl). It is independent from the provider transcript so old
+// readers can continue to consume the primary session unchanged.
+func SessionTurnEventLog(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".turns.jsonl"
+}
+
+// SessionTurnEventLogDamaged preserves a corrupt/torn ledger tail before the
+// valid prefix is truncated back into service.
+func SessionTurnEventLogDamaged(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return SessionTurnEventLog(sessionPath) + ".damaged"
 }
 
 // SessionEventIndex is the listing/checkpoint index for the event log
@@ -210,7 +240,8 @@ func SessionCleanupPending(sessionPath string) string {
 }
 
 // SessionSidecarFiles returns every regular-file sidecar owned by a session
-// transcript: branch meta, goal state, event/index logs, and diagnostic logs.
+// transcript: branch meta, goal state, event/index logs, pinned context, and
+// diagnostic logs.
 // Every surface that deletes a session (desktop trash, /clear, serve, ACP)
 // must remove all of these — the event log is the authoritative transcript, so
 // leaving it behind both leaks the "deleted" conversation and lets LoadSession
@@ -226,6 +257,8 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionGoalState(sessionPath),
 		SessionEventLog(sessionPath),
 		SessionEventLogDamaged(sessionPath),
+		SessionTurnEventLog(sessionPath),
+		SessionTurnEventLogDamaged(sessionPath),
 		SessionEventIndex(sessionPath),
 		SessionDisplayIndex(sessionPath),
 		SessionConflictLog(sessionPath),
@@ -233,5 +266,6 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionContext(sessionPath),
 		SessionApprovalMode(sessionPath),
 		SessionSubagentSummary(sessionPath),
+		SessionPinnedContext(sessionPath),
 	}
 }

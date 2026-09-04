@@ -88,6 +88,50 @@ func (*runSkillTool) Schema() json.RawMessage {
 }`)
 }
 
+// ValidateArguments enforces the conditional subagent task contract before a
+// runner is started. The provider-visible schema stays stable because whether a
+// skill is inline or isolated is catalog data, not a new tool shape.
+func (t *runSkillTool) ValidateArguments(args json.RawMessage) []tool.ArgumentViolation {
+	var p struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	}
+	if json.Unmarshal(args, &p) != nil {
+		return nil // The ordinary JSON Schema/parser owns malformed JSON.
+	}
+	name := cleanSkillName(p.Name)
+	sk, ok := t.store.Read(name)
+	if !ok || sk.RunAs != RunSubagent || strings.TrimSpace(p.Arguments) != "" {
+		return nil
+	}
+	return []tool.ArgumentViolation{{
+		Path:     "/arguments",
+		Keyword:  "required",
+		Expected: "a non-empty string describing the concrete subagent task",
+	}}
+}
+
+func (t *runSkillTool) CapabilityArguments(capabilityID string) (tool.CapabilityArgumentContract, bool) {
+	name := strings.TrimSpace(strings.TrimPrefix(capabilityID, "skill:"))
+	sk, ok := t.store.Read(name)
+	if !ok {
+		return tool.CapabilityArgumentContract{}, false
+	}
+	required := ""
+	if sk.RunAs == RunSubagent {
+		required = `,"required":["arguments"]`
+	}
+	schema := json.RawMessage(`{"type":"object","properties":{"arguments":{"type":"string","description":"Concrete task or inline skill arguments."},"continue_from":{"type":"string","description":"Optional compatible subagent reference."}}` + required + `}`)
+	example, _ := json.Marshal(map[string]any{
+		"action":        "call",
+		"capability_id": "skill:" + name,
+		"arguments": map[string]any{
+			"arguments": "specific task for " + name,
+		},
+	})
+	return tool.CapabilityArgumentContract{Schema: schema, Example: example}, true
+}
+
 func (t *runSkillTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Name      string `json:"name"`
@@ -224,6 +268,47 @@ func (*readOnlySkillTool) Schema() json.RawMessage {
 },
 "required":["name"]
 }`)
+}
+
+func (t *readOnlySkillTool) ValidateArguments(args json.RawMessage) []tool.ArgumentViolation {
+	var p struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	}
+	if json.Unmarshal(args, &p) != nil {
+		return nil
+	}
+	name := cleanSkillName(p.Name)
+	sk, ok := t.store.Read(name)
+	if !ok || sk.RunAs != RunSubagent || strings.TrimSpace(p.Arguments) != "" {
+		return nil
+	}
+	return []tool.ArgumentViolation{{
+		Path:     "/arguments",
+		Keyword:  "required",
+		Expected: "a non-empty string describing the concrete read-only subagent task",
+	}}
+}
+
+func (t *readOnlySkillTool) CapabilityArguments(capabilityID string) (tool.CapabilityArgumentContract, bool) {
+	name := strings.TrimSpace(strings.TrimPrefix(capabilityID, "skill:"))
+	sk, ok := t.store.Read(name)
+	if !ok {
+		return tool.CapabilityArgumentContract{}, false
+	}
+	required := ""
+	if sk.RunAs == RunSubagent {
+		required = `,"required":["arguments"]`
+	}
+	schema := json.RawMessage(`{"type":"object","properties":{"arguments":{"type":"string","description":"Concrete read-only task or inline skill arguments."}}` + required + `}`)
+	example, _ := json.Marshal(map[string]any{
+		"action":        "call",
+		"capability_id": "skill:" + name,
+		"arguments": map[string]any{
+			"arguments": "specific read-only task for " + name,
+		},
+	})
+	return tool.CapabilityArgumentContract{Schema: schema, Example: example}, true
 }
 
 func (t *readOnlySkillTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
@@ -600,7 +685,7 @@ func (t *installSkillTool) Execute(_ context.Context, args json.RawMessage) (str
 		"scope": string(scope),
 		"path":  path,
 		"runAs": string(runAs),
-		"note":  "Callable now via run_skill({name}) or /" + name + ". Appears in the pinned Skills index on the next launch.",
+		"note":  "Callable immediately in this tool loop via run_skill({name}) or /" + name + ". It will appear in session-context on the next real user turn.",
 	})
 	return string(res), nil
 }
@@ -622,8 +707,8 @@ type SkillFileOptions struct {
 	// writable default for older profiles.
 	ReadOnly bool
 	Color    string // optional display tag; emitted regardless of RunAs
-	// Invocation, when "manual", keeps the written skill out of the pinned
-	// Skills index (see index.go) — invocable by name only, never
+	// Invocation, when "manual", keeps the written skill out of automatic
+	// session-context discovery — invocable by name only, never
 	// model-discovered. Anything else (including empty) is the default "auto".
 	Invocation string
 }

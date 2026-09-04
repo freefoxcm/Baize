@@ -10,13 +10,13 @@ import (
 )
 
 func (a *Agent) repairRawCompleteStepJSON(ctx context.Context, state *turnRuntime, text string) bool {
-	if a == nil || state == nil || state.completeStepJSONRepairs > 0 || !a.hasActiveTodo() || !a.completeStepVisible(ctx) {
+	if a == nil || state == nil || state.terminal.completeStepJSONRepairs > 0 || !a.hasActiveTodo() || !a.completeStepVisible(ctx) {
 		return false
 	}
 	if !rawCompleteStepPayload(text) {
 		return false
 	}
-	state.completeStepJSONRepairs++
+	state.terminal.completeStepJSONRepairs++
 	msg := "Your previous response serialized complete_step arguments as assistant text. Do not execute or repeat that JSON in prose. Reissue it now as exactly one structured complete_step tool call through the tool channel."
 	a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(msg)})
 	return true

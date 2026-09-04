@@ -39,6 +39,9 @@ ask_request = true   # notify when a question is waiting
 # system_prompt_file = "prompts/system.md"   # project paths stay in <workspace>; user paths may fall back to <reasonix home>
 temperature       = 0.0
 # recovery_model = ""               # optional reviewer for low-risk automatic recovery; falls back to guardian_model then main model
+# completion_validation = "enforce" # off | shadow | enforce; default enforce; REASONIX_COMPLETION_VALIDATION_MODE overrides per process
+# shadow observes synchronously and still incurs one evaluator call plus up to 30 seconds of latency
+# completion_evaluator_model = ""   # optional; empty follows the working model so session content stays on it
 # reasoning_language = "auto"   # visible reasoning text: auto|zh|en
 # plan_mode_read_only_commands = ["gh issue view"]   # legacy compatibility only; Plan bash uses Permissions
 compact_ratio       = 0.80  # sole auto trigger; presets 0.70 (active) / 0.80 (recommended default) / 0.85 (late)
@@ -138,7 +141,7 @@ mcp_startup_timeout_seconds = 30   # background initialize + tools/list safety c
 mcp_call_timeout_seconds = 300   # default MCP call safety cap; per-plugin/tool overrides may raise it
 
 [tools.background_jobs]
-stalled_warning_seconds = 900   # warn once per background job after this many quiet seconds; 0 disables
+stalled_warning_seconds = 900   # heads-up once per background job after this many quiet seconds; a quiet job is not necessarily stuck; 0 disables
 
 # Sandbox confinement bounds the blast radius of tool calls. Writers may only
 # modify workspace_root (empty = current directory) plus allow_write. forbid_read

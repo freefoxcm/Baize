@@ -182,7 +182,7 @@ func TestServePublicLoginAssetRoutes(t *testing.T) {
 		t.Run(test.path, func(t *testing.T) {
 			for _, method := range []string{http.MethodGet, http.MethodHead} {
 				recorder := httptest.NewRecorder()
-				handler.ServeHTTP(recorder, httptest.NewRequest(method, test.path, nil))
+				handler.ServeHTTP(recorder, localTestRequest(method, test.path, nil))
 				if recorder.Code != http.StatusOK {
 					t.Fatalf("%s status = %d, want 200", method, recorder.Code)
 				}

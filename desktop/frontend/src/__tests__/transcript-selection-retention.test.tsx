@@ -81,11 +81,13 @@ function Harness({
   tabId,
   onReady,
   setMode,
+  cancelStreamingScroll,
   virtualRevision = 0,
 }: {
   tabId: string;
   onReady: (api: RetentionApi) => void;
   setMode: (mode: TranscriptScrollMode, reason?: string) => void;
+  cancelStreamingScroll: () => void;
   virtualRevision?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -99,7 +101,7 @@ function Harness({
     selectableRows,
     scrollRef,
     setScrollMode: setMode,
-    cancelStreamingScroll: () => {},
+    cancelStreamingScroll,
   });
   useLayoutEffect(() => {
     retention.reconcileLogicalFocus();
@@ -135,17 +137,45 @@ console.log("\ntranscript selection retention");
 const root = createRoot(document.getElementById("root")!);
 let api: RetentionApi | null = null;
 let mode: TranscriptScrollMode = "tail-follow";
+const modeTransitions: TranscriptScrollMode[] = [];
+let streamingCancellationCount = 0;
 const onReady = (next: RetentionApi) => { api = next; };
-const setMode = (next: TranscriptScrollMode) => { mode = next; };
+const setMode = (next: TranscriptScrollMode) => {
+  mode = next;
+  modeTransitions.push(next);
+};
+const cancelStreamingScroll = () => { streamingCancellationCount += 1; };
 
 await act(async () => {
-  root.render(<Harness tabId="tab-a" onReady={onReady} setMode={setMode} />);
+  root.render(<Harness tabId="tab-a" onReady={onReady} setMode={setMode} cancelStreamingScroll={cancelStreamingScroll} />);
 });
+modeTransitions.length = 0;
+const plainClickTarget = document.querySelector<HTMLElement>("[data-row-key='row-a'] [data-transcript-selectable]")!;
+await act(async () => {
+  plainClickTarget.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+  document.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, button: 0 }));
+});
+eq(transcriptSelectionStore.getSnapshot().mode, "none", "plain click clears its provisional native selection");
+eq(modeTransitions, [], "plain click never acquires or releases selection scroll ownership");
+eq(streamingCancellationCount, 0, "plain click keeps the settled reader transaction intact");
+
+modeTransitions.length = 0;
 await selectAcrossRows();
 eq(mode, "manual", "settled native selection releases scroll ownership without delayed anchor reconciliation");
+eq(modeTransitions, ["selection", "manual"], "a real native selection acquires ownership before releasing it");
+eq(streamingCancellationCount, 1, "a real native selection cancels streaming follow exactly once");
+modeTransitions.length = 0;
+await act(async () => {
+  plainClickTarget.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+  document.getSelection()?.removeAllRanges();
+  document.dispatchEvent(new window.Event("selectionchange"));
+  document.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, button: 0 }));
+});
+eq(transcriptSelectionStore.getSnapshot().mode, "none", "plain click dismisses a previously settled native selection");
+eq(modeTransitions, [], "plain click after a settled selection does not release reader ownership again");
 
 await act(async () => {
-  root.render(<Harness tabId="tab-b" onReady={onReady} setMode={setMode} />);
+  root.render(<Harness tabId="tab-b" onReady={onReady} setMode={setMode} cancelStreamingScroll={cancelStreamingScroll} />);
 });
 await drainFrames();
 eq(mode, "tail-follow", "tab reset rejects delayed selection settle callbacks");
@@ -183,19 +213,19 @@ await act(async () => {
 });
 eq(transcriptSelectionStore.getSnapshot().mode, "logical-dragging", "cross-row selection promotes before the pointer gesture settles");
 await flushFramesOnce();
-eq(frames.size, 1, "loaded-history boundary schedules one final focus reconciliation");
+eq(frames.size, 2, "loaded-history boundary keeps edge observation and focus reconciliation alive");
 await flushFramesOnce();
-eq(frames.size, 1, "the final focus reconciliation waits for the virtual DOM commit");
+eq(frames.size, 2, "focus reconciliation waits while edge observation watches for an extent rebound");
 await flushFramesOnce();
-eq(frames.size, 0, "edge scrolling stops scheduling frames at the loaded-history boundary");
+eq(frames.size, 2, "a false loaded-history boundary cannot strand the active drag");
 
 committedCaretOffset = 2;
 await act(async () => {
-  root.render(<Harness tabId="tab-b" onReady={onReady} setMode={setMode} virtualRevision={1} />);
+  root.render(<Harness tabId="tab-b" onReady={onReady} setMode={setMode} cancelStreamingScroll={cancelStreamingScroll} virtualRevision={1} />);
 });
 api?.reconcileLogicalFocus();
 await flushFramesOnce();
-eq(frames.size, 1, "a coalesced virtual commit retains one post-commit focus reconciliation");
+eq(frames.size, 2, "a coalesced virtual commit retains focus reconciliation beside edge observation");
 await flushFramesOnce();
 eq(transcriptSelectionStore.getSnapshot().focus?.textOffset, 2, "virtual range commit re-resolves the logical focus without relying on DOM mutation delivery");
 
@@ -206,6 +236,9 @@ await act(async () => {
 eq(transcriptSelectionStore.getSnapshot().mode, "logical-settled", "cross-row selection settles in logical mode when caret APIs are available");
 eq(transcriptSelectionStore.getSnapshot().focus?.textOffset, 5, "pointerup applies its exact final focus before settling");
 eq(mode, "manual", "settled logical selection releases scroll ownership");
+modeTransitions.length = 0;
+await act(async () => transcriptSelectionStore.clear("logical-action-complete"));
+eq(modeTransitions, [], "clearing a settled logical selection does not release reader ownership again");
 
 await act(async () => {
   first.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 0, clientY: 10 }));

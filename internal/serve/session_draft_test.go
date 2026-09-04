@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 )
@@ -18,7 +19,7 @@ func TestSessionsSynthesizesCurrentDraftWithoutCreatingTranscript(t *testing.T) 
 	draftPath := filepath.Join(dir, "session-draft.jsonl")
 	ctrl := control.New(control.Options{SessionDir: dir, SessionPath: draftPath, Label: "test"})
 	server := New(ctrl, NewBroadcaster(), config.ServeConfig{})
-	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	req := localTestRequest(http.MethodGet, "/sessions", nil)
 	rec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -34,7 +35,7 @@ func TestSessionsSynthesizesCurrentDraftWithoutCreatingTranscript(t *testing.T) 
 	if err := json.Unmarshal(rec.Body.Bytes(), &sessions); err != nil {
 		t.Fatal(err)
 	}
-	if len(sessions) != 1 || sessions[0].Path != draftPath || sessions[0].Title != "新会话" || !sessions[0].Current || !sessions[0].Draft || sessions[0].Turns != 0 {
+	if len(sessions) != 1 || sessions[0].Path != agent.CanonicalSessionPath(draftPath) || sessions[0].Title != "新会话" || !sessions[0].Current || !sessions[0].Draft || sessions[0].Turns != 0 {
 		t.Fatalf("sessions = %#v", sessions)
 	}
 	if _, err := filepath.Glob(filepath.Join(dir, "*.jsonl")); err != nil {
@@ -60,7 +61,7 @@ func TestNewSessionDefaultModelBuildFailureKeepsCurrentController(t *testing.T) 
 	server.buildController = func(context.Context, string) (*control.Controller, error) {
 		return nil, errors.New("builder unavailable")
 	}
-	req := httptest.NewRequest(http.MethodPost, "/new", nil)
+	req := localTestRequest(http.MethodPost, "/new", nil)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)

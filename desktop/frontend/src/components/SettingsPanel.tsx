@@ -1,10 +1,11 @@
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ArrowRight, BrainCircuit, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
 import { asArray } from "../lib/array";
+import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { useDeferredClose } from "../lib/useMountTransition";
-import { app, openExternal } from "../lib/bridge";
+import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, openExternal } from "../lib/bridge";
 import { normalizeLangPref, useI18n, useT, type DictKey, type LangPref } from "../lib/i18n";
 import { apiKeyEnvFromProviderName, createLatestRequestGate, inferredVisionModels, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerModelContextWindowIsSmall, providerRequiresKey } from "../lib/providerModels";
 import { cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, shouldSkipAutoRefresh } from "../lib/providerModelCache";
@@ -73,7 +74,8 @@ import { Tooltip } from "./Tooltip";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { getGenerativePreset, setGenerativePreset, generativeMusic, type GenerativePreset } from "../lib/generative-music";
 import { SoundSelect } from "./SoundSelect";
-import { getSuccessPreference, setSuccessPreference, getAttentionPreference, setAttentionPreference, playSuccessChime, playAttentionChime, type SoundWavPref } from "../lib/sound";
+import { getSuccessPreference, setSuccessPreference, getAttentionPreference, setAttentionPreference, getNotificationVolume, setNotificationVolume as persistNotificationVolume, playSuccessChime, playAttentionChime, type SoundWavPref } from "../lib/sound";
+import { NotificationVolumeSlider } from "./NotificationVolumeSlider";
 import { ModalCloseButton } from "./ModalCloseButton";
 import { ShortcutComboDisplay } from "./ShortcutComboDisplay";
 import { SettingsNavigation, SETTINGS_NAV_TABS } from "./SettingsNavigation";
@@ -1378,6 +1380,7 @@ export function normalizeProviderView(p: ProviderView): ProviderView {
     headers: normalizeStringMap(p.headers),
     extraBody: normalizeExtraBodyMap(p.extraBody),
     authHeader: Boolean(p.authHeader),
+    noProxy: Boolean(p.noProxy),
     reasoningProtocol: normalizeReasoningProtocol(p.reasoningProtocol),
     thinking: normalizeThinkingMode(p.thinking),
     webSearch: Boolean(p.webSearch),
@@ -1644,10 +1647,11 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   const [genMusicPreset, setGenMusicPreset] = useState<GenerativePreset>(getGenerativePreset());
   const [soundPref, setSoundPref] = useState<SoundWavPref>(getSuccessPreference());
   const [attentionPref, setAttentionPref] = useState<SoundWavPref>(getAttentionPreference());
+  const [notificationVolume, setNotificationVolume] = useState(getNotificationVolume);
   const [soundExpanded, setSoundExpanded] = useState(false);
   const statusBarStyle = normalizeStatusBarStyle(s.statusBarStyle);
   const statusBarItems = normalizeStatusBarItems(s.statusBarItems);
-  const soundStatus = summarizeSoundStatus(genMusicPreset, soundPref, attentionPref);
+  const soundStatus = summarizeSoundStatus(genMusicPreset, soundPref, attentionPref, notificationVolume);
   const applyStatusBarItems = (items: StatusBarItemId[]) => {
     const contentScrollTop = document.querySelector<HTMLElement>(".settings-center__content")?.scrollTop ?? 0;
     const navScrollTop = document.querySelector<HTMLElement>(".settings-center__nav")?.scrollTop ?? 0;
@@ -1842,6 +1846,13 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
                 />
               </div>
               <div className="settings-sound-row">
+                <span className="settings-sound-row__label">{t("settings.notificationVolume")}</span>
+                <NotificationVolumeSlider
+                  value={notificationVolume}
+                  onChange={(next) => setNotificationVolume(persistNotificationVolume(next))}
+                />
+              </div>
+              <div className="settings-sound-row">
                 <span className="settings-sound-row__label">{t("settings.notificationSoundSuccess")}</span>
                 <SoundSelect
                   value={soundPref}
@@ -1910,8 +1921,14 @@ function summarizeSoundStatus(
   music: GenerativePreset,
   success: SoundWavPref,
   attention: SoundWavPref,
+  notificationVolume: number,
 ): "allOff" | "enabled" | "custom" {
-  const enabledCount = [music !== "off", success !== "off", attention !== "off"].filter(Boolean).length;
+  const notificationsAudible = notificationVolume > 0;
+  const enabledCount = [
+    music !== "off",
+    notificationsAudible && success !== "off",
+    notificationsAudible && attention !== "off",
+  ].filter(Boolean).length;
   if (enabledCount === 0) return "allOff";
   if (enabledCount === 1) return "enabled";
   return "custom";
@@ -4257,8 +4274,8 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
   const compactRatioDraftPercent = Number(compactRatioDraft);
   const compactRatioDraftValid = compactRatioDraft !== ""
     && Number.isFinite(compactRatioDraftPercent)
-    && compactRatioDraftPercent >= 65
-    && compactRatioDraftPercent <= 85;
+    && compactRatioDraftPercent >= COMPACT_RATIO_MIN_PERCENT
+    && compactRatioDraftPercent <= COMPACT_RATIO_MAX_PERCENT;
   const compactRatioDraftDirty = compactRatioDraftValid
     && Math.abs(compactRatioDraftPercent / 100 - compactRatio) > 0.0001;
   const defaultModel = defaultRef.startsWith(`${defaultProvider}/`) ? defaultRef.slice(defaultProvider.length + 1) : "";
@@ -4614,8 +4631,8 @@ function ModelsSection({ s, busy, apply, backgroundApply, initialFocus }: Models
                         id="settings-compact-ratio-custom"
                         className="mem-input set-narrow"
                         type="number"
-                        min={65}
-                        max={85}
+                        min={COMPACT_RATIO_MIN_PERCENT}
+                        max={COMPACT_RATIO_MAX_PERCENT}
                         step={0.1}
                         inputMode="decimal"
                         value={compactRatioDraft}
@@ -4943,7 +4960,6 @@ function proxyModeLabel(mode: ProxyMode, t: ReturnType<typeof useT>): string {
 
 function ProvidersSection({ s, busy, apply }: SectionProps) {
   const t = useT();
-  const defaultProvider = toRef(s.defaultModel, s).split("/")[0];
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddProviderMode>(null);
   const [revealedProvider, setRevealedProvider] = useState<string | null>(null);
@@ -5245,7 +5261,6 @@ function ProvidersSection({ s, busy, apply }: SectionProps) {
             fetching={fetchingProviders.has(group.id)}
             fetchResult={fetchResults[group.id]}
             modelDraft={modelDrafts[group.id]}
-            defaultProvider={defaultProvider}
             editing={editing}
             kinds={s.providerKinds}
             onEdit={setEditing}
@@ -5855,7 +5870,6 @@ export function ProviderAccessCard({
   fetching,
   fetchResult,
   modelDraft,
-  defaultProvider,
   editing,
   kinds,
   onEdit,
@@ -5879,7 +5893,6 @@ export function ProviderAccessCard({
   fetching: boolean;
   fetchResult?: ProviderFetchResult;
   modelDraft?: ProviderModelDraft;
-  defaultProvider: string;
   editing: string | null;
   kinds: string[];
   onEdit: (name: string) => void;
@@ -5901,7 +5914,6 @@ export function ProviderAccessCard({
   const t = useT();
   const editableProvider = group.providers[0];
   const isOpenCodeGoConnection = group.id === "custom:opencode-go";
-  const isDefault = group.providers.some((p) => p.name === defaultProvider);
   const editingProvider = group.providers.find((p) => editing === p.name);
   const upgradeProvider = group.providers.find((p) => p.recommendedUpgradeAvailable);
   const primaryProviderExpanded = Boolean(editableProvider && editing === editableProvider.name);
@@ -5977,7 +5989,6 @@ export function ProviderAccessCard({
           {editableProvider && onDelete && (
             <ProviderAccessMoreMenu
               busy={busy}
-              removeDisabled={isDefault && !group.builtIn}
               builtIn={group.builtIn}
               onRemove={() => onDelete(group.providers)}
             />
@@ -6161,20 +6172,18 @@ function providerProtocolDisplayName(kind: string): string {
 
 function ProviderAccessMoreMenu({
   busy,
-  removeDisabled,
   builtIn,
   onRemove,
 }: {
   busy: boolean;
-  removeDisabled: boolean;
   builtIn: boolean;
   onRemove: () => void | Promise<void>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const disabled = busy || removeDisabled;
-  const tooltip = removeDisabled ? t("settings.cantDeleteDefault") : t("settings.themeGallery.moreActions");
+  const disabled = busy;
+  const tooltip = t("settings.themeGallery.moreActions");
 
   return (
     <div className="provider-access-more">
@@ -6763,6 +6772,7 @@ export function ProviderEditor({
   const [headersDraft, setHeadersDraft] = useState(formatProviderHeaders(initial?.headers));
   const [extraBodyDraft, setExtraBodyDraft] = useState(formatProviderExtraBody(initial?.extraBody));
   const [authHeader, setAuthHeader] = useState(Boolean(initial?.authHeader));
+  const [noProxy, setNoProxy] = useState(Boolean(initial?.noProxy));
   const [keyDraft, setKeyDraft] = useState("");
   const [balanceUrl, setBalanceUrl] = useState(initial?.balanceUrl ?? "");
   // Empty when unset so the placeholder (and its "0 = disabled" hint) reads instead
@@ -6874,6 +6884,7 @@ export function ProviderEditor({
         headers: effectiveHeaders,
         extraBody: effectiveExtraBody,
         authHeader,
+        noProxy,
         keySet: Boolean(keyDraft.trim()) || (initial?.keySet ?? false),
         balanceUrl: balanceUrl.trim(),
         contextWindow: Number(ctx) || 0,
@@ -6930,6 +6941,7 @@ export function ProviderEditor({
       headers: effectiveHeaders,
       extraBody: effectiveExtraBody,
       authHeader,
+      noProxy,
       modelsUrl: effectiveModelsUrl,
       keySet: Boolean(keyDraft.trim()) || (initial?.keySet ?? false),
       balanceUrl: balanceUrl.trim(),
@@ -7093,6 +7105,15 @@ export function ProviderEditor({
           {t("settings.providerAuthHeader")}
         </label>
         <div className="mem-hint">{t("settings.providerAuthHeaderHint")}</div>
+        <label className="set-check">
+          <input
+            type="checkbox"
+            checked={noProxy}
+            onChange={(e) => setNoProxy(e.target.checked)}
+          />
+          {t("settings.providerNoProxy")}
+        </label>
+        <div className="mem-hint">{t("settings.providerNoProxyHint")}</div>
         <label className="set-label">{t("settings.reasoningProtocol")}</label>
         <select className="mem-select" value={reasoningProtocol} onChange={(e) => setReasoningProtocol(e.target.value)}>
           {REASONING_PROTOCOLS.map((protocol) => (
@@ -7690,26 +7711,14 @@ function normalizeHookConfig(h: HookConfigView): HookConfigView {
   };
 }
 
-function effectiveShellLabel(value: string, t: ReturnType<typeof useT>): string {
-  switch (value) {
-    case "git-bash": return t("settings.effectiveShellGitBash");
-    case "pwsh": return t("settings.effectiveShellPwsh");
-    case "powershell": return t("settings.effectiveShellPowershell");
-    case "bash": return t("settings.effectiveShellBash");
-    case "auto": return t("common.auto");
-    default: return value.trim() || t("common.none");
-  }
-}
-
 function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: boolean }) {
   const t = useT();
   const sb = s.sandbox;
   const [root, setRoot] = useState(sb.workspaceRoot);
   const effectiveWriteRoots = asArray(sb.effectiveWriteRoots).filter((path) => String(path).trim());
-  const effectiveShell = effectiveShellLabel(String(sb.effectiveShell || sb.shell || ""), t);
   const set = (next: Partial<typeof sb>) =>
     apply(() => app.SetSandbox(next.bash ?? sb.bash, next.network ?? sb.network, next.workspaceRoot ?? sb.workspaceRoot, next.allowWrite ?? sb.allowWrite, next.shell ?? sb.shell));
-  const reload = () => apply(() => app.ReloadSettings());
+  const reloadSession = () => apply(() => app.ReloadSettings());
 
   return (
     <SettingsSection
@@ -7717,24 +7726,14 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
       description={t("settings.sandboxBoundaryHint")}
       actions={
         <Tooltip label={t("settings.reloadSessionConfigHint")}>
-          <button className="btn btn--small" disabled={busy} title={t("settings.reloadSessionConfigHint")} onClick={() => void reload()}>
+          <button className="btn btn--small" disabled={busy} title={t("settings.reloadSessionConfigHint")} onClick={() => void reloadSession()}>
             <RefreshCw size={14} aria-hidden="true" />
             <span>{t("settings.reloadSessionConfig")}</span>
           </button>
         </Tooltip>
       }
     >
-      <SettingsField label={t("settings.shellInterpreter")}>
-        <select className="mem-select set-grow" value={sb.shell || "auto"} disabled={busy} onChange={(e) => void set({ shell: e.target.value })}>
-          <option value="auto">{windows ? t("settings.shellAutoWindows") : t("settings.shellAuto")}</option>
-          <option value="bash">{t("settings.shellBash")}</option>
-          <option value="powershell">{t("settings.shellPowershell")}</option>
-          <option value="pwsh">{t("settings.shellPwsh")}</option>
-        </select>
-      </SettingsField>
-      <SettingsField label={t("settings.effectiveShell")}>
-        <div className="settings-readonly-field">{effectiveShell}</div>
-      </SettingsField>
+      <ShellInterpreterFields sb={sb} windows={windows} busy={busy} setShell={(prefer) => void apply(() => app.SetShellPreference(prefer))} reloadSession={() => void reloadSession()} />
       <SettingsField label={t("settings.bashSandbox")} hint={windows ? t("settings.bashUnavailableWindows") : undefined}>
         {/* Windows has no OS-level Bash backend and config.BashModeForGOOS fixes
             the effective value to off. Keep the control visibly immutable and

@@ -14,6 +14,7 @@ var English = Messages{
 	FinalReadinessRecovery: "Task work or completion checks are paused. Run /continue-checks to preserve completed evidence and finish the remaining work.",
 	ReadinessContinuing:    "Reasonix is finishing the remaining task work or checks automatically.",
 	RecoveryPaused:         "Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.",
+	CompletionUncertain:    "Completion could not be confirmed. The current result and completed work are kept. Send \"continue\" to resume, or restate what should change.",
 	ReceiptVerified:        "nothing left unverified",
 	ReceiptGapsHeader:      "not verified:",
 	ReceiptRisksHeader:     "declared risks:",
@@ -78,6 +79,7 @@ var English = Messages{
 	RateBandMixed:                          "mixed rates",
 	ChatStatusModelLabel:                   "MODEL",
 	ChatStatusEffortLabel:                  "EFFORT",
+	ChatStatusPresetLabel:                  "PRESET",
 	ChatStatusCacheLabel:                   "CACHE",
 	ChatStatusContextLabel:                 "CTX",
 	ChatStatusCompactLabel:                 "COMPACT",
@@ -98,6 +100,11 @@ var English = Messages{
 	AskSubmitTitle:                         "Submit answers",
 	AskUnanswered:                          "(unanswered)",
 	AskSubmitHint:                          "Enter submits · ← returns to edit",
+	ElicitURLHint:                          "o opens the link · Enter accepts · d declines · Esc cancels",
+	ElicitConfirmOnly:                      "Confirm with Enter; d declines; Esc cancels.",
+	ElicitUnanswered:                       "(unanswered)",
+	ElicitSubmit:                           "Submit",
+	ElicitSubmitHint:                       "Enter edits the field · tab advances · on Submit: Enter accepts, d declines, Esc cancels",
 	ToolApprovalPromptFmt:                  "Permission required\n\nWill call tool %s%s.\n%s\n%s",
 	ToolApprovalChoices:                    "1. Allow once\n2. Allow %s for this session\n3. Always allow %s (save to config)\n4. Deny\nChoose [1/2/3/4] (y/a/p/n also work)",
 	BashPrefixChoices:                      "1. Allow once\n2. Allow %s for this session\n3. Always allow %s (save to config)\n4. Deny\nChoose [1/2/3/4] (y/a/p/n also work)",
@@ -243,6 +250,7 @@ var English = Messages{
 	ClipboardTextPasteFailedFmt:  "paste text failed: %v",
 	ClipboardImagePastingHint:    "Pasting image…",
 	ClipboardImagePasteFailedFmt: "paste image failed: %v",
+	ClipboardPasteEmptyNotice:    "clipboard holds no pasteable text or supported image (PNG/JPEG/GIF/WebP)",
 	MouseCaptureOnHint:           "mouse capture on — in-app drag-select/scrollbar/wheel active",
 	MouseCaptureOffHint:          "mouse capture off — your terminal now handles selection and right-click",
 	MouseCaptureTag:              "native mouse",
@@ -266,7 +274,7 @@ var English = Messages{
 	CmdRename:           "rename a session",
 	CmdModel:            "switch model",
 	CmdStatus:           "show session status",
-	CmdWorkMode:         "deprecated: adaptive standard execution",
+	CmdWorkMode:         "session quality floor: standard or delivery",
 	CmdDocs:             "search version-matched embedded documentation",
 	CmdMemory:           "inspect instructions, memory, and recovery",
 	CmdMigrate:          "retry legacy data migration",
@@ -316,6 +324,8 @@ var English = Messages{
 	ArgEffortHigh:       "deeper reasoning",
 	ArgEffortXHigh:      "extra deep reasoning",
 	ArgEffortMax:        "maximum reasoning",
+	ArgPresetStandard:   "adaptive default posture",
+	ArgPresetDelivery:   "delivery completion gates",
 	ArgThemeCurrent:     "current",
 	ArgLanguageAuto:     "auto-detect from REASONIX_LANG / locale",
 	ArgLanguageEn:       "English",
@@ -600,7 +610,7 @@ Usage:
   baize acp [--model NAME]                           serve Agent Client Protocol over stdio (also: baize --acp)
   baize setup [path]                                 interactive config wizard; writes reasonix.toml (+ .env)
   baize config reasoning-language [auto|zh|en]        configure visible reasoning language
-  baize config compact-ratio [--local] [65..85]       configure automatic compaction threshold
+  baize config compact-ratio [--local] [30..85]       configure automatic compaction threshold
   baize config telemetry [auto|on|off]                configure content-free CLI usage metrics
   baize report [list|show|send|delete] [ID]           review and explicitly send local CLI crash reports
   baize mcp <add|remove|list|import>                 manage MCP servers in reasonix.toml

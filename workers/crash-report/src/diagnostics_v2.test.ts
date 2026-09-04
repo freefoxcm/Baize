@@ -9,18 +9,26 @@ import worker, {
 } from "./index";
 import {
   crashGroups,
+  diagnosticFacets,
   diagnosticWindowWhere,
+  groupDiagnosticSummary,
   reportAggregateStatements,
 } from "./diagnostics_v2";
 import type { Env } from "./env";
 import diagnosticsMigrationSQL from "../migrate-diagnostics-v2.sql?raw";
 import freshSchemaSQL from "../schema.sql?raw";
+import firebaseCrashMigrationSQL from "../migrate-firebase-crash.sql?raw";
+import firebaseCrashCapacityMigrationSQL from "../migrate-firebase-crash-capacity.sql?raw";
 import {
   classifyDiagnosticsV2Schema,
   diagnosticsV2SchemaEntries,
   diagnosticsV2SchemaQuery,
   parseWranglerRows,
 } from "../scripts/apply-diagnostics-v2.mjs";
+import {
+  classifyFirebaseCrashSchema,
+  firebaseCrashSchemaQuery,
+} from "../scripts/apply-firebase-crash.mjs";
 
 const oldReport = {
   kind: "crash",
@@ -31,7 +39,7 @@ const oldReport = {
 } as const;
 
 describe("diagnostics v2 compatibility and privacy", () => {
-  it("fails closed on a partially applied production migration", () => {
+  it("fails closed on active partial state and ignores retired metric-user tables", () => {
     expect(classifyDiagnosticsV2Schema([]).state).toBe("absent");
     const completeRows = (diagnosticsV2SchemaEntries as readonly string[]).map((entry: string) => {
       const split = entry.indexOf(":");
@@ -42,6 +50,13 @@ describe("diagnostics v2 compatibility and privacy", () => {
     expect(partial.state).toBe("partial");
     expect(partial.missing).toEqual([diagnosticsV2SchemaEntries[0]]);
     expect(parseWranglerRows(JSON.stringify([{ results: completeRows }]))).toEqual(completeRows);
+    expect(classifyDiagnosticsV2Schema([
+      ...completeRows,
+      { kind: "column", name: "metric_users.arch" },
+      { kind: "column", name: "cli_metric_users.arch" },
+    ]).state).toBe("complete");
+    expect(diagnosticsV2SchemaEntries.some((entry) => entry.includes("metric_users"))).toBe(false);
+    expect(diagnosticsV2SchemaQuery).not.toMatch(/metric_users/);
   });
 
   it("accepts old reports plus Windows and Linux runtime diagnostics", () => {
@@ -113,14 +128,6 @@ describe("diagnostics v2 compatibility and privacy", () => {
         arch TEXT NOT NULL, os_version TEXT NOT NULL DEFAULT '', opens INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY (date, install_id)
       );
-      CREATE TABLE metric_users (
-        date TEXT NOT NULL, signal TEXT NOT NULL, bucket TEXT NOT NULL, install_id TEXT NOT NULL,
-        version TEXT NOT NULL, os TEXT NOT NULL, PRIMARY KEY (date, signal, bucket, install_id)
-      );
-      CREATE TABLE cli_metric_users (
-        date TEXT NOT NULL, signal TEXT NOT NULL, bucket TEXT NOT NULL, install_id TEXT NOT NULL,
-        version TEXT NOT NULL, os TEXT NOT NULL, PRIMARY KEY (date, signal, bucket, install_id)
-      );
     `;
     const columns = (db: DatabaseSync, table: string) =>
       db.prepare(`PRAGMA table_info(${table})`).all().map((row: Record<string, unknown>) => String(row.name));
@@ -136,8 +143,6 @@ describe("diagnostics v2 compatibility and privacy", () => {
         reports: ["webview2", "web_runtime"],
         pings: ["os_build", "os_revision", "distro_id", "session_type", "runtime_engine", "gpu_mode"],
         cli_pings: ["os_build", "os_revision", "distro_id", "session_type", "runtime_engine", "gpu_mode"],
-        metric_users: ["arch", "os_build", "os_revision", "distro_id", "session_type", "runtime_engine", "gpu_mode", "event_count"],
-        cli_metric_users: ["arch", "os_build", "os_revision", "distro_id", "session_type", "runtime_engine", "gpu_mode", "event_count"],
       };
       for (const [table, expected] of Object.entries(additiveColumns)) {
         expect(columns(migrated, table)).toEqual(expect.arrayContaining(expected));
@@ -147,11 +152,14 @@ describe("diagnostics v2 compatibility and privacy", () => {
       for (const table of ["report_daily", "report_installations", "report_event_dimensions", "diagnostics_meta"]) {
         expect(columns(migrated, table)).toEqual(columns(fresh, table));
       }
-      for (const table of ["cli_pings", "cli_metric_users"]) {
+      for (const table of ["cli_pings"]) {
         expect(columns(runtimeBootstrap, table)).toEqual(columns(fresh, table));
       }
       expect(classifyDiagnosticsV2Schema(
         migrated.prepare(diagnosticsV2SchemaQuery).all(),
+      ).state).toBe("complete");
+      expect(classifyDiagnosticsV2Schema(
+        fresh.prepare(diagnosticsV2SchemaQuery).all(),
       ).state).toBe("complete");
     } finally {
       fresh.close();
@@ -159,6 +167,7 @@ describe("diagnostics v2 compatibility and privacy", () => {
       runtimeBootstrap.close();
     }
     expect(diagnosticsMigrationSQL).not.toMatch(/\bDROP\b/);
+    expect(diagnosticsMigrationSQL).not.toMatch(/ALTER TABLE (?:metric_users|cli_metric_users)\b/);
   });
 
   it("uses a date-leading index for platform impact denominators", () => {
@@ -172,6 +181,25 @@ describe("diagnostics v2 compatibility and privacy", () => {
       expect(plan).not.toMatch(/SCAN pings/);
     } finally {
       db.close();
+    }
+  });
+
+  it("keeps the Firebase outbox migration additive and aligned with fresh installs", () => {
+    const migrated = new DatabaseSync(":memory:");
+    const fresh = new DatabaseSync(":memory:");
+    try {
+      migrated.exec("CREATE TABLE groups (fingerprint TEXT PRIMARY KEY, last_seen TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open')");
+      migrated.exec(firebaseCrashMigrationSQL);
+      expect(classifyFirebaseCrashSchema(migrated.prepare(firebaseCrashSchemaQuery).all()).state).toBe("partial");
+      migrated.exec(firebaseCrashCapacityMigrationSQL);
+      fresh.exec(freshSchemaSQL);
+      expect(classifyFirebaseCrashSchema(migrated.prepare(firebaseCrashSchemaQuery).all()).state).toBe("complete");
+      expect(classifyFirebaseCrashSchema(fresh.prepare(firebaseCrashSchemaQuery).all()).state).toBe("complete");
+      expect(firebaseCrashMigrationSQL).not.toMatch(/\b(?:DROP|ALTER)\b/);
+      expect(firebaseCrashCapacityMigrationSQL).not.toMatch(/\b(?:DROP|ALTER)\b/);
+    } finally {
+      migrated.close();
+      fresh.close();
     }
   });
 });
@@ -236,6 +264,7 @@ describe("diagnostics v2 storage consistency", () => {
       expect.stringContaining("INSERT INTO report_event_dimensions"),
       expect.stringContaining("DELETE FROM reports"),
     ]);
+    expect(committed.every((statement) => !statement.sql.includes("firebase_crash_"))).toBe(true);
   });
 
   it("preserves separate GPU and runtime event dimensions for one installation", () => {
@@ -373,8 +402,168 @@ describe("diagnostics v2 storage consistency", () => {
       runtimeVersion: "", failureKind: "", failureReason: "", recovery: "", gpu: "",
       newLatest: false, regressed: false, windowDays: 7,
     }, "");
-    expect(querySQL).toContain("FROM report_event_dimensions");
+    expect(querySQL).toContain("FROM report_daily");
     expect(querySQL.indexOf("affected_installs DESC")).toBeLessThan(querySQL.indexOf("CASE WHEN status = 'open'"));
     expect(result.results.map((group) => group.fingerprint)).toEqual(["a".repeat(64), "b".repeat(64)]);
+  });
+
+  it("qualifies the development fingerprint in the joined diagnostics query", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    try {
+      sqlite.exec(freshSchemaSQL);
+      const db = {
+        prepare(sql: string) {
+          const statement = sqlite.prepare(sql);
+          return { async all() { return { results: statement.all() }; } };
+        },
+      } as unknown as D1Database;
+      await expect(crashGroups({ DB: db } as unknown as Env, {
+        status: "", source: "", version: "", os: "", platform: "", osBuild: "", arch: "", channel: "",
+        runtimeVersion: "", failureKind: "", failureReason: "", recovery: "", gpu: "",
+        newLatest: false, regressed: false, windowDays: 30,
+      }, "")).resolves.toMatchObject({ results: [] });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("shares the unfiltered ping denominator across diagnostics metrics", async () => {
+    let querySQL = "";
+    const db = {
+      prepare(sql: string) {
+        querySQL = sql;
+        return { async all() { return { results: [] }; } };
+      },
+    } as unknown as D1Database;
+    await crashGroups({ DB: db } as unknown as Env, {
+      status: "", source: "", version: "", os: "", platform: "", osBuild: "", arch: "", channel: "",
+      runtimeVersion: "", failureKind: "", failureReason: "", recovery: "", gpu: "",
+      newLatest: false, regressed: false, windowDays: 30,
+    }, "");
+    expect(querySQL.match(/FROM pings WHERE/g)).toHaveLength(1);
+    expect(querySQL).toContain("CROSS JOIN (SELECT COUNT(DISTINCT install_id) AS installs FROM pings");
+  });
+
+  it("caches diagnostic facets per D1 binding and reports query timing labels", async () => {
+    let prepareCalls = 0;
+    const observations: string[] = [];
+    const db = {
+      prepare() {
+        prepareCalls++;
+        return { async all() { return { results: [] }; } };
+      },
+    } as unknown as D1Database;
+    const env = { DB: db } as unknown as Env;
+    await diagnosticFacets(env, 30, (label) => observations.push(label));
+    const firstCallCount = prepareCalls;
+    await diagnosticFacets(env, 30, (label) => observations.push(label));
+    expect(firstCallCount).toBe(17);
+    expect(prepareCalls).toBe(firstCallCount);
+    expect(observations).toContain("diagnostic_facets.cache");
+  });
+
+  it("uses daily crash rollups when no diagnostic dimensions are filtered", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec(freshSchemaSQL);
+    const fingerprint = "a".repeat(64);
+    sqlite.prepare(
+      `INSERT INTO groups (fingerprint, kind, count, first_seen, last_seen, first_version, last_version, title)
+       VALUES (?1, 'crash', 4, datetime('now'), datetime('now'), 'v1.0.0', 'v1.0.0', 'boom')`,
+    ).run(fingerprint);
+    sqlite.prepare(
+      `INSERT INTO report_daily (date, fingerprint, events, identified_events)
+       VALUES (date('now'), ?1, 4, 3)`,
+    ).run(fingerprint);
+    sqlite.prepare(
+      `INSERT INTO report_installations (date, fingerprint, install_id, version, os, arch)
+       VALUES (date('now'), ?1, 'install-1', 'v1.0.0', 'windows', 'amd64')`,
+    ).run(fingerprint);
+    const d1 = {
+      prepare(sql: string) {
+        const statement = sqlite.prepare(sql);
+        const wrapper: any = {
+          bind(...values: unknown[]) { wrapper.values = values; return wrapper; },
+          values: [] as unknown[],
+          async all() { return { results: statement.all(...wrapper.values) }; },
+        };
+        return wrapper;
+      },
+    } as unknown as D1Database;
+    try {
+      const result = await crashGroups({ DB: d1 } as unknown as Env, {
+        status: "", source: "", version: "", os: "", platform: "", osBuild: "", arch: "", channel: "",
+        runtimeVersion: "", failureKind: "", failureReason: "", recovery: "", gpu: "",
+        newLatest: false, regressed: false, windowDays: 30,
+      }, "");
+      expect(result.results[0]).toMatchObject({
+        fingerprint, affected_installs: 1, window_events: 4, identified_events: 3,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("materializes one group detail window for all diagnostic distributions", async () => {
+    let distributionSQL = "";
+    const db = {
+      prepare(sql: string) {
+        distributionSQL = sql;
+        const statement = {
+          bind() { return statement; },
+          async first() { return { window_events: 1, identified_events: 1, affected_installs: 1 }; },
+          async all() { return { results: [] }; },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    await groupDiagnosticSummary({ DB: db } as unknown as Env, "b".repeat(64));
+    expect(distributionSQL).toContain("WITH window AS MATERIALIZED");
+    expect(distributionSQL.match(/FROM report_event_dimensions/g)).toHaveLength(1);
+    expect(distributionSQL).toContain("ROW_NUMBER() OVER (PARTITION BY facet");
+    expect(distributionSQL).toContain("WHERE rank <= 20");
+  });
+
+  it("bounds each group facet and reads totals from the daily rollups", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec(freshSchemaSQL);
+    const fingerprint = "c".repeat(64);
+    sqlite.prepare(
+      `INSERT INTO report_daily (date, fingerprint, events, identified_events)
+       VALUES (date('now'), ?1, 40, 40)`,
+    ).run(fingerprint);
+    sqlite.prepare(
+      `INSERT INTO report_installations (date, fingerprint, install_id, version, os, arch)
+       VALUES (date('now'), ?1, 'install-1', 'v1.0.0', 'windows', 'amd64')`,
+    ).run(fingerprint);
+    const fact = sqlite.prepare(
+      `INSERT INTO report_event_dimensions
+       (date, fingerprint, install_id, version, os, arch, os_build, os_revision,
+        distro_id, distro_version, kernel_version, session_type, channel,
+        runtime_engine, runtime_version, failure_kind, failure_reason, exit_code, recovery, gpu_mode, events)
+       VALUES (date('now'), ?1, ?2, 'v1.0.0', 'windows', 'amd64', 1, 1, '', '', '', '', 'stable',
+               'webview2', ?3, 'browser_process_exited', 'unexpected', '1', '', 'unknown', 1)`,
+    );
+    for (let i = 0; i < 40; i++) fact.run(fingerprint, `install-${i}`, `runtime-${i}`);
+    const db = {
+      prepare(sql: string) {
+        const statement = sqlite.prepare(sql);
+        const wrapper: any = {
+          values: [] as unknown[],
+          bind(...values: unknown[]) { wrapper.values = values; return wrapper; },
+          async first() { return statement.get(...wrapper.values); },
+          async all() { return { results: statement.all(...wrapper.values) }; },
+        };
+        return wrapper;
+      },
+    } as unknown as D1Database;
+    try {
+      const result = await groupDiagnosticSummary({ DB: db } as unknown as Env, fingerprint);
+      expect(result).toMatchObject({ windowEvents: 40, identifiedEvents: 40, affectedInstalls: 1 });
+      const byFacet = new Map<string, number>();
+      for (const row of result.distributions) byFacet.set(row.facet, (byFacet.get(row.facet) ?? 0) + 1);
+      expect(Math.max(...byFacet.values())).toBeLessThanOrEqual(20);
+    } finally {
+      sqlite.close();
+    }
   });
 });

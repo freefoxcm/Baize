@@ -119,7 +119,7 @@ func foldEconomics(region []provider.Message) bool {
 func estimateMessagesTokens(msgs []provider.Message) int {
 	total := 0
 	for _, m := range msgs {
-		if m.LocalOnly {
+		if m.LocalOnly || IsPinnedContextRevision(m) {
 			continue
 		}
 		total += 4 // chat-message framing overhead
@@ -390,15 +390,15 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
 		}
 	}
 	messages := a.normalizeModelRequestMessages(prefix)
-	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: compactionInstructionWithFocus(instructions)})
+	messages = append(messages, HostGeneratedUserMessage(compactionInstructionWithFocus(instructions)))
 	var schemas []provider.ToolSchema
 	if a.svc.tools != nil {
-		schemas = a.svc.tools.Schemas()
+		schemas = a.providerToolSchemas()
 	}
 	return provider.Request{
 		Messages:    messages,
 		Tools:       schemas,
-		MaxTokens:   summaryOutputMaxTokens,
+		MaxTokens:   a.summaryOutputBudget(),
 		Temperature: provider.OptionalTemperature(a.temperature),
 	}
 }
@@ -418,11 +418,11 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 	}()
 	defer trackPublishedHostStream(ctx, cancel)()
 	req := a.summaryRequest(region, instructions)
-	if err := a.applyAdmissionToRequest(&req); err != nil {
+	if err := a.applySummaryAdmissionToRequest(&req); err != nil {
 		return "", usage, err
 	}
-	if req.MaxTokens > summaryOutputMaxTokens {
-		req.MaxTokens = summaryOutputMaxTokens
+	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
+		req.MaxTokens = budget
 	}
 	if req.MaxTokens < 256 {
 		return "", usage, fmt.Errorf("summary output budget too small (%d tokens)", req.MaxTokens)

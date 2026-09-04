@@ -15,6 +15,7 @@ var ChineseTraditional = Messages{
 	FinalReadinessRecovery: "剩餘任務或收尾檢查已暫停。執行 /continue-checks 可保留已完成證據並繼續剩餘工作。",
 	ReadinessContinuing:    "Reasonix 正在自動完成剩餘任務或檢查。",
 	RecoveryPaused:         "已暫停自動重試。Reasonix 已停止重複嘗試，並保留已完成的工作。傳送「繼續」即可開始新一輪，也可以補充要求來調整方向。",
+	CompletionUncertain:    "完成狀態未確認。目前結果與已完成工作均已保留。傳送「繼續」可接著完成，也可以補充說明需要調整的內容。",
 	ReceiptVerified:        "沒有未經驗證的部分",
 	ReceiptGapsHeader:      "未驗證:",
 	ReceiptRisksHeader:     "已申報的風險:",
@@ -75,6 +76,7 @@ var ChineseTraditional = Messages{
 	RateBandMixed:                          "混合費率",
 	ChatStatusModelLabel:                   "模型",
 	ChatStatusEffortLabel:                  "強度",
+	ChatStatusPresetLabel:                  "預設",
 	ChatStatusCacheLabel:                   "快取",
 	ChatStatusContextLabel:                 "上下文",
 	ChatStatusCompactLabel:                 "壓縮",
@@ -95,6 +97,11 @@ var ChineseTraditional = Messages{
 	AskSubmitTitle:                         "提交答案",
 	AskUnanswered:                          "(未答)",
 	AskSubmitHint:                          "Enter 提交 · ← 返回修改",
+	ElicitURLHint:                          "o 開啟連結 · Enter 接受 · d 拒絕 · Esc 取消",
+	ElicitConfirmOnly:                      "Enter 確認;d 拒絕;Esc 取消。",
+	ElicitUnanswered:                       "(未填寫)",
+	ElicitSubmit:                           "提交",
+	ElicitSubmitHint:                       "Enter 編輯欄位 · tab 下一項 · 提交列:Enter 接受、d 拒絕、Esc 取消",
 	ToolApprovalPromptFmt:                  "需要你的許可\n\n將呼叫工具 %s%s。\n%s\n%s",
 	ToolApprovalChoices:                    "1. 本次允許\n2. 本會話允許 %s\n3. 總是允許 %s（儲存到設定）\n4. 拒絕\n選擇 [1/2/3/4]（相容 y/a/p/n）",
 	BashPrefixChoices:                      "1. 本次允許\n2. 本會話允許 %s\n3. 總是允許 %s（儲存到設定）\n4. 拒絕\n選擇 [1/2/3/4]（相容 y/a/p/n）",
@@ -234,6 +241,7 @@ var ChineseTraditional = Messages{
 	ClipboardTextPasteFailedFmt:  "貼上文字失敗：%v",
 	ClipboardImagePastingHint:    "正在貼上圖片…",
 	ClipboardImagePasteFailedFmt: "貼上圖片失敗：%v",
+	ClipboardPasteEmptyNotice:    "剪貼簿中沒有可粘貼的文字或受支援的圖片（PNG/JPEG/GIF/WebP）",
 	MouseCaptureOnHint:           "滑鼠接管已開啟 — 應用內拖拽選取/捲軸/滾輪生效",
 	MouseCaptureOffHint:          "滑鼠接管已關閉 — 由終端原生處理選取與右鍵選單",
 	MouseCaptureTag:              "終端原生滑鼠",
@@ -255,7 +263,7 @@ var ChineseTraditional = Messages{
 	CmdResume:           "恢復已儲存的會話",
 	CmdModel:            "切換模型",
 	CmdStatus:           "顯示工作階段狀態",
-	CmdWorkMode:         "已棄用：自適應標準執行",
+	CmdWorkMode:         "會話質量底線：standard / delivery",
 	CmdDocs:             "搜尋與目前版本匹配的內建文件",
 	CmdMemory:           "檢視指令、記憶與復原狀態",
 	CmdMigrate:          "重試舊資料遷移",
@@ -303,6 +311,8 @@ var ChineseTraditional = Messages{
 	ArgEffortHigh:       "較深推理",
 	ArgEffortXHigh:      "超高推理",
 	ArgEffortMax:        "最高推理",
+	ArgPresetStandard:   "自適應默認檔",
+	ArgPresetDelivery:   "交付級完成門檻",
 	ArgThemeCurrent:     "當前",
 	ArgLanguageAuto:     "從 REASONIX_LANG / 系統 locale 自動偵測",
 	ArgLanguageEn:       "English",
@@ -541,7 +551,7 @@ var ChineseTraditional = Messages{
   baize acp [--model NAME]                           透過 stdio 提供 Agent Client Protocol（也可用：baize --acp）
   baize setup [path]                                 互動式設定精靈；生成 reasonix.toml（及 .env）
   baize config reasoning-language [auto|zh|en]        設定可見思考語言
-  baize config compact-ratio [--local] [65..85]       設定自動壓縮閾值
+  baize config compact-ratio [--local] [30..85]       設定自動壓縮閾值
   baize config telemetry [auto|on|off]                設定不含內容的 CLI 使用統計
   baize report [list|show|send|delete] [ID]           審閱並明確傳送本機 CLI 當機報告
   baize mcp <add|remove|list|import>                 管理 reasonix.toml 裡的 MCP 伺服器
