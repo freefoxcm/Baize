@@ -50,7 +50,39 @@ func PauseClass(err error) string {
 	if errors.As(err, &recovery) {
 		return "recovery_paused"
 	}
+	var completion *CompletionUncertainError
+	if errors.As(err, &completion) {
+		return "completion_uncertain"
+	}
+	var incompleteRead *IncompleteReadError
+	if errors.As(err, &incompleteRead) {
+		return "incomplete_read"
+	}
 	return ""
+}
+
+// IncompleteReadError is a recoverable run boundary: a read_file result was
+// only partially visible and the host refused to let the model silently treat
+// it as complete. It carries only routing/size metadata, never file contents.
+type IncompleteReadError struct {
+	Reason        string
+	Path          string
+	ToolCallID    string
+	ResultRef     string
+	NextOffset    int
+	ConsumedBytes int
+	TotalBytes    int
+}
+
+func (e *IncompleteReadError) Error() string {
+	if e == nil {
+		return "read_file did not complete"
+	}
+	detail := strings.TrimSpace(e.Reason)
+	if detail == "" {
+		detail = "the retained result still has unread content"
+	}
+	return "read_file did not complete safely: " + detail
 }
 
 // RunPauseInfo is the stable host-facing description of a deliberate Run
@@ -74,11 +106,17 @@ func InspectRunPause(err error) (RunPauseInfo, bool) {
 	if errors.As(err, &budget) {
 		return RunPauseInfo{Kind: "task_budget", Key: budget.axis, HostOwned: true, Reason: budget.detail}, true
 	}
+	var incompleteRead *IncompleteReadError
+	if errors.As(err, &incompleteRead) {
+		return RunPauseInfo{Kind: "incomplete_read", HostOwned: true, Reason: incompleteRead.Reason}, true
+	}
 	return RunPauseInfo{}, false
 }
 
-// ReadinessContinuationClass tells a host whether an observed readiness gap is
-// safe and concrete enough for a bounded synthetic follow-up turn.
+// ReadinessContinuationClass is retained for compatibility with hosts that
+// inspect FinalReadinessError. Ordinary Standard/Delivery turns never use it
+// to schedule another model request; only Goal/approved-Plan orchestration may
+// interpret the advisory class after the visible turn has ended.
 type ReadinessContinuationClass string
 
 const (
@@ -86,16 +124,11 @@ const (
 	// construct FinalReadinessError directly never opt into another model turn.
 	ReadinessContinuationNone ReadinessContinuationClass = ""
 	// ReadinessContinuationGeneric covers ordinary post-write verification and
-	// review gaps. Hosts may give it one bounded follow-up turn.
+	// review gaps for Goal/Plan diagnostics.
 	ReadinessContinuationGeneric ReadinessContinuationClass = "generic"
 	// ReadinessContinuationHighConfidence covers exact or strict, safely
-	// actionable readiness duties. Hosts may give it a second turn only after
-	// host-observable progress.
+	// actionable readiness duties for Goal/Plan diagnostics.
 	ReadinessContinuationHighConfidence ReadinessContinuationClass = "high_confidence"
-	// ReadinessContinuationTaskProgress covers an unfinished Standard write task:
-	// either no requested mutation has been observed yet, or the current turn's
-	// todo list still has unfinished items after a mutation.
-	ReadinessContinuationTaskProgress ReadinessContinuationClass = "task_progress"
 )
 
 // FinalReadinessError reports that the model exhausted its recovery attempts
@@ -136,4 +169,45 @@ func (e *RecoveryPauseError) Error() string {
 		return e.Message
 	}
 	return "Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send \"continue\" to start a fresh attempt, or add instructions to change direction."
+}
+
+// Stable causes for CompletionUncertainError.
+const (
+	// CompletionUncertainContextTool: context-unavailable tools were called
+	// again after the repair instruction.
+	CompletionUncertainContextTool = "context_tool_repeat"
+	// CompletionUncertainValidatorContinue: the completion validator answered
+	// continue again after the run's one continuation.
+	CompletionUncertainValidatorContinue = "validator_continue"
+	// CompletionUncertainValidatorFailed: the completion validator could not
+	// produce a usable verdict (timeout, invalid output, unavailable).
+	CompletionUncertainValidatorFailed = "validator_failed"
+	// CompletionUncertainValidatorUncertain: the validator answered uncertain —
+	// the evidence did not allow a confident judgment.
+	CompletionUncertainValidatorUncertain = "validator_uncertain"
+)
+
+// CompletionUncertainError reports that the host could not confirm a candidate
+// terminal turn: the completion validator returned continue twice, the
+// validator itself failed, or context-unavailable tools were called again
+// after a repair instruction. It is a control-flow signal, not a provider
+// failure: the candidate answer, tool results, and completed work stay in the
+// session, and the user can continue in the next message.
+type CompletionUncertainError struct {
+	// Cause is the stable classifier naming why completion stayed unconfirmed.
+	Cause string
+	// Message is the user-facing English product copy for wire/CLI clients.
+	Message string
+	// Detail is optional expandable diagnostic text; never product copy.
+	Detail string
+}
+
+func (e *CompletionUncertainError) Error() string {
+	if e == nil {
+		return "completion could not be confirmed"
+	}
+	if strings.TrimSpace(e.Message) != "" {
+		return e.Message
+	}
+	return "Completion could not be confirmed. Reasonix kept the current result and all completed work. Send \"continue\" to resume, or restate what should change."
 }

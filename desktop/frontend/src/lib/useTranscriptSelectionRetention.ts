@@ -15,6 +15,7 @@ import {
 } from "./transcriptSelectionStore";
 import { mergeTranscriptSelectableRows } from "./transcriptSelectionText";
 import type { TranscriptScrollMode, TranscriptScrollOwner } from "./transcriptScrollArbiter";
+import { nativeTranscriptBottomTop } from "./transcriptScrollGeometry";
 
 const EDGE_SCROLL_ZONE_PX = 48;
 const EDGE_SCROLL_MIN_PX = 4;
@@ -26,6 +27,7 @@ type TrackedSelection = {
   focusKey: string;
   dragging: boolean;
   logical: boolean;
+  ownsScroll: boolean;
   pointerId: number;
   captureElement: HTMLElement;
 };
@@ -98,16 +100,29 @@ export function useTranscriptSelectionRetention({
 
   const clear = useCallback((reason = "clear") => {
     const tracked = selectionRef.current;
-    if (!tracked && transcriptSelectionStore.getSnapshot().mode === "none") return;
+    const snapshot = transcriptSelectionStore.getSnapshot();
+    if (!tracked && snapshot.mode === "none") return;
+    // A pointerdown only opens a provisional browser selection. Releasing
+    // manual mode here would cancel the reader's retained layout lease and let
+    // Virtuoso contract to a stale pre-wheel anchor on an ordinary click
+    // (#9703/#9711). Only a non-collapsed selection owns scroll state.
+    const releaseScrollOwnership = tracked?.ownsScroll ?? snapshot.mode !== "none";
     lifecycleGenerationRef.current += 1;
     cancelFrames();
     releasePointerCapture(tracked);
     selectionRef.current = null;
     lastPointerRef.current = null;
     transcriptSelectionStore.clear(reason);
-    setScrollMode("manual", reason);
+    if (releaseScrollOwnership) setScrollMode("manual", reason);
     publish();
   }, [cancelFrames, publish, releasePointerCapture, setScrollMode]);
+
+  const claimScrollOwnership = useCallback((tracked: TrackedSelection, reason: string) => {
+    if (tracked.ownsScroll) return;
+    cancelStreamingScroll();
+    tracked.ownsScroll = true;
+    setScrollMode("selection", reason);
+  }, [cancelStreamingScroll, setScrollMode]);
 
   // A fresh user gesture (e.g. the jump-to-bottom click) while a gesture is
   // still marked dragging means the original pointerup was lost (released
@@ -153,10 +168,15 @@ export function useTranscriptSelectionRetention({
       speed = EDGE_SCROLL_MIN_PX + ratio * (EDGE_SCROLL_MAX_PX - EDGE_SCROLL_MIN_PX);
     }
     if (speed === 0) return;
-    const max = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    const max = nativeTranscriptBottomTop(scroll);
     const next = Math.max(0, Math.min(max, scroll.scrollTop + speed));
     if (next === scroll.scrollTop) {
       scheduleLogicalFocus();
+      // A transient Virtuoso extent can clamp the native scrollTop at a false
+      // boundary before the range commit catches up. Keep one edge observer
+      // alive for the active drag so a later extent/range rebound can resume
+      // scrolling and refresh the logical focus without another pointermove.
+      edgeFrameRef.current = requestAnimationFrame(edgeScrollTick);
       return;
     }
     if (!writeOffset("selection-edge-scroll", next)) return;
@@ -181,8 +201,8 @@ export function useTranscriptSelectionRetention({
     );
     if (snapshotId == null) return false;
     tracked.logical = true;
+    claimScrollOwnership(tracked, "cross-row-selection");
     document.getSelection()?.removeAllRanges();
-    setScrollMode("selection", "cross-row-selection");
     try {
       tracked.captureElement.setPointerCapture(tracked.pointerId);
     } catch {
@@ -191,7 +211,7 @@ export function useTranscriptSelectionRetention({
     scheduleEdgeScroll();
     publish();
     return true;
-  }, [publish, scheduleEdgeScroll, setScrollMode, tabId]);
+  }, [claimScrollOwnership, publish, scheduleEdgeScroll, tabId]);
 
   // Virtuoso can recycle the pointer-down row mid-drag. The browser then
   // either collapses the native Range or migrates its anchor into whatever
@@ -234,21 +254,20 @@ export function useTranscriptSelectionRetention({
       : null;
     clear("new-pointer-selection");
     lifecycleGenerationRef.current += 1;
-    cancelStreamingScroll();
     selectionRef.current = {
       anchorKey,
       anchorPoint: anchorPoint?.rowKey === anchorKey ? anchorPoint : null,
       focusKey: anchorKey,
       dragging: true,
       logical: false,
+      ownsScroll: false,
       pointerId: event.pointerId,
       captureElement: event.currentTarget,
     };
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
     transcriptSelectionStore.beginNative(tabId ?? "");
-    setScrollMode("selection", "pointerdown");
     publish();
-  }, [cancelStreamingScroll, clear, publish, setScrollMode, tabId]);
+  }, [clear, publish, tabId]);
 
   useEffect(() => {
     const onSelectionChange = () => {
@@ -271,6 +290,10 @@ export function useTranscriptSelectionRetention({
       if (!anchor || !focus) return;
       tracked.focusKey = focus.rowKey;
       transcriptSelectionStore.updateNativeRange(anchor, focus);
+      // Some WebViews deliver one final selectionchange after pointerup. The
+      // settled range may still update the selection store, but it must not
+      // reacquire scroll ownership after the gesture released it.
+      if (tracked.dragging) claimScrollOwnership(tracked, "native-selection");
       if (anchor.rowKey === focus.rowKey || !supportsCaretPoint(document)) {
         publish();
         return;
@@ -317,6 +340,7 @@ export function useTranscriptSelectionRetention({
         releasePointerCapture(tracked);
         transcriptSelectionStore.settleLogical();
         setScrollMode("manual", "logical-settled");
+        tracked.ownsScroll = false;
         publish();
         return;
       }
@@ -327,6 +351,9 @@ export function useTranscriptSelectionRetention({
         clear("empty-pointerup");
         return;
       }
+      // selectionchange normally claims ownership first, but WebView hosts may
+      // coalesce it with pointerup. Preserve the same transition in that case.
+      claimScrollOwnership(tracked, "native-selection");
       transcriptSelectionStore.settleNative();
       const settledSelection = { ...tracked };
       const generation = lifecycleGenerationRef.current;
@@ -334,6 +361,7 @@ export function useTranscriptSelectionRetention({
       publish();
       if (generation === lifecycleGenerationRef.current && selectionRef.current === settledSelection) {
         setScrollMode("manual", "native-selection-settled");
+        settledSelection.ownsScroll = false;
       }
     };
 
@@ -397,7 +425,7 @@ export function useTranscriptSelectionRetention({
       document.removeEventListener("keydown", onKeyDown);
       scroll?.removeEventListener("scroll", onScroll);
     };
-  }, [clear, promoteDeadNativeGesture, promoteTrackedToLogical, publish, releasePointerCapture, scheduleEdgeScroll, scheduleLogicalFocus, scrollRef, setScrollMode, tabId, updateLogicalFocus]);
+  }, [claimScrollOwnership, clear, promoteDeadNativeGesture, promoteTrackedToLogical, publish, releasePointerCapture, scheduleEdgeScroll, scheduleLogicalFocus, scrollRef, setScrollMode, tabId, updateLogicalFocus]);
 
   useEffect(() => {
     lifecycleGenerationRef.current += 1;
@@ -421,7 +449,7 @@ export function useTranscriptSelectionRetention({
     releasePointerCapture(tracked);
     selectionRef.current = null;
     lastPointerRef.current = null;
-    setScrollMode("manual", "logical-selection-cleared");
+    if (tracked.ownsScroll) setScrollMode("manual", "logical-selection-cleared");
     publish();
   }), [cancelFrames, publish, releasePointerCapture, setScrollMode]);
 

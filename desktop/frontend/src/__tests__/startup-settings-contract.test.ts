@@ -220,6 +220,14 @@ ok(
   "the retired standalone reasoning-summary setting does not return",
 );
 ok(
+  settingsSource.includes('t("settings.notificationVolume")') &&
+    settingsSource.includes("<NotificationVolumeSlider") &&
+    [enLocaleSource, zhLocaleSource, zhTWLocaleSource].every((source) =>
+      source.includes('"settings.notificationVolume"'),
+    ),
+  "sound settings expose the persisted notification volume control in every locale",
+);
+ok(
   !/mockPreset\("deepseek-anthropic",/.test(bridgeSource),
   "browser mock hides the redundant DeepSeek Anthropic preset",
 );
@@ -318,7 +326,7 @@ ok(
 );
 ok(
   /function mockProviderPresetDisplayRank\(id: string\): number \{\s*if \(id === "opencode-go-recommended"\) return -3;\s*if \(id === "deepseek-responses"\) return -2;/.test(bridgeSource),
-  "browser mock orders OpenCode Go before the visible DeepSeek Responses preset",
+  "browser mock keeps OpenCode Go recommended first and DeepSeek Responses next",
 );
 
 const values = new Map<string, string>();

@@ -230,7 +230,7 @@ func TestServeStatusReportsImageInputCapability(t *testing.T) {
 	base := control.New(control.Options{Sink: bc})
 	t.Cleanup(base.Close)
 	recorder := httptest.NewRecorder()
-	New(imageStatusController{SessionAPI: base}, bc, config.ServeConfig{}).Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
+	New(imageStatusController{SessionAPI: base}, bc, config.ServeConfig{}).Handler().ServeHTTP(recorder, localTestRequest(http.MethodGet, "/status", nil))
 	var body map[string]any
 	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
 		t.Fatal(err)

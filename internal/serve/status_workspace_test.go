@@ -17,7 +17,7 @@ func TestServeStatusSeparatesWorkspaceFromSessionStorage(t *testing.T) {
 	ctrl := control.New(control.Options{Sink: bc, SessionDir: sessionDir, WorkspaceRoot: workspaceRoot})
 	t.Cleanup(ctrl.Close)
 	recorder := httptest.NewRecorder()
-	New(ctrl, bc, config.ServeConfig{}).Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
+	New(ctrl, bc, config.ServeConfig{}).Handler().ServeHTTP(recorder, localTestRequest(http.MethodGet, "/status", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"mvdan.cc/sh/v3/syntax"
 
@@ -23,6 +22,7 @@ import (
 	"reasonix/internal/extension/dispatch"
 	"reasonix/internal/instruction"
 	"reasonix/internal/jobs"
+	"reasonix/internal/mcpinteraction"
 	"reasonix/internal/memory"
 	"reasonix/internal/nilutil"
 	"reasonix/internal/plancontract"
@@ -396,6 +396,8 @@ type Agent struct {
 	// tool loop is active, but it must keep this message and everything after it
 	// verbatim so cancellation/crash recovery can retain completed tool pairs.
 	activeTurnCreatedAt atomic.Int64
+	// Pinned revisions are staged after admission and appended with the user turn.
+	pinned pinnedContextRuntime
 }
 
 type repeatFailureRecord struct {
@@ -542,6 +544,10 @@ func (a *Agent) withTurnPreferences(input string) string {
 // Interactive frontends wire one in; headless runs leave it nil.
 func (a *Agent) SetAsker(as Asker) { a.svc.asker = as }
 
+// SetInteractionBroker installs the broker that carries MCP server-initiated
+// elicitations to the user. Headless runs leave it nil so requests cancel.
+func (a *Agent) SetInteractionBroker(b mcpinteraction.Broker) { a.svc.interactionBroker = b }
+
 // SetMemoryQueue installs the sink the remember/forget tools use to apply a
 // memory change in the current session. The controller wires itself in.
 func (a *Agent) SetMemoryQueue(q memory.Queue) { a.svc.memQueue = q }
@@ -572,35 +578,6 @@ func (a *Agent) MutationObserver() *checkpoint.MutationObserver {
 		return nil
 	}
 	return a.svc.mutationObserver
-}
-
-// Session returns the agent's current conversation, useful for persistence
-// hooks that need to read the message log between turns. sessMu serialises this
-// pointer read against SetSession, so a frontend (serve's concurrent /history and
-// /new handlers) can't race the swap. The run loop touches a.session directly and
-// only swaps it via SetSession while idle, so its reads need no lock.
-func (a *Agent) Session() *Session {
-	a.sess.mu.Lock()
-	defer a.sess.mu.Unlock()
-	return a.sess.conversation
-}
-
-// SetSession replaces the agent's conversation wholesale. Used by
-// `reasonix --resume` to load a saved JSONL transcript before the first turn,
-// so the model picks up exactly where it left off. Callers serialise it against a
-// running turn (it only fires while idle); sessMu guards the pointer swap itself.
-func (a *Agent) SetSession(s *Session) {
-	a.sess.reset(s)
-	// The replaced conversation's task is over, but the ledger and the bill
-	// answer to beginRunTurn's scope check rather than to this seam.
-	a.task.repeatFailures = nil
-	a.task.repeatScope = ""
-	a.pending.preserveEvidence = false
-	a.pending.finalReadinessRecovery = false
-	a.pending.finalReadinessRecoveryPrepared = false
-	if s != nil {
-		a.rebuildTodoState(s.Snapshot())
-	}
 }
 
 // LastUsage returns the most recent per-turn token telemetry the provider
@@ -1045,6 +1022,10 @@ type Options struct {
 	// delete_range to the pre-fingerprint full-file fresh-read requirement.
 	// It never enters provider-visible prompts or tool schemas.
 	LegacyAnchorSafetyGate bool
+
+	CompletionEvaluator        CompletionEvaluator
+	CompletionEvaluatorFactory CompletionEvaluatorFactory
+	CompletionValidation       string
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1118,6 +1099,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			recentKeep:             opts.RecentKeep,
 			archiveDir:             opts.ArchiveDir,
 			legacyAnchorSafetyGate: opts.LegacyAnchorSafetyGate,
+			completionAgentConfig:  newCompletionAgentConfig(opts, sink),
 		},
 		sess: sessionRuntime{
 			conversation: session,
@@ -1149,7 +1131,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	}
 	a.SetResponseLanguage(opts.ResponseLanguage)
 	a.SetReasoningLanguage(opts.ReasoningLanguage)
-	a.bindToolResultSessionCapability()
+	a.bindCapabilityObservers()
 	a.maybeArmForkFromEnv()
 	a.maybeWrapForkCaptureProvider()
 	if warnDeprecatedRetention {
@@ -1289,10 +1271,15 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 		// If an extension blocks earlier, release the in-memory reservation so
 		// the still-pending durable marker can authorize a later retry.
 		a.RestoreFinalReadinessRecoveryPreparation()
+		a.discardStagedPinnedContext()
 		return err
 	}
 
-	_, state := a.beginRunTurn(ctx, input)
+	pinned, err := a.preparePinnedRevision()
+	if err != nil {
+		return err
+	}
+	_, state := a.beginRunTurn(ctx, input, pinned)
 	if a.pending.forkRestore != nil {
 		a.pending.forkRestore(state)
 	}
@@ -1309,8 +1296,9 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 }
 
 // ReadinessResult is the host-consumable outcome of the Delivery final-answer
-// readiness check. The Controller reads it after each goal turn; plain turns
-// receive the same outcome as a FinalReadinessError.
+// readiness check. The Controller reads it after each Goal/approved-Plan turn;
+// plain Standard turns end after the visible answer and do not enter the Goal
+// continuation path.
 type ReadinessResult struct {
 	// Ready is true when no missing requirement remains.
 	Ready bool
@@ -1601,9 +1589,6 @@ func parseExecutorHandoff(input string) (task, plan string, ok bool) {
 func looksLikeExecutorHandoffDeferral(answer string) bool {
 	lower := strings.ToLower(strings.TrimSpace(answer))
 	if lower == "" {
-		return true
-	}
-	if looksLikePendingAction(lower) {
 		return true
 	}
 	if containsAnySubstring(lower, executorHandoffDeferralPhrases) {
@@ -2083,7 +2068,7 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 }
 
 func (a *Agent) capturePrefixShape(schemas []provider.ToolSchema) PrefixShape {
-	return CaptureShape(a.systemPrompt(), schemas, a.sess.conversation.RewriteVersion())
+	return captureTurnContextShape(a.systemPrompt(), schemas, a.sess.conversation.RewriteVersion(), a.modelVisibleMessages())
 }
 
 func (a *Agent) systemPrompt() string {
@@ -2151,7 +2136,7 @@ func toProviderToolExecution(in *tool.ShellExecution) *provider.ToolExecution {
 	return out
 }
 
-func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, refreshed bool) {
+func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, refreshed bool) error {
 	t, _, ambiguous := a.svc.tools.ResolveCall(c.Name)
 	ok := t != nil && len(ambiguous) == 0
 	ev := event.Tool{ID: c.ID, Name: c.Name, Args: c.Arguments, ReadOnly: ok && t.ReadOnly(), Refreshed: refreshed}
@@ -2168,7 +2153,7 @@ func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, r
 			ev.Profile = pr.ResolveProfile(json.RawMessage(c.Arguments))
 		}
 	}
-	a.svc.sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+	return event.EmitChecked(a.svc.sink, event.Event{Kind: event.ToolDispatch, Tool: ev})
 }
 
 // emitResolvedToolDispatch upserts the real target classification of a stable
@@ -2753,7 +2738,9 @@ func firstLine(s string) string {
 
 // truncateToolOutput builds the stable provider-visible Content form for a tool
 // result. Under-cap bodies are byte-identical; over-cap bodies keep a tool-aware
-// head and tail while RawContent stores the full local original.
+// preview while RawContent stores the full local original. read_file is special:
+// its preview is a contiguous prefix so an exact recovery cursor can never skip
+// source text that the model did not actually see.
 func truncateToolOutput(s string) (string, string) {
 	return truncateToolOutputFor(s, "", "")
 }
@@ -2763,6 +2750,9 @@ func truncateToolOutput(s string) (string, string) {
 func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 	if len(s) <= maxToolOutputBytes {
 		return s, ""
+	}
+	if toolName == "read_file" {
+		return truncateReadFileOutput(s, toolName, toolCallID)
 	}
 	strategy := snipStrategy{head: 40, tail: 40, headChars: 8000, tailChars: 8000}
 	switch {
@@ -2815,18 +2805,6 @@ func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 	return head + marker + tail, notice
 }
 
-// snapToRuneBoundary returns s[lo:hi] with the bounds nudged outward until
-// both land on rune-start positions.
-func snapToRuneBoundary(s string, lo, hi int) string {
-	for lo > 0 && !utf8.RuneStart(s[lo]) {
-		lo--
-	}
-	for hi < len(s) && !utf8.RuneStart(s[hi]) {
-		hi++
-	}
-	return s[lo:hi]
-}
-
 // finishReasonMessage maps an abnormal finish_reason to a one-line warning,
 // returning ok=false for the normal terminations ("stop", "tool_calls") and a
 // nil usage. The sink renders the message; the "! " prefix is presentation.
@@ -2843,5 +2821,22 @@ func finishReasonMessage(u *provider.Usage) (string, bool) {
 		return "response truncated: model repetition detected", true
 	default:
 		return "", false
+	}
+}
+
+// streamInterruptNotice explains why a provider stream never reached a clean
+// terminal, in words a user can act on. Only the closed StreamInterrupt* enum
+// is rendered — the wrapped transport error can carry URLs or gateway bodies
+// and must not reach the transcript (#9560).
+func streamInterruptNotice(err error) (code, text string) {
+	switch provider.StreamInterruptReason(err) {
+	case provider.StreamInterruptIdleTimeout:
+		return event.NoticeCodeStreamInterruptedIdleTimeout, "model stream stalled: no data arrived before the idle timeout; check the provider gateway or network proxy"
+	case provider.StreamInterruptPrematureEOF:
+		return event.NoticeCodeStreamInterruptedPrematureEOF, "model stream ended before completion; the provider gateway or network proxy dropped the connection"
+	case provider.StreamInterruptConnectionReset:
+		return event.NoticeCodeStreamInterruptedConnectionReset, "model connection was reset; check the provider gateway or network proxy"
+	default:
+		return "", ""
 	}
 }

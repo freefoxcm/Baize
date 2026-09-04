@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,7 +55,7 @@ func mcpHTTPServer(t *testing.T, sse bool) *httptest.Server {
 		progressToken := ""
 		switch req.Method {
 		case "initialize":
-			result = map[string]any{"protocolVersion": protocolVersion, "serverInfo": map[string]any{"name": "h", "version": "0"}}
+			result = map[string]any{"protocolVersion": testLegacyProtocolVersion, "serverInfo": map[string]any{"name": "h", "version": "0"}}
 		case "tools/list":
 			result = map[string]any{"tools": []map[string]any{{
 				"name":        "greet",
@@ -145,46 +145,6 @@ func runHTTPTransportTest(t *testing.T, sse bool) {
 	}
 }
 
-func TestStreamableHTTPAnswersRootsRequestInSSEResponse(t *testing.T) {
-	workspaceRoot := t.TempDir()
-	reply := make(chan struct {
-		ID     string `json:"id"`
-		Result struct {
-			Roots []mcpRoot `json:"roots"`
-		} `json:"result"`
-	}, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var response struct {
-			ID     string `json:"id"`
-			Result struct {
-				Roots []mcpRoot `json:"roots"`
-			} `json:"result"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		reply <- response
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer server.Close()
-	transport, err := newHTTPTransport(Spec{Name: "roots", URL: server.URL, WorkspaceRoot: workspaceRoot})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer transport.close()
-	stream := strings.NewReader("data: {\"jsonrpc\":\"2.0\",\"id\":\"server-roots\",\"method\":\"roots/list\"}\n\n" +
-		"data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n\n")
-	if _, err := transport.readSSEResponse(context.Background(), stream, 1); err != nil {
-		t.Fatal(err)
-	}
-	got := <-reply
-	want := mcpRoots(workspaceRoot)
-	if got.ID != "server-roots" || len(got.Result.Roots) != 1 || got.Result.Roots[0] != want[0] {
-		t.Fatalf("roots response = %+v, want %+v", got, want)
-	}
-}
-
 func TestHTTPTransportJSON(t *testing.T) { runHTTPTransportTest(t, false) }
 func TestHTTPTransportSSE(t *testing.T)  { runHTTPTransportTest(t, true) }
 
@@ -220,6 +180,38 @@ func TestHTTPTransportDoesNotRedirectCredentialsAcrossOrigins(t *testing.T) {
 	}
 	if targetCalls.Load() != 0 {
 		t.Fatalf("cross-origin redirect target received %d requests", targetCalls.Load())
+	}
+}
+
+func TestHTTPTransportDeleteHasBoundedCleanupContext(t *testing.T) {
+	origin, err := url.Parse("https://mcp.example.test/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTripper := &sameOriginMCPRoundTripper{
+		origin: origin,
+		headers: map[string]string{
+			"IJ_MCP_SERVER_PROJECT_PATH": "/redacted/project",
+		},
+		base: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Header.Get("IJ_MCP_SERVER_PROJECT_PATH") == "" || request.Header.Get("Mcp-Session-Id") == "" {
+				t.Error("DELETE did not carry the configured and session headers")
+			}
+			<-request.Context().Done()
+			return nil, request.Context().Err()
+		}),
+	}
+	request, err := http.NewRequest(http.MethodDelete, origin.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Mcp-Session-Id", "must-not-be-logged")
+	started := time.Now()
+	if _, err := roundTripper.RoundTrip(request); err == nil {
+		t.Fatal("hanging DELETE unexpectedly succeeded")
+	}
+	if elapsed := time.Since(started); elapsed > 2500*time.Millisecond {
+		t.Fatalf("hanging DELETE returned after %s, want <=2.5s", elapsed)
 	}
 }
 
@@ -281,7 +273,7 @@ func TestHTTPTransportReinitializesExpiredSession(t *testing.T) {
 			n := initializeCount.Add(1)
 			w.Header().Set("Mcp-Session-Id", fmt.Sprintf("sess-%d", n))
 			writeHTTPRPCResult(w, req.ID, map[string]any{
-				"protocolVersion": protocolVersion,
+				"protocolVersion": testLegacyProtocolVersion,
 				"serverInfo":      map[string]any{"name": "h", "version": "0"},
 			})
 			return
@@ -347,7 +339,7 @@ func TestHTTPTransportReinitializesExpiredSession(t *testing.T) {
 			case <-done:
 				return
 			default:
-				_, _ = client.hasPrompts, client.hasResources
+				_, _ = client.capabilities.prompts, client.capabilities.resources
 			}
 		}
 	}()
@@ -371,34 +363,99 @@ func TestHTTPTransportReinitializesExpiredSession(t *testing.T) {
 	}
 }
 
-func TestHTTPSessionExpiredResponseRecognition(t *testing.T) {
-	tests := []struct {
-		name   string
-		status int
-		body   string
-		want   bool
+func TestHTTPTransportReinitializesPlainAndEmptyExpiredSession(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		contentType string
+		body        string
 	}{
-		{name: "sdk plaintext", status: http.StatusNotFound, body: "session not found\n", want: true},
-		{name: "sdk plaintext case insensitive", status: http.StatusNotFound, body: " Session Not Found ", want: true},
-		{name: "json rpc", status: http.StatusNotFound, body: `{"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"Session not found"}}`, want: true},
-		{name: "ordinary 404", status: http.StatusNotFound, body: "route not found"},
-		{name: "partial plaintext", status: http.StatusNotFound, body: "MCP session not found"},
-		{name: "wrong json code", status: http.StatusNotFound, body: `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Session not found"}}`},
-		{name: "wrong status", status: http.StatusInternalServerError, body: "session not found"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isHTTPSessionExpiredResponse(tt.status, []byte(tt.body)); got != tt.want {
-				t.Fatalf("isHTTPSessionExpiredResponse(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
+		{name: "plain-text", contentType: "text/plain", body: "Streamable HTTP session not found"},
+		{name: "empty-body"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var initializeCount atomic.Int32
+			var toolCallCount atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				var req struct {
+					ID     *int   `json:"id"`
+					Method string `json:"method"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					http.Error(w, "bad body", http.StatusBadRequest)
+					return
+				}
+				if req.Method == "initialize" {
+					n := initializeCount.Add(1)
+					w.Header().Set("Mcp-Session-Id", fmt.Sprintf("session-%d", n))
+					writeHTTPRPCResult(w, req.ID, map[string]any{
+						"protocolVersion": testLegacyProtocolVersion,
+						"serverInfo":      map[string]any{"name": "session-body", "version": "1"},
+					})
+					return
+				}
+				if req.ID == nil {
+					w.WriteHeader(http.StatusAccepted)
+					return
+				}
+				switch req.Method {
+				case "tools/list":
+					writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []any{}})
+				case "tools/call":
+					if toolCallCount.Add(1) == 1 {
+						if test.contentType != "" {
+							w.Header().Set("Content-Type", test.contentType)
+						}
+						w.WriteHeader(http.StatusNotFound)
+						_, _ = w.Write([]byte(test.body))
+						return
+					}
+					writeHTTPRPCResult(w, req.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": "recovered"}}})
+				default:
+					http.Error(w, "unknown method", http.StatusBadRequest)
+				}
+			}))
+			defer srv.Close()
+
+			transport, err := newHTTPTransport(Spec{Name: "session-body", Type: "http", URL: srv.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer transport.close()
+			if _, err := transport.call(t.Context(), "tools/list", map[string]any{}); err != nil {
+				t.Fatalf("tools/list: %v", err)
+			}
+			result, err := transport.call(t.Context(), "tools/call", map[string]any{"name": "work", "arguments": map[string]any{}})
+			if err != nil {
+				t.Fatalf("tools/call: %v", err)
+			}
+			if !containsJSONText(result, "recovered") {
+				t.Fatalf("tools/call result = %s", result)
+			}
+			if got := initializeCount.Load(); got != 2 {
+				t.Fatalf("initialize count = %d, want 2", got)
+			}
+			if got := toolCallCount.Load(); got != 2 {
+				t.Fatalf("tools/call count = %d, want 2", got)
 			}
 		})
 	}
 }
 
-func TestHTTPTransportPlaintextExpiryRecoversConcurrentCallsOnce(t *testing.T) {
+func TestHTTPTransportSessionMissingConcurrentCallsShareOneRebuild(t *testing.T) {
 	var initializeCount atomic.Int32
-	var toolCallCount atomic.Int32
+	var expiredCalls atomic.Int32
+	var totalCalls atomic.Int32
+	releaseExpired := make(chan struct{})
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		var req struct {
 			ID     *int   `json:"id"`
 			Method string `json:"method"`
@@ -409,10 +466,10 @@ func TestHTTPTransportPlaintextExpiryRecoversConcurrentCallsOnce(t *testing.T) {
 		}
 		if req.Method == "initialize" {
 			n := initializeCount.Add(1)
-			w.Header().Set("Mcp-Session-Id", fmt.Sprintf("sess-%d", n))
+			w.Header().Set("Mcp-Session-Id", fmt.Sprintf("concurrent-%d", n))
 			writeHTTPRPCResult(w, req.ID, map[string]any{
-				"protocolVersion": protocolVersion,
-				"serverInfo":      map[string]any{"name": "h", "version": "0"},
+				"protocolVersion": testLegacyProtocolVersion,
+				"serverInfo":      map[string]any{"name": "concurrent", "version": "1"},
 			})
 			return
 		}
@@ -422,145 +479,216 @@ func TestHTTPTransportPlaintextExpiryRecoversConcurrentCallsOnce(t *testing.T) {
 		}
 		switch req.Method {
 		case "tools/list":
-			writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []map[string]any{{
-				"name": "greet", "description": "Greet someone.", "inputSchema": map[string]any{"type": "object"},
-			}}})
+			writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []any{}})
 		case "tools/call":
-			toolCallCount.Add(1)
-			if r.Header.Get("Mcp-Session-Id") == "sess-1" {
-				http.Error(w, "session not found", http.StatusNotFound)
+			totalCalls.Add(1)
+			if r.Header.Get("Mcp-Session-Id") == "concurrent-1" {
+				if expiredCalls.Add(1) == 2 {
+					close(releaseExpired)
+				}
+				select {
+				case <-releaseExpired:
+				case <-r.Context().Done():
+					return
+				}
+				http.Error(w, "Streamable HTTP session not found", http.StatusNotFound)
 				return
 			}
-			writeHTTPRPCResult(w, req.ID, map[string]any{
-				"content": []map[string]any{{"type": "text", "text": "recovered"}},
-			})
+			writeHTTPRPCResult(w, req.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}})
 		default:
 			http.Error(w, "unknown method", http.StatusBadRequest)
 		}
 	}))
 	defer srv.Close()
 
-	host, tools, err := StartAll(context.Background(), []Spec{{Name: "h", Type: "http", URL: srv.URL}})
+	transport, err := newHTTPTransport(Spec{Name: "concurrent", Type: "http", URL: srv.URL})
 	if err != nil {
-		t.Fatalf("StartAll: %v", err)
+		t.Fatal(err)
 	}
-	defer host.Close()
+	defer transport.close()
+	if _, err := transport.call(t.Context(), "tools/list", map[string]any{}); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
 
-	const callers = 8
-	errs := make(chan error, callers)
-	var wg sync.WaitGroup
-	for range callers {
-		wg.Go(func() {
-			got, err := tools[0].Execute(context.Background(), json.RawMessage(`{}`))
-			if err == nil && got != "recovered" {
-				err = fmt.Errorf("Execute = %q, want recovered", got)
-			}
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := transport.call(t.Context(), "tools/call", map[string]any{"name": "work", "arguments": map[string]any{}})
 			errs <- err
-		})
+		}()
 	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent tools/call: %v", err)
 		}
 	}
 	if got := initializeCount.Load(); got != 2 {
-		t.Errorf("initialize count = %d, want 2", got)
+		t.Fatalf("initialize count = %d, want initial + one shared rebuild", got)
 	}
-	if got := toolCallCount.Load(); got != callers+1 {
-		t.Errorf("tools/call count = %d, want %d", got, callers+1)
+	if got := expiredCalls.Load(); got != 2 {
+		t.Fatalf("expired first-generation calls = %d, want 2", got)
 	}
-}
-
-func TestHTTPTransportSessionRecoveryFailureDoesNotLoop(t *testing.T) {
-	tests := []struct {
-		name           string
-		failInitialize bool
-		wantError      string
-		wantToolCalls  int32
-	}{
-		{name: "reinitialize fails", failInitialize: true, wantError: "reinitialize failed", wantToolCalls: 1},
-		{name: "single retry fails", wantError: "retry failed", wantToolCalls: 2},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var initializeCount atomic.Int32
-			var toolCallCount atomic.Int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var req struct {
-					ID     *int   `json:"id"`
-					Method string `json:"method"`
-				}
-				_ = json.NewDecoder(r.Body).Decode(&req)
-				if req.Method == "initialize" {
-					n := initializeCount.Add(1)
-					if n == 2 && tt.failInitialize {
-						http.Error(w, "initialize unavailable", http.StatusServiceUnavailable)
-						return
-					}
-					w.Header().Set("Mcp-Session-Id", fmt.Sprintf("sess-%d", n))
-					writeHTTPRPCResult(w, req.ID, map[string]any{
-						"protocolVersion": protocolVersion,
-						"serverInfo":      map[string]any{"name": "h", "version": "0"},
-					})
-					return
-				}
-				if req.ID == nil {
-					w.WriteHeader(http.StatusAccepted)
-					return
-				}
-				if req.Method == "tools/list" {
-					writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []map[string]any{{
-						"name": "greet", "description": "Greet someone.", "inputSchema": map[string]any{"type": "object"},
-					}}})
-					return
-				}
-				if req.Method == "tools/call" {
-					n := toolCallCount.Add(1)
-					if n == 1 {
-						http.Error(w, "session not found", http.StatusNotFound)
-						return
-					}
-					http.Error(w, "retry failed", http.StatusInternalServerError)
-					return
-				}
-				http.Error(w, "unknown method", http.StatusBadRequest)
-			}))
-			defer srv.Close()
-
-			host, tools, err := StartAll(context.Background(), []Spec{{Name: "h", Type: "http", URL: srv.URL}})
-			if err != nil {
-				t.Fatalf("StartAll: %v", err)
-			}
-			defer host.Close()
-			_, err = tools[0].Execute(context.Background(), json.RawMessage(`{}`))
-			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
-				t.Fatalf("Execute error = %v, want containing %q", err, tt.wantError)
-			}
-			if got := initializeCount.Load(); got != 2 {
-				t.Errorf("initialize count = %d, want 2", got)
-			}
-			if got := toolCallCount.Load(); got != tt.wantToolCalls {
-				t.Errorf("tools/call count = %d, want %d", got, tt.wantToolCalls)
-			}
-		})
+	if got := totalCalls.Load(); got != 4 {
+		t.Fatalf("total tools/call requests = %d, want 2 failed + 2 replayed", got)
 	}
 }
 
-func TestHTTPTransportInitializeExpiryDoesNotRetry(t *testing.T) {
-	var requests atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests.Add(1)
-		http.Error(w, "session not found", http.StatusNotFound)
+func TestHTTPTransportSessionMissingWithoutSessionDoesNotLoop(t *testing.T) {
+	var initializeCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			initializeCount.Add(1)
+		}
+		http.Error(w, "not an MCP endpoint", http.StatusNotFound)
 	}))
 	defer srv.Close()
-	_, _, err := StartAll(context.Background(), []Spec{{Name: "h", Type: "http", URL: srv.URL}})
-	if err == nil {
-		t.Fatal("StartAll succeeded, want initialize failure")
+
+	transport, err := newHTTPTransport(Spec{Name: "missing-endpoint", Type: "http", URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := requests.Load(); got != 1 {
-		t.Fatalf("request count = %d, want 1", got)
+	defer transport.close()
+	if _, err := transport.call(t.Context(), "tools/list", map[string]any{}); err == nil {
+		t.Fatal("tools/list unexpectedly succeeded")
+	}
+	// The SDK performs its bounded modern-to-legacy protocol discovery fallback,
+	// but Reasonix must not treat a sessionless 404 as a lost established session
+	// and start another supervisor generation.
+	if got := initializeCount.Load(); got != 2 {
+		t.Fatalf("initialize requests = %d, want the SDK's two bounded protocol probes", got)
+	}
+	transport.mu.Lock()
+	generations := transport.nextGeneration
+	transport.mu.Unlock()
+	if generations != 1 {
+		t.Fatalf("supervisor generations = %d, want no session rebuild", generations)
+	}
+}
+
+func TestHTTPTransportSessionMissingReplaysAtMostOnce(t *testing.T) {
+	var initializeCount atomic.Int32
+	var toolCallCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			ID     *int   `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+		if req.Method == "initialize" {
+			n := initializeCount.Add(1)
+			w.Header().Set("Mcp-Session-Id", fmt.Sprintf("missing-%d", n))
+			writeHTTPRPCResult(w, req.ID, map[string]any{
+				"protocolVersion": testLegacyProtocolVersion,
+				"serverInfo":      map[string]any{"name": "missing", "version": "1"},
+			})
+			return
+		}
+		if req.ID == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		switch req.Method {
+		case "tools/list":
+			writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []any{}})
+		case "tools/call":
+			toolCallCount.Add(1)
+			http.Error(w, "session gone", http.StatusNotFound)
+		default:
+			http.Error(w, "unknown method", http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	transport, err := newHTTPTransport(Spec{Name: "missing", Type: "http", URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transport.close()
+	if _, err := transport.call(t.Context(), "tools/list", map[string]any{}); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	if _, err := transport.call(t.Context(), "tools/call", map[string]any{"name": "work", "arguments": map[string]any{}}); err == nil {
+		t.Fatal("tools/call unexpectedly succeeded")
+	}
+	if got := initializeCount.Load(); got != 2 {
+		t.Fatalf("initialize count = %d, want 2", got)
+	}
+	if got := toolCallCount.Load(); got != 2 {
+		t.Fatalf("tools/call count = %d, want exactly one replay", got)
+	}
+}
+
+func TestHTTPTransportDoesNotReplayWriterAfterUnknownDisconnect(t *testing.T) {
+	var toolCallCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			ID     *int   `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+		if req.Method == "initialize" {
+			w.Header().Set("Mcp-Session-Id", "unknown-result")
+			writeHTTPRPCResult(w, req.ID, map[string]any{
+				"protocolVersion": testLegacyProtocolVersion,
+				"serverInfo":      map[string]any{"name": "unknown", "version": "1"},
+			})
+			return
+		}
+		if req.ID == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		switch req.Method {
+		case "tools/list":
+			writeHTTPRPCResult(w, req.ID, map[string]any{"tools": []any{}})
+		case "tools/call":
+			toolCallCount.Add(1)
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("response writer does not support hijacking")
+				return
+			}
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+		default:
+			http.Error(w, "unknown method", http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	transport, err := newHTTPTransport(Spec{Name: "unknown", Type: "http", URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.reconnectDelays = nil
+	defer transport.close()
+	if _, err := transport.call(t.Context(), "tools/list", map[string]any{}); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	_, err = transport.call(t.Context(), "tools/call", map[string]any{"name": "work", "arguments": map[string]any{}})
+	if err == nil || !strings.Contains(err.Error(), "was not retried") {
+		t.Fatalf("tools/call error = %v, want unknown-result non-replay error", err)
+	}
+	if got := toolCallCount.Load(); got != 1 {
+		t.Fatalf("tools/call count = %d, want no replay", got)
 	}
 }
 
@@ -605,6 +733,16 @@ func writeHTTPRPCResult(w http.ResponseWriter, id *int, result any) {
 	resp := map[string]any{"jsonrpc": "2.0", "id": *id, "result": result}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func writeRawHTTPRPCResult(w http.ResponseWriter, id json.RawMessage, result any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+}
+
+func writeRawHTTPRPCError(w http.ResponseWriter, id json.RawMessage, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": message}})
 }
 
 func names(ts []tool.Tool) []string {

@@ -108,8 +108,8 @@ func TestCancelledTurnDoneCarriesRetainedUserCheckpoint(t *testing.T) {
 	}
 	controller.Cancel()
 	done := receiveCheckpointTurnDone(t, events)
-	if !done.Cancelled || done.Err == nil {
-		t.Fatalf("cancelled TurnDone = %+v, want cancelled error", done)
+	if !done.Cancelled || done.Err != nil || done.Status != event.TurnInterrupted {
+		t.Fatalf("cancelled TurnDone = %+v, want interrupted terminal without send error", done)
 	}
 	requireCheckpointTurn(t, done, 0)
 }
@@ -132,7 +132,7 @@ func TestCancelBeforeRunnerAddsUserCarriesFallbackCheckpoint(t *testing.T) {
 	requireCheckpointTurn(t, done, 0)
 	messages := session.Snapshot()
 	if len(messages) < 2 || messages[1].Role != provider.RoleUser ||
-		!agent.IsUserAuthoredTurn(agent.UserMessageText(messages[1])) {
+		!agent.IsUserAuthoredTurnMessage(messages[1]) {
 		t.Fatalf("cancel fallback messages = %+v, want a retained user prompt at the checkpoint boundary", messages)
 	}
 }

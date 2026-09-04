@@ -7,6 +7,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/i18n"
+	"reasonix/internal/netclient"
 )
 
 func providerManagerItems(s *providerSetupSession) []menuItem {
@@ -36,13 +37,17 @@ func providerManagerItems(s *providerSetupSession) []menuItem {
 func addProviderToSession(s *providerSetupSession, kind string) bool {
 	var result providerPromptResult
 	var err error
+	var proxy netclient.ProxySpec
+	if s != nil && s.cfg != nil {
+		proxy = s.cfg.NetworkProxySpec()
+	}
 	switch kind {
 	case "anthropic":
-		result, err = promptAnthropicProvider()
+		result, err = promptAnthropicProvider(proxy)
 	case "responses":
-		result, err = promptResponsesProvider()
+		result, err = promptResponsesProvider(proxy)
 	default:
-		result, err = promptCustomProvider()
+		result, err = promptCustomProvider(proxy)
 	}
 	if err != nil {
 		if !errors.Is(err, errCancelled) {

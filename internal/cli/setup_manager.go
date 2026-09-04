@@ -14,6 +14,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/i18n"
+	"reasonix/internal/netclient"
 )
 
 type providerSetupSession struct {
@@ -606,7 +607,11 @@ func testAndRefreshProvider(s *providerSetupSession, p config.ProviderEntry) {
 	p.ResolveAPIKeyFromProcessEnvForProbe()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	models, err := p.FetchModels(ctx)
+	var proxy netclient.ProxySpec
+	if s.cfg != nil {
+		proxy = s.cfg.NetworkProxySpec()
+	}
+	models, err := p.FetchModelsWithProxy(ctx, proxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, i18n.M.FetchModelsFailedFmt+"\n", p.Name, err)
 		return

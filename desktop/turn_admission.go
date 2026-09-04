@@ -43,7 +43,7 @@ func (a *App) beginTabTurn(tabID string, reclaim bool, submissionID ...string) (
 			return nil, nil, readOnlyChannelErr()
 		}
 		if err := a.workspaceRuntimeAdmissionErr(tab, ctrl); err != nil {
-			return nil, nil, a.workspaceNotReadyErr(tab)
+			return nil, nil, err
 		}
 		// Slow workspace repair stays outside the runtime admission barrier.
 		if err := a.ensureTabControllerWorkspace(tab); err != nil {
@@ -95,6 +95,15 @@ func (a *App) beginTabTurn(tabID string, reclaim bool, submissionID ...string) (
 		if tab.sink != nil && !tab.sink.tryBeginTurn(submissionID...) {
 			abort()
 			return nil, nil, control.ErrTurnRunning
+		}
+		if metadata, ok := ctrl.(interface {
+			SetTurnEventRoutingMetadata(runtimeEpoch, submissionID string)
+		}); ok {
+			epoch := ""
+			if tab.sink != nil {
+				epoch = tab.sink.runtimeEpochSnapshot()
+			}
+			metadata.SetTurnEventRoutingMetadata(epoch, firstSubmissionID(submissionID))
 		}
 		return &tabTurnAdmission{app: a, tab: tab}, ctrl, nil
 	}

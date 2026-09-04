@@ -71,7 +71,7 @@ func TestQualityFloorEndpointRejectsInvalidAndRunningSwitch(t *testing.T) {
 	path := filepath.Join(dir, "quality.jsonl")
 	srv, _ := newApprovalTestServer(t, dir, path)
 
-	resp := postQualityFloor(t, srv.URL, "economy")
+	resp := postQualityFloor(t, srv.URL, "turbo")
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid floor status = %d, want 400", resp.StatusCode)

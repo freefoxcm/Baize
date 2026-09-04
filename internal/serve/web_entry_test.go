@@ -90,7 +90,7 @@ func TestServeBaizeAssetRoutes(t *testing.T) {
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			handler.ServeHTTP(recorder, localTestRequest(http.MethodGet, tc.path, nil))
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("GET %s status = %d, want 200", tc.path, recorder.Code)
 			}
@@ -336,7 +336,7 @@ func TestServePDFJSAssetRoutes(t *testing.T) {
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			handler.ServeHTTP(recorder, localTestRequest(http.MethodGet, tc.path, nil))
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("GET %s status = %d, want 200", tc.path, recorder.Code)
 			}
@@ -353,7 +353,7 @@ func TestServePDFJSAssetRoutes(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/assets/pdfjs/missing.mjs", nil))
+	handler.ServeHTTP(recorder, localTestRequest(http.MethodGet, "/assets/pdfjs/missing.mjs", nil))
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("missing PDF.js asset status = %d, want 404", recorder.Code)
 	}

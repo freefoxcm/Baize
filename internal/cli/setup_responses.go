@@ -9,10 +9,11 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/i18n"
+	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
 )
 
-func promptResponsesProvider() (providerPromptResult, error) {
+func promptResponsesProvider(proxy netclient.ProxySpec) (providerPromptResult, error) {
 	methodIdx, err := selectOne(i18n.M.ResponsesAddMethodLabel, []menuItem{
 		{name: i18n.M.CustomMethodManual},
 		{name: i18n.M.CustomMethodURL},
@@ -23,7 +24,7 @@ func promptResponsesProvider() (providerPromptResult, error) {
 	if methodIdx == 0 {
 		return promptResponsesProviderManual()
 	}
-	return promptResponsesProviderFromURL()
+	return promptResponsesProviderFromURL(proxy)
 }
 
 func promptResponsesProviderManual() (providerPromptResult, error) {
@@ -62,7 +63,7 @@ func promptResponsesProviderManualWithName(in *bufio.Scanner, baseURL, providerN
 	return newProviderPromptResult([]config.ProviderEntry{entry}, keyEnv, apiKey), nil
 }
 
-func promptResponsesProviderFromURL() (providerPromptResult, error) {
+func promptResponsesProviderFromURL(proxy netclient.ProxySpec) (providerPromptResult, error) {
 	in := bufio.NewScanner(os.Stdin)
 	fmt.Println()
 	baseURL := ask(in, os.Stdout, i18n.M.CustomPromptBaseURL, "")
@@ -76,7 +77,7 @@ func promptResponsesProviderFromURL() (providerPromptResult, error) {
 	fmt.Printf("  %s\n", dim(fmt.Sprintf(i18n.M.FetchingModelsFmt, "responses")))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	models, err := fetchModelListCompat(ctx, baseURL, apiKey)
+	models, err := fetchModelListCompat(ctx, baseURL, apiKey, proxy)
 	if err != nil || len(models) == 0 {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s\n", dim(fmt.Sprintf(i18n.M.FetchModelsFailedFmt, "responses", err)))

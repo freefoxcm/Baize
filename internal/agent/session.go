@@ -94,6 +94,52 @@ func (s *Session) Add(m provider.Message) {
 	s.version++
 }
 
+// AddBatch appends one logical transcript batch under a single lock. Turn
+// admission uses it for an optional host context revision plus the real user
+// message so autosave can never observe only half of the admitted boundary.
+func (s *Session) AddBatch(messages ...provider.Message) {
+	if s == nil || len(messages) == 0 {
+		return
+	}
+	s.mu.Lock()
+	s.Messages = append(s.Messages, messages...)
+	s.version++
+	s.mu.Unlock()
+}
+
+// SetLeadingSystemPrompt updates or sets the leading system prompt message.
+func (s *Session) SetLeadingSystemPrompt(prompt string) {
+	s.SetLeadingSystemPromptWithReason(prompt, "system_prompt_refresh")
+}
+
+// SetLeadingSystemPromptWithReason refreshes the authoritative system prompt
+// and records the provider-visible rewrite boundary exactly once. It is used
+// for low-frequency host prompt migrations, never ordinary pinned-context
+// updates (which append user-role revisions instead).
+func (s *Session) SetLeadingSystemPromptWithReason(prompt, reason string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.Messages) > 0 && s.Messages[0].Role == provider.RoleSystem {
+		if s.Messages[0].Content == prompt {
+			return false
+		}
+		s.Messages[0].Content = prompt
+	} else if prompt != "" {
+		s.Messages = append([]provider.Message{{Role: provider.RoleSystem, Content: prompt}}, s.Messages...)
+	} else {
+		return false
+	}
+	s.rewriteVersion++
+	if reason = strings.TrimSpace(reason); reason != "" {
+		s.pendingContentReasons = append(s.pendingContentReasons, reason)
+	}
+	s.version++
+	return true
+}
+
 // ConsumeFinalReadinessRecovery marks the newest pending readiness checkpoint
 // consumed before any next user turn (explicit recovery or ordinary follow-up).
 // This is local metadata only, so the rewrite does not alter provider bytes or
@@ -116,7 +162,7 @@ func (s *Session) ConsumeFinalReadinessRecovery() bool {
 			s.version++
 			return true
 		}
-		if message.Role == provider.RoleUser && IsUserAuthoredTurn(message.Content) {
+		if IsUserAuthoredTurnMessage(*message) {
 			return false
 		}
 	}
@@ -140,7 +186,7 @@ func (s *Session) AddDecisionReceipt(receipt *provider.DecisionReceipt) {
 	defer s.mu.Unlock()
 	//nolint:modernize // slices.Backward yields element copies; this body writes through the index.
 	for i := len(s.Messages) - 1; i >= 0; i-- {
-		if s.Messages[i].Role == provider.RoleUser && !s.Messages[i].LocalOnly {
+		if IsUserAuthoredTurnMessage(s.Messages[i]) {
 			break
 		}
 		if s.Messages[i].Role != provider.RoleAssistant || s.Messages[i].LocalOnly {
@@ -299,9 +345,9 @@ func (s *Session) DrainContentRewriteReasons() []string {
 }
 
 // NoteContentRewrite queues a provider-visible prefix-change reason without
-// mutating Messages. Projection installs use this so cache diagnostics still
-// attribute the next request's miss to compaction while the canonical
-// transcript stays intact.
+// mutating Messages. Projection installs and resume-time system migrations use
+// this so cache diagnostics attribute the next request's miss while the
+// canonical transcript and its persistence baseline stay intact.
 func (s *Session) NoteContentRewrite(reason string) {
 	if s == nil || reason == "" {
 		return

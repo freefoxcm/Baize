@@ -47,7 +47,7 @@ func TestServeRejectsNonJSONPatch(t *testing.T) {
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc})
 	handler := New(ctrl, bc, config.ServeConfig{}).Handler()
-	req := httptest.NewRequest(http.MethodPatch, "/settings", strings.NewReader(`{"revision":"stale"}`))
+	req := localTestRequest(http.MethodPatch, "/settings", strings.NewReader(`{"revision":"stale"}`))
 	req.Header.Set("Content-Type", "text/plain")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

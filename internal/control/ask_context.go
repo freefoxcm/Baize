@@ -28,8 +28,12 @@ func (c *Controller) askWithContext(ctx context.Context, reviewContext string, q
 	defer c.approval.promptMu.Unlock()
 
 	c.approval.promptEmitMu.Lock()
+	if err := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, ItemID: id, Ask: event.Ask{ID: id, Context: reviewContext, Questions: questions}}); err != nil {
+		c.approval.promptEmitMu.Unlock()
+		c.approval.cancelAsk(id)
+		return nil, err
+	}
 	c.approval.markAskEmitted(id)
-	c.sink.Emit(event.Event{Kind: event.AskRequest, Ask: event.Ask{ID: id, Context: reviewContext, Questions: questions}})
 	c.approval.promptEmitMu.Unlock()
 
 	waitCtx, cancelWait := c.approval.waitContext(ctx)

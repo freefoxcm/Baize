@@ -135,8 +135,9 @@ const tabA = tabMeta("tab-a", { active: true });
 const tabB = tabMeta("tab-b");
 const tabC = tabMeta("tab-c");
 const tabR = tabMeta("tab-r", { running: true, cancellable: true });
+const tabAsk = tabMeta("tab-ask", { workspaceRoot: "/work/ask", topicId: "topic-ask", sessionPath: "/sessions/ask.jsonl" });
 let backendActiveId = "tab-a";
-const tabsById = new Map([tabA, tabB, tabC, tabR].map((tab) => [tab.id, tab]));
+const tabsById = new Map([tabA, tabB, tabC, tabR, tabAsk].map((tab) => [tab.id, tab]));
 const eventHandlers: Array<(e: WireEvent) => void> = [];
 const readyHandlers: Array<(tabId?: string) => void> = [];
 const topicActivationHandlers: Array<(e: TopicActivationEvent) => void> = [];
@@ -146,6 +147,10 @@ const requestIdByTab = new Map<string, string>();
 // When true, the mock emits starting+ready synchronously BEFORE returning the
 // ticket (exercises the terminal-event stash path).
 let eagerActivationEvents = false;
+let failedHistoryTabId = "";
+const transientHistoryFailures = new Map<string, { remaining: number; beforeThrow?: () => Promise<void> }>();
+let failSetActiveTabId = "";
+let restoredTabSeq = 0;
 
 function emitActivation(event: TopicActivationEvent): void {
   for (const handler of topicActivationHandlers) handler(event);
@@ -153,6 +158,7 @@ function emitActivation(event: TopicActivationEvent): void {
 
 function historyFor(tabID: string): HistoryMessage[] {
   if (tabID === "tab-r") return [{ role: "user", content: "帮我查询，现在我链接的 deep" }];
+  if (tabID.startsWith("tab-c-restored-")) return [{ role: "user", content: "history tab-c" }];
   return [{ role: "user", content: `history ${tabID}` }];
 }
 
@@ -173,6 +179,7 @@ window.runtime = {
 window.go = {
   main: {
     App: {
+      RegisterNavigationIntent: async () => {},
       ListTabs: async () => Array.from(tabsById.values()).map((tab) => ({ ...tab, active: tab.id === backendActiveId })),
       MetaForTab: async (tabID: string) => metaFor(tabsById.get(tabID) ?? tabA),
       ContextUsageForTab: async () => context,
@@ -181,7 +188,16 @@ window.go = {
       JobsForTab: async () => jobs,
       CheckpointsForTab: async () => checkpoints,
       HistoryForTab: async (tabID: string) => historyFor(tabID),
-      HistorySliceForTab: async (tabID: string, req: HistorySliceRequest) => historySliceFromMessages(tabID, historyFor(tabID), req),
+      HistorySliceForTab: async (tabID: string, req: HistorySliceRequest) => {
+        if (tabID === failedHistoryTabId) throw new Error(`/private/${tabID}/history.jsonl could not be read`);
+        const transientFailure = transientHistoryFailures.get(tabID);
+        if (transientFailure && transientFailure.remaining > 0) {
+          transientFailure.remaining -= 1;
+          await transientFailure.beforeThrow?.();
+          throw new Error("session runtime is still publishing its history");
+        }
+        return historySliceFromMessages(tabID, historyFor(tabID), req);
+      },
       HistoryCheckpointTurnsForTab: async () => [],
       StartTopicActivation: async (req: TopicActivationRequest) => {
         const target = Array.from(tabsById.values()).find((tab) => tab.workspaceRoot === req.workspaceRoot && tab.topicId === req.topicId) ?? tabA;
@@ -195,7 +211,19 @@ window.go = {
         return { requestId, tabId: target.id, meta: { ...target, active: true } };
       },
       SetActiveTab: async (tabID: string) => {
+        if (tabID === failSetActiveTabId) throw new Error("source tab was already pruned");
         backendActiveId = tabID;
+      },
+      OpenTopicSession: async (_scope: string, _workspaceRoot: string, _topicID: string, sessionPath: string) => {
+        const source = Array.from(tabsById.values()).find((tab) => tab.sessionPath === sessionPath) ?? tabA;
+        const restored = tabMeta(`${source.id}-restored-${++restoredTabSeq}`, {
+          ...source,
+          id: `${source.id}-restored-${restoredTabSeq}`,
+          active: true,
+        });
+        tabsById.set(restored.id, restored);
+        backendActiveId = restored.id;
+        return restored;
       },
       ReplayPendingPrompts: async () => {},
     } as Partial<AppBindings> as AppBindings,
@@ -257,7 +285,7 @@ await act(async () => {
 await waitFor("C hydrates on its ready", () => hasHistory("tab-c") && controller?.state.hydrating === false);
 ok(!hasHistory("tab-b"), "only the last click's history is visible");
 
-// ── terminal failed surfaces the hydrate-error UI ───────────────────────────
+// ── terminal failure restores the committed source surface ─────────────────
 await act(async () => {
   await controller?.activateTopic("project", tabA.workspaceRoot, tabA.topicId ?? "");
   await flushPromises();
@@ -267,8 +295,27 @@ await act(async () => {
   emitActivation({ requestId: requestIdByTab.get("tab-a") ?? "", tabId: "tab-a", phase: "failed", error: "session failed to start" });
   await flushPromises();
 });
-eq(controller?.state.hydrating, false, "failed activation stops the hydrating surface");
-eq(controller?.state.hydrateError, "session failed to start", "failed activation surfaces the sanitized error");
+eq(controller?.activeTabId, "tab-c", "failed activation restores the previously committed source tab");
+eq(controller?.state.hydrating, false, "restored source is immediately usable");
+ok(hasHistory("tab-c"), "failed activation retains the source transcript");
+const failureNotice = controller?.state.items.findLast((item) => item.kind === "notice");
+ok(Boolean(failureNotice && failureNotice.kind === "notice" && !failureNotice.text.includes("session failed to start")), "failure notice is sanitized before it reaches the restored source");
+
+// ── activation succeeds but target history fails: source still wins ─────────
+failedHistoryTabId = "tab-a";
+failSetActiveTabId = "tab-c";
+await act(async () => {
+  await controller?.activateTopic("project", tabA.workspaceRoot, tabA.topicId ?? "");
+  await flushPromises();
+  emitActivation({ requestId: requestIdByTab.get("tab-a") ?? "", tabId: "tab-a", phase: "ready" });
+  await flushPromises();
+});
+await waitFor("history failure rebinds the pruned committed source", () => controller?.activeTabId?.startsWith("tab-c-restored-") ?? false);
+ok(hasHistory("tab-c"), "target history failure retains the source controller transcript");
+const historyFailureNotice = controller?.state.items.findLast((item) => item.kind === "notice");
+ok(!(historyFailureNotice?.kind === "notice" && historyFailureNotice.text.includes("/private/")), "target history failure does not expose a local path");
+failedHistoryTabId = "";
+failSetActiveTabId = "";
 
 // ── a terminal event that beats the ticket is stashed and replayed ──────────
 eagerActivationEvents = true;
@@ -310,6 +357,8 @@ await act(async () => {
 });
 await waitFor("running session hydrates on first open", () =>
   controller?.activeTabId === "tab-r" &&
+  controller.state.running === true &&
+  controller.state.hydrating === false &&
   (controller.state.items.some((item) => item.kind === "user" && item.text === "帮我查询，现在我链接的 deep") ?? false),
 );
 eq(controller?.state.running, true, "reattached thinking session stays marked running");
@@ -341,12 +390,56 @@ await act(async () => {
 });
 await waitFor("switch-back restores the thinking transcript", () =>
   controller?.activeTabId === "tab-r" &&
+  controller.state.running === true &&
   controller.state.hydrating === false &&
   (controller.state.items.some((item) => item.kind === "user" && item.text === "帮我查询，现在我链接的 deep") ?? false),
 );
 eq(controller?.state.running, true, "switch-back keeps the composer in the live turn");
 eq(controller?.state.items.some((item) => item.kind === "user" && item.text === "history tab-b") ?? false, false, "switch-back does not keep the other session as the visible transcript");
 eq(controller?.state.hydratePlaceholderItems?.length ?? 0, 0, "switch-back clears the foreign placeholder after live history lands");
+
+// A ready Ask runtime can race the first history read while its session is
+// being published. One transient read failure must recover in the same click
+// instead of restoring the source and making the user click B again.
+tabsById.set(tabAsk.id, { ...tabAsk, running: true, pendingPrompt: true, cancellable: true });
+let markHistoryStarted: (() => void) | undefined;
+const historyStarted = new Promise<void>((resolve) => { markHistoryStarted = resolve; });
+let releaseHistoryFailure: (() => void) | undefined;
+const historyFailureGate = new Promise<void>((resolve) => { releaseHistoryFailure = resolve; });
+transientHistoryFailures.set(tabAsk.id, {
+  remaining: 1,
+  beforeThrow: async () => { markHistoryStarted?.(); await historyFailureGate; },
+});
+await act(async () => {
+  await controller?.activateTopic("project", tabAsk.workspaceRoot, tabAsk.topicId ?? "");
+  for (const handler of eventHandlers) {
+    handler({
+      kind: "ask_request",
+      tabId: tabAsk.id,
+      ask: { id: "ask-tab-ask", questions: [{ id: "choice", prompt: "Choose a repair", options: [] }] },
+    });
+  }
+  await flushPromises();
+});
+eq(controller?.state.ask?.id, "ask-tab-ask", "Ask is visible before activation history hydrates");
+await act(async () => {
+  // Production emits agent:ready before topic:activation ready. Hold the
+  // startup hydration open so activation-ready must supersede it without
+  // resetting the live Ask.
+  for (const handler of readyHandlers) handler(tabAsk.id);
+  await historyStarted;
+  emitActivation({ requestId: requestIdByTab.get(tabAsk.id) ?? "", tabId: tabAsk.id, phase: "ready" });
+  releaseHistoryFailure?.();
+  await flushPromises();
+});
+for (let attempt = 0; attempt < 10; attempt += 1) {
+  await act(async () => { await flushPromises(); });
+}
+eq(controller?.activeTabId, tabAsk.id, "transient Ask history failure stays on the selected session");
+ok(hasHistory(tabAsk.id), "transient Ask history failure retries without a second click");
+eq(controller?.state.pendingPrompt, true, "transient Ask history retry remains blocked on user input");
+eq(controller?.state.running, true, "transient Ask history retry remains running");
+eq(controller?.state.ask?.id, "ask-tab-ask", "transient Ask history retry preserves the decision card");
 
 await act(async () => {
   root.unmount();

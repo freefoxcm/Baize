@@ -44,11 +44,15 @@ func TestReplaySectionsKeepAssistantIdentity(t *testing.T) {
 	configureCLITheme("dark")
 
 	sections := replaySectionsFor([]provider.Message{
+		{Role: provider.RoleUser, Origin: provider.MessageOriginHost, Content: "<pinned_context_revision>private pinned body</pinned_context_revision>"},
 		{Role: provider.RoleUser, Content: "Which version?"},
 		{Role: provider.RoleAssistant, Content: "Version 1.2.3"},
 	}, 48)
 	if len(sections) != 2 {
 		t.Fatalf("replay sections = %d, want user and assistant", len(sections))
+	}
+	if plain := ansi.Strip(strings.Join(sections, "")); strings.Contains(plain, "private pinned body") {
+		t.Fatalf("replay exposed a pinned revision: %q", plain)
 	}
 	if plain := ansi.Strip(sections[1]); !strings.HasPrefix(plain, "  ◆ Reasonix\n\n  Version 1.2.3") {
 		t.Fatalf("replayed assistant answer lost its identity: %q", plain)

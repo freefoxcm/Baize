@@ -8,10 +8,19 @@ import {
   resolveTranscriptReaderExtentCorrection,
   transcriptScrollEventCancelsReaderExtentGuard,
   transcriptKeyboardScrollDelta,
+  transcriptReaderIdleDeadlineReached,
+  transcriptReaderTransactionCanReuse,
   transcriptReaderExtentCanCorrect,
+  transcriptTransformTranslateY,
 } from "../lib/transcriptReaderExtentStability";
 
 console.log("\ntranscript reader extent stability");
+
+assert.equal(transcriptReaderIdleDeadlineReached(1_000, 1_179), false, "179ms remains inside the reader transaction");
+assert.equal(transcriptReaderIdleDeadlineReached(1_000, 1_180), true, "180ms enters reader settling");
+assert.equal(transcriptReaderIdleDeadlineReached(1_000, 1_181), true, "181ms remains past the idle boundary");
+assert.equal(transcriptReaderTransactionCanReuse(1, 12), true, "same-direction wheel input reuses one transaction");
+assert.equal(transcriptReaderTransactionCanReuse(1, -1), false, "direction changes create a new ownership transaction");
 
 const reported = createTranscriptReaderExtentGuard(
   { scrollTop: 14_567.47, scrollHeight: 15_829, clientHeight: 725 },
@@ -120,7 +129,6 @@ assert.equal(transcriptKeyboardScrollDelta("End", false, keyboardSnapshot), 2_20
   "End targets the native bottom");
 const cancellingEvents: TranscriptScrollEvent["type"][] = [
   "RESET",
-  "USER_SCROLL_INTENT",
   "MANUAL_READING",
   "VIEWPORT_RESIZED",
   "USER_RESIZE_BEGIN",
@@ -137,7 +145,11 @@ for (const event of cancellingEvents) {
 }
 
 const observingEvents: TranscriptScrollEvent["type"][] = [
-  "READER_INTENT_ENDED",
+  "USER_SCROLL_INTENT",
+  "READER_IDLE_DEADLINE",
+  "READER_STABILITY_SAMPLE",
+  "READER_TAIL_HANDOFF",
+  "READER_TRANSACTION_END",
   "SCROLL_DELIVERED",
   "TAIL_CONTENT_CHANGED",
   "CONTENT_SHRANK",
@@ -151,5 +163,17 @@ for (const event of observingEvents) {
   assert.equal(transcriptScrollEventCancelsReaderExtentGuard(event), false,
     `${event} leaves rebound observation active`);
 }
+
+assert.equal(transcriptTransformTranslateY("none"), 0, "an unset transform applies no visual offset");
+assert.equal(transcriptTransformTranslateY(""), 0, "an empty computed transform applies no visual offset");
+assert.equal(transcriptTransformTranslateY("matrix(1, 0, 0, 1, 0, 7088.5)"), 7088.5, "a 2D matrix exposes its translateY");
+assert.equal(transcriptTransformTranslateY("matrix(1, 0, 0, 1, 0, -12)"), -12, "a negative translateY survives parsing");
+assert.equal(
+  transcriptTransformTranslateY("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 96, 0, 1)"),
+  96,
+  "a 3D matrix exposes its translateY component",
+);
+assert.equal(transcriptTransformTranslateY("translateY(12px)"), undefined, "an unserialized transform yields no measurement");
+assert.equal(transcriptTransformTranslateY("rotate(45deg)"), undefined, "an unrelated transform yields no measurement");
 
 console.log("transcript reader extent stability tests passed");

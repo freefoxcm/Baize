@@ -106,7 +106,7 @@ func TestSettingsRejectsUnavailableVisionModel(t *testing.T) {
 	for _, model := range []string{"local/model-a", "missing/vision"} {
 		payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, VisionModel: &model})
 		recorder := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
+		req := localTestRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
 		server.Handler().ServeHTTP(recorder, req)
 		if recorder.Code != http.StatusBadRequest {
@@ -128,7 +128,7 @@ func TestSettingsRevisionConflictAndSafeUpdate(t *testing.T) {
 	}
 
 	get := httptest.NewRecorder()
-	server.Handler().ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/settings", nil))
+	server.Handler().ServeHTTP(get, localTestRequest(http.MethodGet, "/settings", nil))
 	if get.Code != http.StatusOK {
 		t.Fatalf("GET status = %d: %s", get.Code, get.Body.String())
 	}
@@ -146,7 +146,7 @@ func TestSettingsRevisionConflictAndSafeUpdate(t *testing.T) {
 	waitRunning(t, ctrl)
 	payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, DefaultModel: &model, VisionModel: &visionModel, DefaultApprovalMode: &approval})
 	patch := httptest.NewRecorder()
-	patchReq := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
+	patchReq := localTestRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
 	patchReq.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(patch, patchReq)
 	if patch.Code != http.StatusOK {
@@ -161,7 +161,7 @@ func TestSettingsRevisionConflictAndSafeUpdate(t *testing.T) {
 	}
 
 	conflict := httptest.NewRecorder()
-	conflictReq := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
+	conflictReq := localTestRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
 	conflictReq.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(conflict, conflictReq)
 	if conflict.Code != http.StatusConflict {
@@ -197,7 +197,7 @@ func TestTaskErrorVisibilitySavesWithoutControllerRebuild(t *testing.T) {
 	enabled := true
 	payload, _ := json.Marshal(settingsPatch{Revision: initial.Revision, ShowTaskErrors: &enabled})
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
+	req := localTestRequest(http.MethodPatch, "/settings", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusOK {

@@ -15,6 +15,7 @@ var Chinese = Messages{
 	FinalReadinessRecovery: "剩余任务或收尾检查已暂停。运行 /continue-checks 可保留已完成证据并继续剩余工作。",
 	ReadinessContinuing:    "Reasonix 正在自动完成剩余任务或检查。",
 	RecoveryPaused:         "已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
+	CompletionUncertain:    "完成状态未确认。当前结果和已完成工作均已保留。发送“继续”可接着完成，也可以补充说明需要调整的内容。",
 	ReceiptVerified:        "没有未经验证的部分",
 	ReceiptGapsHeader:      "未验证:",
 	ReceiptRisksHeader:     "已申报的风险:",
@@ -79,6 +80,7 @@ var Chinese = Messages{
 	RateBandMixed:                          "混合档位",
 	ChatStatusModelLabel:                   "模型",
 	ChatStatusEffortLabel:                  "强度",
+	ChatStatusPresetLabel:                  "预设",
 	ChatStatusCacheLabel:                   "缓存",
 	ChatStatusContextLabel:                 "上下文",
 	ChatStatusCompactLabel:                 "压缩",
@@ -99,6 +101,11 @@ var Chinese = Messages{
 	AskSubmitTitle:                         "提交答案",
 	AskUnanswered:                          "(未答)",
 	AskSubmitHint:                          "Enter 提交 · ← 返回修改",
+	ElicitURLHint:                          "o 打开链接 · Enter 接受 · d 拒绝 · Esc 取消",
+	ElicitConfirmOnly:                      "Enter 确认;d 拒绝;Esc 取消。",
+	ElicitUnanswered:                       "(未填写)",
+	ElicitSubmit:                           "提交",
+	ElicitSubmitHint:                       "Enter 编辑字段 · tab 下一项 · 提交行:Enter 接受、d 拒绝、Esc 取消",
 	ToolApprovalPromptFmt:                  "需要你的许可\n\n将调用工具 %s%s。\n%s\n%s",
 	ToolApprovalChoices:                    "1. 本次允许\n2. 本会话允许 %s\n3. 总是允许 %s（保存到配置）\n4. 拒绝\n选择 [1/2/3/4]（兼容 y/a/p/n）",
 	BashPrefixChoices:                      "1. 本次允许\n2. 本会话允许 %s\n3. 总是允许 %s（保存到配置）\n4. 拒绝\n选择 [1/2/3/4]（兼容 y/a/p/n）",
@@ -244,6 +251,7 @@ var Chinese = Messages{
 	ClipboardTextPasteFailedFmt:  "粘贴文本失败：%v",
 	ClipboardImagePastingHint:    "正在粘贴图片…",
 	ClipboardImagePasteFailedFmt: "粘贴图片失败：%v",
+	ClipboardPasteEmptyNotice:    "剪贴板中没有可粘贴的文本或受支持的图片（PNG/JPEG/GIF/WebP）",
 	MouseCaptureOnHint:           "鼠标接管已开启 — 应用内拖拽选中/滚动条/滚轮生效",
 	MouseCaptureOffHint:          "鼠标接管已关闭 — 由终端原生处理选中和右键菜单",
 	MouseCaptureTag:              "终端原生鼠标",
@@ -267,7 +275,7 @@ var Chinese = Messages{
 	CmdRename:           "重命名会话",
 	CmdModel:            "切换模型",
 	CmdStatus:           "显示会话状态",
-	CmdWorkMode:         "已弃用：自适应标准执行",
+	CmdWorkMode:         "会话质量底线：standard / delivery",
 	CmdDocs:             "搜索与当前版本匹配的内置文档",
 	CmdMemory:           "查看指令、记忆与恢复状态",
 	CmdMigrate:          "重试旧数据迁移",
@@ -317,6 +325,8 @@ var Chinese = Messages{
 	ArgEffortHigh:       "较深推理",
 	ArgEffortXHigh:      "超高推理",
 	ArgEffortMax:        "最高推理",
+	ArgPresetStandard:   "自适应默认档",
+	ArgPresetDelivery:   "交付级完成门槛",
 	ArgThemeCurrent:     "当前",
 	ArgLanguageAuto:     "从 REASONIX_LANG / 系统 locale 自动检测",
 	ArgLanguageEn:       "English",
@@ -601,7 +611,7 @@ var Chinese = Messages{
   baize acp [--model NAME]                           通过 stdio 提供 Agent Client Protocol（也可用：baize --acp）
   baize setup [path]                                 交互式配置向导；生成 reasonix.toml（及 .env）
   baize config reasoning-language [auto|zh|en]        配置可见思考语言
-  baize config compact-ratio [--local] [65..85]       配置自动压缩阈值
+  baize config compact-ratio [--local] [30..85]       配置自动压缩阈值
   baize config telemetry [auto|on|off]                配置不含内容的 CLI 使用统计
   baize report [list|show|send|delete] [ID]           审阅并明确发送本地 CLI 崩溃报告
   baize mcp <add|remove|list|import>                 管理 reasonix.toml 里的 MCP 服务器
